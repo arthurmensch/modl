@@ -2,20 +2,19 @@
 #
 # Copyright (C) 2016 Arthur Mensch
 
-import sys
 import os
+import sys
 
-DISTNAME = 'spira'
-DESCRIPTION = "Recommender systems in Python"
+DISTNAME = 'modl'
+DESCRIPTION = "Masked Online Dictionary Learning in Python"
 LONG_DESCRIPTION = open('README.rst').read()
-MAINTAINER = 'Mathieu Blondel'
-MAINTAINER_EMAIL = 'mathieu@mblondel.org'
+MAINTAINER = 'Arthur Mensch'
+MAINTAINER_EMAIL = 'arthur.mensch@m4x.org'
 URL = 'https://github.com/arthurmensch/modl'
 LICENSE = 'new BSD'
 DOWNLOAD_URL = 'https://github.com/arthurmensch/modl'
 VERSION = '0.1-git'
 
-import setuptools  # we are using a setuptools namespace
 from numpy.distutils.core import setup
 
 

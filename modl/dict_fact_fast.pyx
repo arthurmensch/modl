@@ -3,9 +3,6 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
-cimport numpy as np
-from libc.math cimport sqrt, log, exp, ceil, pow, fabs
-
 from scipy.linalg.cython_blas cimport dger, dgemm, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
@@ -144,7 +141,7 @@ cdef int _update_code_fast(double[:] X_data, int[:] X_indices,
                   double[::1, :] P, double[::1, :] Q,
                   double[:] Q_mult,
                   long[:] row_batch,
-                  double[::1, :] C,
+                  double[::1, :] H,
                   double[::1, :] Q_idx,
                   double[::1, :] P_batch,
                   double[:] sub_Qx,
@@ -161,7 +158,7 @@ cdef int _update_code_fast(double[:] X_data, int[:] X_indices,
     cdef double* A_ptr = &A[0, 0]
     cdef double* B_ptr = &B[0, 0]
     cdef double* G_ptr = &G[0, 0]
-    cdef double* C_ptr = &C[0, 0]
+    cdef double* H_ptr = &H[0, 0]
     cdef double* X_data_ptr = &X_data[0]
     cdef int info = 0
     cdef int ii, jj, i, j, k, m
@@ -169,7 +166,7 @@ cdef int _update_code_fast(double[:] X_data, int[:] X_indices,
     cdef double reg, v
     cdef int last = 0
     cdef double w_B, w_A
-    cdef double Q_exp_mult
+    cdef double this_Q_mult
 
     # get_w(double[:] w, idx, long[:] counter, long batch_size,
     #            long learning_rate)
@@ -183,10 +180,9 @@ cdef int _update_code_fast(double[:] X_data, int[:] X_indices,
         nnz = X_indptr[i + 1] - X_indptr[i]
         # print('Filling Q')
         for k in range(n_components):
-            Q_exp_mult = exp(Q_mult[k]) if exp_mult else Q_mult[k]
+            this_Q_mult = exp(Q_mult[k]) if exp_mult else Q_mult[k]
             for jj in range(nnz):
-                # Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * exp(Q_mult[k])
-                Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * Q_exp_mult
+                Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * this_Q_mult
 
         # print('Computing Gram')
 
@@ -204,7 +200,7 @@ cdef int _update_code_fast(double[:] X_data, int[:] X_indices,
                 P_batch[p, ii] = (1 - v) * sub_Qx[p] + v * T[p, 0]
             for p in range(n_components):
                 for n in range(n_components):
-                    C[p, n] = G[p, n]
+                    H[p, n] = G[p, n]
         else:
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &nnz,
@@ -212,7 +208,7 @@ cdef int _update_code_fast(double[:] X_data, int[:] X_indices,
                   Q_idx_ptr, &n_components,
                   Q_idx_ptr, &n_components,
                   &zerod,
-                  C_ptr, &n_components
+                  H_ptr, &n_components
                   )
             reg = 2 * alpha * nnz / n_cols
 
@@ -229,12 +225,12 @@ cdef int _update_code_fast(double[:] X_data, int[:] X_indices,
 
         # C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
         for p in range(n_components):
-            C[p, p] += reg
+            H[p, p] += reg
 
         # P[j] = linalg.solve(C, Qx, sym_pos=True,
         #                     overwrite_a=True, check_finite=False)
         # print('Solving linear system')
-        dposv(&UP, &n_components, &one, C_ptr, &n_components,
+        dposv(&UP, &n_components, &one, H_ptr, &n_components,
               P_batch_ptr + ii * n_components, &n_components,
               &info)
         if info != 0:
@@ -413,8 +409,7 @@ def _online_dl_fast(double[:] X_data, int[:] X_indices,
                     bint fit_intercept,
                     bint partial,
                     bint impute,
-                    bint exp_mult,
-                    callback):
+                    bint exp_mult):
 
     cdef int len_row_range = row_range.shape[0]
     cdef int n_batches = int(ceil(len_row_range / batch_size))
@@ -442,8 +437,6 @@ def _online_dl_fast(double[:] X_data, int[:] X_indices,
     cdef double* Q_ptr = &Q[0, 0]
     cdef double* G_ptr = &G[0, 0]
 
-    cdef double new_rmse, old_rmse
-
     cdef double min
 
     for k in range(n_components):
@@ -461,7 +454,6 @@ def _online_dl_fast(double[:] X_data, int[:] X_indices,
         components_range = np.arange(n_components)
     else:
         components_range = np.arange(1, n_components)
-    old_rmse = 5
     for epoch in range(n_epochs):
         n_batches = int(ceil(len_row_range / batch_size))
         _shuffle(row_range, &seed)
@@ -505,7 +497,6 @@ def _online_dl_fast(double[:] X_data, int[:] X_indices,
                     impute,
                     partial,
                     exp_mult)
-            # Numerical stability
 
             if not partial:
                 min = 0 if exp_mult else 1
@@ -524,9 +515,3 @@ def _online_dl_fast(double[:] X_data, int[:] X_indices,
                         len_row_range / verbose)) == last_call + 1:
                 print("Iteration %i" % (counter[0]))
                 last_call += 1
-                callback()
-        # if new_rmse > 0:
-        #     if fabs(new_rmse - old_rmse) / old_rmse < 0.01:
-        #         print('Reducing batch size')
-        #         batch_size //= 2
-        #         old_rmse = new_rmse
