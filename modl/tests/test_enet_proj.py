@@ -3,11 +3,11 @@
 
 import numpy as np
 from numpy import sqrt
+from numpy.testing import assert_array_almost_equal
 
-from sklearn.utils import check_random_state
-from sklearn.utils.enet_projection import enet_norm, enet_projection, \
+from modl.enet_proj import enet_norm, enet_projection, \
     enet_scale
-from sklearn.utils.testing import assert_array_almost_equal
+from sklearn.utils import check_random_state
 
 
 def _enet_norm_for_projection(v, gamma):
@@ -125,10 +125,14 @@ def test_fast_enet_l2_ball():
     for i in range(10):
         a = random_state.randn(100)
         c = np.zeros(100)
-        c[:] = enet_projection(a, 1, 0.0)
+        c[:] = enet_projection(a, 2, 0.0)
         norms[i] = np.sqrt(np.sum(c ** 2))
-    assert_array_almost_equal(norms, np.ones(10))
-
+    assert_array_almost_equal(norms, np.ones(10) * sqrt(2))
+    for i in range(10):
+        a = random_state.randn(100)
+        a /= np.sqrt(np.sum(a ** 2)) * 10
+        c = enet_projection(a, 2, 0.0)
+        assert_array_almost_equal(a, c)
 
 def test_fast_enet_l1_ball():
     random_state = check_random_state(0)
