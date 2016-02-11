@@ -56,11 +56,12 @@ class DictCompleter(DictMF):
     def fit(self, X, y=None):
         X = sp.csr_matrix(X, dtype='float')
         n_rows = X.shape[0]
-        self.P_ = np.zeros((n_rows, self.n_components), order='F',
+        self.P_ = np.zeros((n_rows, self.n_components), order='C',
                            dtype='float')
 
         if self.normalize:
-            X, self.row_mean_, self.col_mean_ = csr_center_data(X, inplace=False)
+            X, self.row_mean_, self.col_mean_ = csr_center_data(X,
+                                                                inplace=False)
 
         DictMF.fit(self, X)
 
@@ -88,9 +89,8 @@ class DictCompleter(DictMF):
     def predict(self, X):
         X = sp.csr_matrix(X)
         out = np.zeros_like(X.data)
-        _predict(out, X.indices, X.indptr, self.P_.T,
+        _predict(out, X.indices, X.indptr, self.P_,
                  self.Q_)
-        out *= -1
 
         if self.normalize:
             for i in range(X.shape[0]):

@@ -159,7 +159,7 @@ def compute_code(X, Q, alpha):
         G.flat[::n_components + 1] += 2 * alpha
         P = linalg.solve(G, Qx, sym_pos=True,
                          overwrite_a=True, check_finite=False)
-        return P
+        return check_array(P, order='c')
     else:
         row_range = X.getnnz(axis=1).nonzero()[0]
         n_rows, n_cols = X.shape
@@ -175,7 +175,7 @@ def compute_code(X, Q, alpha):
             C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
             P[j] = linalg.solve(C, Qx, sym_pos=True,
                                 overwrite_a=True, check_finite=False)
-        return P
+        return check_array(P, order='c')
 
 
 def _init_sufficient_stat(Q, impute=False):
@@ -336,12 +336,12 @@ def online_dl(X, Q,
                               impute)
             dict_subset = subset
             if P is not None:
-                P[row_batch] = this_P
-            # if debug:
-                # dict_loss = .5 * np.trace(Q.dot(Q.T) * A) - np.trace(Q.dot(B.T))
-                # loss_stat[0] *= (1 - w)
-                # loss_stat[0] += w * (.5 * np.sum(this_X ** 2) + alpha * np.sum(this_P ** 2)) / batch_size
-                # loss_stat[1].append(loss_stat[0] + dict_loss)
+                P[row_batch] = this_P.copy()
+            if debug:
+                dict_loss = .5 * np.trace(Q.dot(Q.T) * A) - np.trace(Q.dot(B.T))
+                loss_stat[0] *= (1 - w)
+                loss_stat[0] += w * (.5 * np.sum(this_X ** 2) + alpha * np.sum(this_P ** 2)) / batch_size
+                loss_stat[1].append(loss_stat[0] + dict_loss)
 
         _update_dict_slow(Q, dict_subset, freeze_first_col,
                           l1_ratio,
@@ -372,9 +372,9 @@ def _update_code_slow(X, subset, alpha, learning_rate,
 
     Q_subset = Q[:, subset]
 
+    w_A, w_B = _get_weights(subset, counter, batch_size, learning_rate, offset)
     counter[0] += batch_size
     counter[subset + 1] += batch_size
-    w_A, w_B = _get_weights(subset, counter, batch_size, learning_rate, offset)
 
     if impute:
         T[:, 0] -= T[:, subset + 1].sum(axis=1)
@@ -419,7 +419,6 @@ def _update_dict_slow(Q, subset,
     R = B[:, subset] - np.dot(Q_subset.T, A).T
     for j in components_range:
         ger(1.0, A[j], Q_subset[j], a=R, overwrite_a=True)
-        R = B[:, subset] - np.dot(Q_subset.T, A).T
         Q_subset[j] = R[j] / A[j, j]
         Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)
         ger(-1.0, A[j], Q_subset[j], a=R, overwrite_a=True)

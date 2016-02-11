@@ -21,7 +21,7 @@ def test_dict_completion():
 
     mf.fit(X)
 
-    Y = np.dot(mf.P_.T, mf.Q_)
+    Y = np.dot(mf.P_, mf.Q_)
     Y2 = mf.predict(X).toarray()
 
     assert_array_almost_equal(Y, Y2)
@@ -45,7 +45,7 @@ def test_dict_completion_normalise():
 
     mf.fit(X)
 
-    Y = np.dot(mf.P_.T, mf.Q_)
+    Y = np.dot(mf.P_, mf.Q_)
     Y += mf.col_mean_[np.newaxis, :]
     Y += mf.row_mean_[:, np.newaxis]
     Y2 = mf.predict(X).toarray()
@@ -58,7 +58,7 @@ def test_dict_completion_normalise():
     assert_almost_equal(rmse, rmse2)
 
 
-def test_dict_completion():
+def test_dict_completion_missing():
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(50, 2)
@@ -74,4 +74,4 @@ def test_dict_completion():
 
     mf.fit(X_tr)
     X_pred = mf.predict(X_te)
-    assert_array_almost_equal(X_te, X_pred)
+    assert_array_almost_equal(X_te.data, X_pred.data)
