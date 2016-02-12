@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
-from scipy import linalg
+from sklearn.utils import check_array
 from spira.impl.matrix_fact_fast import _predict
 
 from modl.dict_fact import DictMF, online_dl
@@ -18,7 +18,7 @@ class DictCompleter(DictMF):
                  n_iter=None,
                  # Preproc parameters
                  fit_intercept=True,
-                 normalize=True,
+                 detrend=True,
                  # Dict parameter
                  dict_init=None,
                  l1_ratio=0,
@@ -51,40 +51,19 @@ class DictCompleter(DictMF):
                         backend,
                         debug,
                         callback)
-        self.normalize = normalize
+        self.detrend = detrend
 
     def fit(self, X, y=None):
         X = sp.csr_matrix(X, dtype='float')
+
+        if self.detrend:
+            X, self.row_mean_, self.col_mean_ = csr_center_data(X,
+                                                                inplace=False)
         n_rows = X.shape[0]
         self.P_ = np.zeros((n_rows, self.n_components), order='C',
                            dtype='float')
 
-        if self.normalize:
-            X, self.row_mean_, self.col_mean_ = csr_center_data(X,
-                                                                inplace=False)
-
         DictMF.fit(self, X)
-
-    def partial_fit(self, X, y=None):
-        # Overriding to keep P in memory
-        if not self._check_init():
-            self._init(X)
-        (self.n_iter_,
-         self.num_verbose_call_) = online_dl(
-             X, self.Q_, self.P_, alpha=float(self.alpha),
-             l1_ratio=self.l1_ratio,
-             learning_rate=float(self.learning_rate), offset=float(self.offset),
-             stat=self._stat, freeze_first_col=self.fit_intercept,
-             batch_size=self.batch_size, random_state=self.random_state_,
-             verbose=self.verbose, impute=self.impute,
-             max_n_iter=self.max_n_iter, n_iter=self.n_iter_,
-             num_verbose_call=self.num_verbose_call_,
-             reduction=self.reduction,
-             subset_stat=self._subset_stat,
-             debug=self.debug,
-             loss_stat=self._loss_stat,
-             callback=self._callback)
-        self._refit(X)
 
     def predict(self, X):
         X = sp.csr_matrix(X)
@@ -92,10 +71,14 @@ class DictCompleter(DictMF):
         _predict(out, X.indices, X.indptr, self.P_,
                  self.Q_)
 
-        if self.normalize:
+        if self.detrend:
             for i in range(X.shape[0]):
                 out[X.indptr[i]:X.indptr[i + 1]] += self.row_mean_[i]
             out += self.col_mean_.take(X.indices, mode='clip')
+
+        out[out > 5] = 5
+        out[out < 1]
+
         return sp.csr_matrix((out, X.indices, X.indptr), shape=X.shape)
 
     def score(self, X):
@@ -107,6 +90,7 @@ class DictCompleter(DictMF):
 def csr_center_data(X, inplace=False):
     if not inplace:
         X = X.copy()
+    X = sp.csr_matrix(X)
 
     acc_u = np.zeros(X.shape[0])
     acc_m = np.zeros(X.shape[1])
@@ -115,7 +99,7 @@ def csr_center_data(X, inplace=False):
     n_m = X.getnnz(axis=0)
     n_u[n_u == 0] = 1
     n_m[n_m == 0] = 1
-    for i in range(1):
+    for i in range(4):
         w_u = X.sum(axis=1).A[:, 0] / n_u
         for i, (left, right) in enumerate(zip(X.indptr[:-1], X.indptr[1:])):
             X.data[left:right] -= w_u[i]

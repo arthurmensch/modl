@@ -1,10 +1,12 @@
+from math import sqrt
+
 import scipy.sparse as sp
 import numpy as np
 from numpy.testing import assert_almost_equal
 from numpy.testing import assert_array_almost_equal
 from spira.cross_validation import train_test_split
 
-from modl.dict_completion import DictCompleter
+from modl.dict_completion import DictCompleter, csr_center_data
 
 
 def test_dict_completion():
@@ -16,7 +18,7 @@ def test_dict_completion():
 
     mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
                        random_state=0,
-                       normalize=False,
+                       detrend=False,
                        verbose=0, )
 
     mf.fit(X)
@@ -41,7 +43,7 @@ def test_dict_completion_normalise():
 
     mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
                        random_state=0,
-                       verbose=0, normalize=True)
+                       verbose=0, detrend=True)
 
     mf.fit(X)
 
@@ -61,17 +63,25 @@ def test_dict_completion_normalise():
 def test_dict_completion_missing():
     # Generate some toy data.
     rng = np.random.RandomState(0)
-    U = rng.rand(50, 2)
-    V = rng.rand(2, 20)
+    U = rng.rand(100, 4)
+    V = rng.rand(4, 20)
     X = np.dot(U, V)
     X = sp.csr_matrix(X)
-    X_tr, X_te = train_test_split(X, train_size=0.9)
+    X_tr, X_te = train_test_split(X, train_size=0.95)
+    X_tr = sp.csr_matrix(X_tr)
+    X_te = sp.csr_matrix(X_te)
 
-    mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
+    mf = DictCompleter(n_components=4, max_n_iter=400, alpha=1,
                        random_state=0,
-                       normalize=False,
+                       detrend=True,
                        verbose=0, )
 
     mf.fit(X_tr)
     X_pred = mf.predict(X_te)
-    assert_array_almost_equal(X_te.data, X_pred.data)
+    rmse = sqrt(np.sum((X_te.data - X_pred.data) ** 2) / X_te.data.shape[0])
+    X_te_c, _, _ = csr_center_data(X_te)
+    rmse_c = sqrt(np.sum((X_te.data - X_te_c.data) ** 2) / X_te.data.shape[0])
+    print(rmse)
+    print(rmse_c)
+    assert(rmse < rmse_c)
+    # assert_array_almost_equal(X_te.data, X_pred.data)

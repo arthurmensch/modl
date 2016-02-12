@@ -19,7 +19,7 @@ def sqnorm(M):
 
 
 class Callback(object):
-    def __init__(self, X_tr, X_te, refit=False):
+    def __init__(self, X_tr, X_te):
         self.X_tr = X_tr
         self.X_te = X_te
         self.obj = []
@@ -37,7 +37,7 @@ class Callback(object):
         regul = mf.alpha * (sqnorm(mf.P_))
         self.obj.append(loss + regul)
 
-        # if mf.normalize:
+        # if mf.detrend:
         #     if not hasattr(self, 'X_tr_c_'):
         #         self.X_tr_c_, _, _ = csr_center_data(self.X_tr)
         #     else:
@@ -60,15 +60,15 @@ class Callback(object):
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=.5, verbose=10,
-                   batch_size=10, normalize=True,
+mf = DictCompleter(n_components=30, alpha=.8, verbose=5,
+                   batch_size=100, detrend=True,
                    offset=0,
                    impute=False,
-                   fit_intercept=False,
+                   fit_intercept=True,
                    random_state=0,
-                   learning_rate=1,
-                   max_n_iter=5000,
-                   backend='python',
+                   learning_rate=.75,
+                   max_n_iter=60000,
+                   backend='c',
                    debug=True)
 
 X = load_movielens('1m')
@@ -91,11 +91,10 @@ plt.plot(np.arange(len(cb.rmse_tr)), cb.rmse_tr, label='Train')
 
 plt.legend()
 plt.xlabel("CPU time")
-# plt.xscale("log")
+plt.xscale("log")
 plt.ylabel("RMSE")
 plt.figure()
-plt.plot(np.arange(len(mf._loss_stat[1])), mf._loss_stat[1])
-plt.plot(np.arange(len(mf._loss_stat[2])), mf._loss_stat[2])
+plt.plot(np.arange(len(mf._stat.loss)), mf._stat.loss)
 plt.figure()
 plt.plot(np.arange(len(cb.q)), cb.q)
 plt.show()
