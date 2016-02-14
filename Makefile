@@ -1,11 +1,11 @@
 PYTHON ?= python
 CYTHON ?= cython
 NOSETESTS ?= nosetests
-DATADIR=$(HOME)/spira_data
+DATADIR=$(HOME)/modl_data
 
 # Compilation...
 
-CYTHONSRC= $(wildcard spira/impl/*.pyx)
+CYTHONSRC= $(wildcard modl/impl/*.pyx)
 CSRC= $(CYTHONSRC:.pyx=.c)
 
 inplace:
@@ -16,9 +16,9 @@ all: cython inplace
 cython: $(CSRC)
 
 clean:
-	rm -f spira/impl/*.html
-	rm -f `find spira -name "*.pyc"`
-	rm -f `find spira -name "*.so"`
+	rm -f modl/impl/*.html
+	rm -f `find modl -name "*.pyc"`
+	rm -f `find modl -name "*.so"`
 
 %.c: %.pyx
 	$(CYTHON) $<
@@ -26,11 +26,11 @@ clean:
 # Tests...
 #
 test-code: in
-	$(NOSETESTS) -s spira
+	$(NOSETESTS) -s modl
 
 test-coverage:
 	$(NOSETESTS) -s --with-coverage --cover-html --cover-html-dir=coverage \
-	--cover-package=spira spira
+	--cover-package=modl modl
 
 test: test-code test-doc
 

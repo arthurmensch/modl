@@ -10,6 +10,8 @@ from modl.enet_proj import enet_norm, enet_projection, \
 from sklearn.utils import check_random_state
 
 
+def _enet_norm_for_projection(v, gamma):
+    return np.sum(v * (1 + gamma / 2 * v))
 
 
 def enet_norm_slow(v, l1_ratio=0.1):
@@ -33,7 +35,7 @@ def enet_projection_slow(v, radius=1, l1_ratio=0.1):
     radius /= l1_ratio
     m = v.shape[0]
     b_abs = np.abs(v)
-    norm = np.sum(b_abs[G] * (1 + gamma / 2 * b_abs[G]))
+    norm = _enet_norm_for_projection(b_abs, gamma)
     if norm <= radius:
         return v
     else:
@@ -49,7 +51,7 @@ def enet_projection_slow(v, radius=1, l1_ratio=0.1):
             sel = b_abs < b_abs[k]
             G = U[~sel * mask]
             d_rho = G.shape[0]
-            d_s = np.sum(b_abs[G] * (1 + gamma / 2 * b_abs[G]))
+            d_s = _enet_norm_for_projection(b_abs[G], gamma)
             if s + d_s - (rho + d_rho) * (1 + gamma / 2 * b_abs[k]) * b_abs[k]\
                     < radius * (1 + gamma * b_abs[k]) ** 2:
                 s += d_s

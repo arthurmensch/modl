@@ -7,14 +7,14 @@ for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 
 # Author: Arthur Mensch
 # License: BSD
-
-cimport cython
+import cython
 
 import numpy as np
+cimport numpy as np
+
 from libc.math cimport sqrt, fabs
 
-ctypedef np.float64_t DOUBLE
-ctypedef np.uint32_t UINT32_t
+from .enet_proj_fast cimport UINT32_t
 
 cdef enum:
     # Max value for our rand_r replacement (near the bottom).
@@ -56,8 +56,8 @@ cdef inline double sign(double a) nogil:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef inline void swap(DOUBLE[:] b, unsigned int i, unsigned int j,
-                      DOUBLE * buf) nogil:
+cdef inline void swap(double[:] b, unsigned int i, unsigned int j,
+                      double * buf) nogil:
     buf[0] = b[i]
     b[i] = b[j]
     b[j] = buf[0]
@@ -68,7 +68,7 @@ cdef inline void swap(DOUBLE[:] b, unsigned int i, unsigned int j,
 @cython.wraparound(False)
 @cython.initializedcheck(False)
 @cython.nonecheck(False)
-cpdef void enet_projection_inplace(DOUBLE[:] v, DOUBLE[:] b, double radius,
+cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,
                              double l1_ratio) nogil:
     cdef unsigned int m = v.shape[0]
     cdef UINT32_t random_state = 0
@@ -159,7 +159,7 @@ cpdef void enet_projection_inplace(DOUBLE[:] v, DOUBLE[:] b, double radius,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.initializedcheck(False)
-cpdef double enet_norm(DOUBLE[:] v, double l1_ratio) nogil:
+cpdef double enet_norm(double[:] v, double l1_ratio) nogil:
     """Returns the elastic net norm of a vector
 
     Parameters

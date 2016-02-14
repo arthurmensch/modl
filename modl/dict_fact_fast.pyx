@@ -6,7 +6,7 @@
 cimport numpy as np
 from libc.math cimport sqrt, log, exp, ceil, pow, fabs
 
-from modl.enet_proj_fast cimport enet_projection_inplace
+from modl.enet_proj_fast cimport enet_projection_inplace, enet_norm
 from scipy.linalg.cython_blas cimport dger, dgemm, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
@@ -162,190 +162,387 @@ cdef void _shuffle(long[:] arr, UINT32_t* random_state):
 #             return -1
 #     return 0
 
-cdef get_w(double[:] w, long[:] idx, long[:] counter, long batch_size,
-           long learning_rate):
-    cdef int idx_len = idx.shape[0]
-    cdef int count = counter[0]
-    cdef int i, jj, j
-    w[0] = 1
-    for i in range(count + 1, count + 1 + batch_size):
-        w[0] *= (1 - pow(i, - learning_rate))
-    w[0] = 1 - w[0]
+# cdef get_w(double[:] w, long[:] idx, long[:] counter, long batch_size,
+#            long learning_rate):
+#     cdef int idx_len = idx.shape[0]
+#     cdef int count = counter[0]
+#     cdef int i, jj, j
+#     w[0] = 1
+#     for i in range(count + 1, count + 1 + batch_size):
+#         w[0] *= (1 - pow(i, - learning_rate))
+#     w[0] = 1 - w[0]
+#
+#     for jj in range(idx_len):
+#         j = idx[jj]
+#         count = counter[j + 1]
+#         w[jj + 1] = 1
+#         for i in range(count + 1, count + 1 + batch_size):
+#             w[jj + 1] *= (1 - pow(i, - learning_rate))
+#         w[jj + 1] = 1 - w[jj + 1]
 
-    for jj in range(idx_len):
-        j = idx[jj]
-        count = counter[j + 1]
-        w[jj + 1] = 1
-        for i in range(count + 1, count + 1 + batch_size):
-            w[jj + 1] *= (1 - pow(i, - learning_rate))
-        w[jj + 1] = 1 - w[jj + 1]
+cdef _update_code(X, subset, alpha, learning_rate,
+                  offset,
+                  Q, A, B, counter,
+                  impute,
+                  Q_subset,
+                  P_batch,
+                  G_temp,
+                  debug):
+    cdef int len_batch = X.shape[0]
+    cdef int len_subset = subset.shape[0]
+    cdef int n_components = Q.shape[0]
+    cdef double* Q_subset_ptr = &Q_subset[0, 0]
+    cdef double* P_batch_ptr = &P_batch[0, 0]
+    cdef double* Q_ptr = &Q[0, 0]
+    cdef double* P_ptr = &P[0, 0]
+    cdef double* A_ptr = &A[0, 0]
+    cdef double* B_ptr = &B[0, 0]
+    cdef double* G_ptr = &G[0, 0]
+    cdef double* G_temp_ptr = &G_temp[0, 0]
+    cdef double* X_ptr = &X[0]
+    cdef int info = 0
+    cdef int ii, jj, i, j, k, m
+    cdef int nnz
+    cdef double reg, v
+    cdef int last = 0
+    cdef double w_B, w_A
+
+    for jj in range(len_subset):
+        Q_subset[k, jj] = Q[k, subset[jj]]
+    if impute:
+        reg = alpha
+        v = 1 # nnz / n_cols
+        for p in range(n_components):
+            sub_Qx[p] = 0
+            for jj in range(nnz):
+                j = X_indices[X_indptr[i] + jj]
+                T[p, 0] -= T[p, j + 1]
+                T[p, j + 1] = Q_idx[p, jj] * X_data[X_indptr[i] + jj]
+                sub_Qx[p] += T[p, j + 1]
+            T[p, 0] += sub_Qx[p]
+            P_batch[p, ii] = (1 - v) * sub_Qx[p] + v * T[p, 0]
+        for p in range(n_components):
+            for n in range(n_components):
+                G_temp[p, n] = G[p, n]
+    else:
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &n_components, &len_subset,
+              &oned,
+              Q_subset_ptr, &n_components,
+              Q_subset_ptr, &n_components,
+              &zerod,
+              G_temp_ptr, &n_components
+              )
+
+        # print('Computing Q**T x')
+        # Qx = Q_idx.dot(x)
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &len_subset, &len_batch
+              &oned,
+              Q_subset_ptr, &n_components,
+              X_ptr, &one,
+              &zerod,
+              P_batch_ptr + ii * n_components, &one
+              )
+
+    # C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
+    for p in range(n_components):
+        G_temp[p, p] += alpha
+
+    # print('Solving linear system')
+    # P[j] = linalg.solve(C, Qx, sym_pos=True,
+    #                     overwrite_a=True, check_finite=False)
+    dposv(&UP, &n_components, &one, G_temp_ptr, &n_components,
+          P_batch_ptr + ii * n_components, &n_components,
+          &info)
+    if info != 0:
+        raise ValueError
+
+    # A *= 1 - w_A * len_batch
+    # A += P[row_batch].T.dot(P[row_batch]) * w_A
+    counter[0] += 1
+    w_A = pow((1. + offset) /(offset + counter[0]), learning_rate)
+    for k in range(n_components):
+        for m in range(n_components):
+            A[k, m] *= 1 - w_A
+    dger(&n_components, &n_components,
+         &w_A,
+         P_batch_ptr + ii * n_components, &one,
+         P_batch_ptr + ii * n_components, &one,
+         A_ptr, &n_components)
+
+    # w_B = np.power(counter[1][idx], - learning_rate)[np.newaxis, :]
+    # B[:, idx] *= 1 - w_B
+    # B[:, idx] += np.outer(P[j], x) * w_B
+    # Use a loop to avoid copying a contiguous version of B
+    for jj in range(nnz):
+        j = subset[jj]
+        idx_mask[j] = 1
+        counter[j + 1] += 1
+        w_B = pow((1. + offset) /(offset + counter[j + 1]), learning_rate)
+        for k in range(n_components):
+            B[k, j] = (1 - w_B) * B[k, j] + \
+                             w_B * P_batch[k, ii]\
+                             * X[X_indptr[i] + jj]
+    P[i, :] = P_batch[:, ii]
 
 
-# cdef int _update_code_sparse_fast(double[:] X_data, int[:] X_indices,
-#                   int[:] X_indptr, long n_rows, long n_cols,
-#                   double[:, ::1] P, double[::1, :] Q,
-#                   double[:] Q_mult,
-#                   double alpha, double learning_rate,
-#                   double offset,
-#                   double[::1, :] A, double[::1, :] B,
-#                   double[::1, :] G, double[::1, :] T,
-#                   long[:] counter,
-#                   long[:] row_batch,
-#                   double[::1, :] G_temp,
-#                   double[::1, :] Q_idx,
-#                   double[::1, :] P_batch,
-#                   double[:] sub_Qx,
-#                   char[:] idx_mask,
-#                   long[:] idx_concat,
-#                   bint impute,
-#                   ):
-#     cdef int len_batch = row_batch.shape[0],
+cdef int _update_code_sparse_fast(double[:] X_data, int[:] X_indices,
+                  int[:] X_indptr, long n_rows, long n_cols,
+                  double[:, ::1] P, double[::1, :] Q,
+                  double[:] Q_mult,
+                  double alpha, double learning_rate,
+                  double offset,
+                  double[::1, :] A, double[::1, :] B,
+                  double[::1, :] G, double[::1, :] T,
+                  long[:] counter,
+                  long[:] row_batch,
+                  double[::1, :] G_temp,
+                  double[::1, :] Q_idx,
+                  double[::1, :] P_batch,
+                  double[:] sub_Qx,
+                  char[:] idx_mask,
+                  long[:] idx_concat,
+                  bint impute,
+                  ):
+    cdef int len_batch = row_batch.shape[0],
+    cdef int n_components = Q.shape[0]
+    cdef double* Q_idx_ptr = &Q_idx[0, 0]
+    cdef double* P_batch_ptr = &P_batch[0, 0]
+    cdef double* Q_ptr = &Q[0, 0]
+    cdef double* P_ptr = &P[0, 0]
+    cdef double* A_ptr = &A[0, 0]
+    cdef double* B_ptr = &B[0, 0]
+    cdef double* G_ptr = &G[0, 0]
+    cdef double* G_temp_ptr = &G_temp[0, 0]
+    cdef double* X_data_ptr = &X_data[0]
+    cdef int info = 0
+    cdef int ii, jj, i, j, k, m
+    cdef int nnz
+    cdef double reg, v
+    cdef int last = 0
+    cdef double w_B, w_A
+    cdef double Q_exp_mult
+
+    # get_w(double[:] w, idx, long[:] counter, long batch_size,
+    #            long learning_rate)
+
+    for jj in range(n_cols):
+        idx_mask[jj] = 0
+
+
+    for ii in range(len_batch):
+        i = row_batch[ii]
+        nnz = X_indptr[i + 1] - X_indptr[i]
+        # print('Filling Q')
+        for k in range(n_components):
+            Q_exp_mult = exp(Q_mult[k])
+            for jj in range(nnz):
+                # Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * exp(Q_mult[k])
+                Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * Q_exp_mult
+
+        # print('Computing Gram')
+
+        if impute:
+            reg = alpha
+            v = 1 # nnz / n_cols
+            for p in range(n_components):
+                sub_Qx[p] = 0
+                for jj in range(nnz):
+                    j = X_indices[X_indptr[i] + jj]
+                    T[p, 0] -= T[p, j + 1]
+                    T[p, j + 1] = Q_idx[p, jj] * X_data[X_indptr[i] + jj]
+                    sub_Qx[p] += T[p, j + 1]
+                T[p, 0] += sub_Qx[p]
+                P_batch[p, ii] = (1 - v) * sub_Qx[p] + v * T[p, 0]
+            for p in range(n_components):
+                for n in range(n_components):
+                    G_temp[p, n] = G[p, n]
+        else:
+            dgemm(&NTRANS, &TRANS,
+                  &n_components, &n_components, &nnz,
+                  &oned,
+                  Q_idx_ptr, &n_components,
+                  Q_idx_ptr, &n_components,
+                  &zerod,
+                  G_temp_ptr, &n_components
+                  )
+            reg = alpha * nnz / n_cols
+
+            # print('Computing Q**T x')
+            # Qx = Q_idx.dot(x)
+            dgemv(&NTRANS,
+                  &n_components, &nnz,
+                  &oned,
+                  Q_idx_ptr, &n_components,
+                  X_data_ptr + X_indptr[i], &one,
+                  &zerod,
+                  P_batch_ptr + ii * n_components, &one
+                  )
+
+        # C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
+        for p in range(n_components):
+            G_temp[p, p] += reg
+
+        # P[j] = linalg.solve(C, Qx, sym_pos=True,
+        #                     overwrite_a=True, check_finite=False)
+        # print('Solving linear system')
+        dposv(&UP, &n_components, &one, G_temp_ptr, &n_components,
+              P_batch_ptr + ii * n_components, &n_components,
+              &info)
+        if info != 0:
+            raise ValueError
+
+        # A *= 1 - w_A * len_batch
+        # A += P[row_batch].T.dot(P[row_batch]) * w_A
+        counter[0] += 1
+        w_A = pow((1. + offset) /(offset + counter[0]), learning_rate)
+        for k in range(n_components):
+            for m in range(n_components):
+                A[k, m] *= 1 - w_A
+        dger(&n_components, &n_components,
+             &w_A,
+             P_batch_ptr + ii * n_components, &one,
+             P_batch_ptr + ii * n_components, &one,
+             A_ptr, &n_components)
+
+        # w_B = np.power(counter[1][idx], - learning_rate)[np.newaxis, :]
+        # B[:, idx] *= 1 - w_B
+        # B[:, idx] += np.outer(P[j], x) * w_B
+        # Use a loop to avoid copying a contiguous version of B
+        for jj in range(nnz):
+            j = X_indices[X_indptr[i] + jj]
+            idx_mask[j] = 1
+            counter[j + 1] += 1
+            w_B = pow((1. + offset) /(offset + counter[j + 1]), learning_rate)
+            for k in range(n_components):
+                B[k, j] = (1 - w_B) * B[k, j] + \
+                                 w_B * P_batch[k, ii]\
+                                 * X_data[X_indptr[i] + jj]
+        P[i, :] = P_batch[:, ii]
+
+    for ii in range(n_cols):
+        if idx_mask[ii]:
+            idx_concat[last] = ii
+            last += 1
+
+    return last
+
+
+
+# Tested
+cpdef _update_dict(double[::1, :] Q,
+                  int[:] subset,
+                  bint freeze_first_col,
+                  double l1_ratio,
+                  double[::1, :] A, double[::1, :] B,
+                  double[::1, :] G,
+                  bint impute,
+                  double[::1, :] R,
+                  double[::1, :] Q_subset,
+                  double[::1, :] old_sub_G,
+                  double[:] norm,
+                  double[:] buffer,
+                  long[:] components_range):
+    cdef int n_components = Q.shape[0]
+    cdef int len_subset = subset.shape[0]
+    cdef unsigned int components_range_len = components_range.shape[0]
+    cdef double* Q_ptr = &Q[0, 0]
+    cdef double* Q_subset_ptr = &Q_subset[0, 0]
+    cdef double* A_ptr = &A[0, 0]
+    cdef double* R_ptr = &R[0, 0]
+    cdef double* G_ptr = &G[0, 0]
+    cdef double* old_sub_G_ptr = &old_sub_G[0, 0]
+    cdef double old_norm = 0
+    cdef unsigned int k, kk, j, jj
+
+    for k in range(n_components):
+        for jj in range(len_subset):
+            j = subset[jj]
+            R[k, jj] = B[k, j]
+            Q_subset[k, jj] = Q[k, j]
+
+    for kk in range(components_range_len):
+        k = components_range[kk]
+        norm[k] = enet_norm(Q_subset[k,:len_subset], l1_ratio)
+
+    if impute:
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &n_components, &len_subset,
+              &oned,
+              Q_subset_ptr, &n_components,
+              Q_subset_ptr, &n_components,
+              &zerod,
+              old_sub_G_ptr, &n_components
+              )
+
+    # R = B - AQ
+    dgemm(&NTRANS, &NTRANS,
+          &n_components, &len_subset, &n_components,
+          &moned,
+          A_ptr, &n_components,
+          Q_subset_ptr, &n_components,
+          &oned,
+          R_ptr, &n_components)
+
+    for kk in range(components_range_len):
+        k = components_range[kk]
+        dger(&n_components, &len_subset, &oned,
+             A_ptr + k * n_components,
+             &one, Q_subset_ptr + k, &n_components, R_ptr, &n_components)
+        for jj in range(len_subset):
+            Q_subset[k, jj] = R[k, jj] / A[k, k]
+        enet_projection_inplace(Q_subset[k, :len_subset], buffer[:len_subset], norm[k], l1_ratio)
+        for jj in range(len_subset):
+            Q_subset[k, jj] = buffer[jj]
+        # R -= A[:, k] Q[:, k].T
+        dger(&n_components, &len_subset, &moned,
+             A_ptr + k  * n_components,
+             &one, Q_subset_ptr + k, &n_components, R_ptr, &n_components)
+
+    for kk in range(n_components):
+        for jj in range(len_subset):
+            j = subset[jj]
+            Q[kk, j] = Q_subset[kk, jj]
+
+    if impute:
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &n_components, &len_subset,
+              &oned,
+              Q_subset_ptr, &n_components,
+              Q_subset_ptr, &n_components,
+              &oned,
+              G_ptr, &n_components
+              )
+        for k in range(n_components):
+            for j in range(n_components):
+                G[j, k] -= old_sub_G[j, k]
+
+
+
+
+
+
+
+
+# cdef void _update_dict_fast(double[::1, :] Q,
+#                             double[:] Q_mult,
+#                             double[:] Q_norm,
+#                             double[::1, :] A, double[::1, :] B,
+#                             double[::1, :] G,
+#                             double[::1, :] R,
+#                             double[::1, :] Q_idx,
+#                             double[::1, :] old_sub_G,
+#                             long[:] idx,
+#                             bint fit_intercept, long[:] components_range,
+#                             bint impute,
+#                             bint partial):
+#
 #     cdef int n_components = Q.shape[0]
-#     cdef double* Q_idx_ptr = &Q_idx[0, 0]
-#     cdef double* P_batch_ptr = &P_batch[0, 0]
-#     cdef double* Q_ptr = &Q[0, 0]
-#     cdef double* P_ptr = &P[0, 0]
-#     cdef double* A_ptr = &A[0, 0]
-#     cdef double* B_ptr = &B[0, 0]
-#     cdef double* G_ptr = &G[0, 0]
-#     cdef double* G_temp_ptr = &G_temp[0, 0]
-#     cdef double* X_data_ptr = &X_data[0]
-#     cdef int info = 0
-#     cdef int ii, jj, i, j, k, m
-#     cdef int nnz
-#     cdef double reg, v
-#     cdef int last = 0
-#     cdef double w_B, w_A
-#     cdef double Q_exp_mult
-#
-#     # get_w(double[:] w, idx, long[:] counter, long batch_size,
-#     #            long learning_rate)
-#
-#     for jj in range(n_cols):
-#         idx_mask[jj] = 0
-#
-#
-#     for ii in range(len_batch):
-#         i = row_batch[ii]
-#         nnz = X_indptr[i + 1] - X_indptr[i]
-#         # print('Filling Q')
-#         for k in range(n_components):
-#             Q_exp_mult = exp(Q_mult[k])
-#             for jj in range(nnz):
-#                 # Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * exp(Q_mult[k])
-#                 Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * Q_exp_mult
-#
-#         # print('Computing Gram')
-#
-#         if impute:
-#             reg = alpha
-#             v = 1 # nnz / n_cols
-#             for p in range(n_components):
-#                 sub_Qx[p] = 0
-#                 for jj in range(nnz):
-#                     j = X_indices[X_indptr[i] + jj]
-#                     T[p, 0] -= T[p, j + 1]
-#                     T[p, j + 1] = Q_idx[p, jj] * X_data[X_indptr[i] + jj]
-#                     sub_Qx[p] += T[p, j + 1]
-#                 T[p, 0] += sub_Qx[p]
-#                 P_batch[p, ii] = (1 - v) * sub_Qx[p] + v * T[p, 0]
-#             for p in range(n_components):
-#                 for n in range(n_components):
-#                     G_temp[p, n] = G[p, n]
-#         else:
-#             dgemm(&NTRANS, &TRANS,
-#                   &n_components, &n_components, &nnz,
-#                   &oned,
-#                   Q_idx_ptr, &n_components,
-#                   Q_idx_ptr, &n_components,
-#                   &zerod,
-#                   G_temp_ptr, &n_components
-#                   )
-#             reg = alpha * nnz / n_cols
-#
-#             # print('Computing Q**T x')
-#             # Qx = Q_idx.dot(x)
-#             dgemv(&NTRANS,
-#                   &n_components, &nnz,
-#                   &oned,
-#                   Q_idx_ptr, &n_components,
-#                   X_data_ptr + X_indptr[i], &one,
-#                   &zerod,
-#                   P_batch_ptr + ii * n_components, &one
-#                   )
-#
-#         # C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
-#         for p in range(n_components):
-#             G_temp[p, p] += reg
-#
-#         # P[j] = linalg.solve(C, Qx, sym_pos=True,
-#         #                     overwrite_a=True, check_finite=False)
-#         # print('Solving linear system')
-#         dposv(&UP, &n_components, &one, G_temp_ptr, &n_components,
-#               P_batch_ptr + ii * n_components, &n_components,
-#               &info)
-#         if info != 0:
-#             raise ValueError
-#
-#         # A *= 1 - w_A * len_batch
-#         # A += P[row_batch].T.dot(P[row_batch]) * w_A
-#         counter[0] += 1
-#         w_A = pow((1. + offset) /(offset + counter[0]), learning_rate)
-#         for k in range(n_components):
-#             for m in range(n_components):
-#                 A[k, m] *= 1 - w_A
-#         dger(&n_components, &n_components,
-#              &w_A,
-#              P_batch_ptr + ii * n_components, &one,
-#              P_batch_ptr + ii * n_components, &one,
-#              A_ptr, &n_components)
-#
-#         # w_B = np.power(counter[1][idx], - learning_rate)[np.newaxis, :]
-#         # B[:, idx] *= 1 - w_B
-#         # B[:, idx] += np.outer(P[j], x) * w_B
-#         # Use a loop to avoid copying a contiguous version of B
-#         for jj in range(nnz):
-#             j = X_indices[X_indptr[i] + jj]
-#             idx_mask[j] = 1
-#             counter[j + 1] += 1
-#             w_B = pow((1. + offset) /(offset + counter[j + 1]), learning_rate)
-#             for k in range(n_components):
-#                 B[k, j] = (1 - w_B) * B[k, j] + \
-#                                  w_B * P_batch[k, ii]\
-#                                  * X_data[X_indptr[i] + jj]
-#         # dger(&n_components, &nnz,
-#         #      &w_B,
-#         #      P_batch_ptr + ii * n_components, &one,
-#         #      X_data + X_indptr[i], &one,
-#         #      &mu_B,
-#         #      &B_batch)
-#
-#         P[i, :] = P_batch[:, ii]
-#
-#     for ii in range(n_cols):
-#         if idx_mask[ii]:
-#             idx_concat[last] = ii
-#             last += 1
-#
-#     return last
-#
-#
-# cdef _update_dict(double[::1, :] Q,
-#                   long[:] subset,
-#                   bint freeze_first_col,
-#                   double l1_ratio,
-#                   double[::1, :] A, double[::1, :] B,
-#                   double[::1, :] G,
-#                   bint impute,
-#                   double[::1, :] R,
-#                   double[::1, :] Q_subset,
-#                   double[::1, :] old_sub_G,
-#                   long[:] components_range):
-#     cdef int n_components = Q.shape[0]
-#     cdef int len_subset = subset.shape[0]
+#     cdef int idx_len = idx.shape[0]
 #     cdef unsigned int components_range_len = components_range.shape[0]
 #     cdef double* Q_ptr = &Q[0, 0]
-#     cdef double* Q_idx_ptr = &Q_subset[0, 0]
+#     cdef double* Q_idx_ptr = &Q_idx[0, 0]
 #     cdef double* A_ptr = &A[0, 0]
 #     cdef double* R_ptr = &R[0, 0]
 #     cdef double* G_ptr = &G[0, 0]
@@ -353,18 +550,16 @@ cdef get_w(double[:] w, long[:] idx, long[:] counter, long batch_size,
 #     cdef double this_Q_mult, old_norm = 0
 #     cdef unsigned int k, kk, j, jj
 #
-#     # print("Q mult: % .4f" % Q_mult[1])
-#     # print("Q norm: % .4f" % Q_norm[1])
-#
 #     for kk in range(n_components):
-#         for jj in range(len_subset):
-#             j = subset[jj]
+#         this_Q_mult = exp(Q_mult[kk])
+#         for jj in range(idx_len):
+#             j = idx[jj]
 #             R[kk, jj] = B[kk, j]
-#             Q_subset[kk, jj] = Q[kk, j]
+#             Q_idx[kk, jj] = Q[kk, j] * this_Q_mult
 #
 #     if impute:
 #         dgemm(&NTRANS, &TRANS,
-#               &n_components, &n_components, &len_subset,
+#               &n_components, &n_components, &idx_len,
 #               &oned,
 #               Q_idx_ptr, &n_components,
 #               Q_idx_ptr, &n_components,
@@ -374,7 +569,7 @@ cdef get_w(double[:] w, long[:] idx, long[:] counter, long batch_size,
 #
 #     # R = B - AQ
 #     dgemm(&NTRANS, &NTRANS,
-#           &n_components, &len_subset, &n_components,
+#           &n_components, &idx_len, &n_components,
 #           &moned,
 #           A_ptr, &n_components,
 #           Q_idx_ptr, &n_components,
@@ -383,25 +578,45 @@ cdef get_w(double[:] w, long[:] idx, long[:] counter, long batch_size,
 #
 #     for kk in range(components_range_len):
 #         k = components_range[kk]
-#         dger(&n_components, &len_subset, &oned,
+#         if partial:
+#             old_norm = 0
+#             Q_norm[k] = 0
+#             for jj in range(idx_len):
+#                 old_norm += Q_idx[k, jj] ** 2
+#             if old_norm == 0:
+#                 continue
+#         else:
+#             for jj in range(idx_len):
+#                 Q_norm[k] -= Q_idx[k, jj] ** 2
+#         dger(&n_components, &idx_len, &oned,
 #              A_ptr + k * n_components,
 #              &one, Q_idx_ptr + k, &n_components, R_ptr, &n_components)
-#         for jj in range(len_subset):
-#             Q_subset[k, jj] = R[k, jj] / A[k, k]
-#         enet_projection_inplace(Q_subset[j], buffer, norm[j], l1_ratio)
+#         for jj in range(idx_len):
+#             Q_idx[k, jj] = R[k, jj] / A[k, k]
+#             Q_norm[k] += Q_idx[k, jj] ** 2
+#         if partial:
+#             Q_norm[k] /= old_norm
+#         if Q_norm[k] > 1:
+#             # Live update of Q_idx
+#             for jj in range(idx_len):
+#                 Q_idx[k, jj] /= sqrt(Q_norm[k])
+#             if not partial:
+#                 Q_mult[k] -= .5 * log(Q_norm[k])
+#                 Q_norm[k] = 1
 #         # R -= A[:, k] Q[:, k].T
-#         dger(&n_components, &len_subset, &moned,
+#         dger(&n_components, &idx_len, &moned,
 #              A_ptr + k  * n_components,
 #              &one, Q_idx_ptr + k, &n_components, R_ptr, &n_components)
 #
 #     for kk in range(n_components):
-#         for jj in range(len_subset):
-#             j = subset[jj]
-#             Q[kk, j] = Q_subset[kk, jj] / this_Q_mult
+#         this_Q_mult = exp(Q_mult[kk])
+#         for jj in range(idx_len):
+#             j = idx[jj]
+#             Q[kk, j] = Q_idx[kk, jj] / this_Q_mult
 #
 #     if impute:
 #         dgemm(&NTRANS, &TRANS,
-#               &n_components, &n_components, &len_subset,
+#               &n_components, &n_components, &idx_len,
 #               &oned,
 #               Q_idx_ptr, &n_components,
 #               Q_idx_ptr, &n_components,
@@ -411,118 +626,6 @@ cdef get_w(double[:] w, long[:] idx, long[:] counter, long batch_size,
 #         for k in range(n_components):
 #             for j in range(n_components):
 #                 G[j, k] -= old_sub_G[j, k]
-
-
-
-
-
-
-
-
-cdef void _update_dict_fast(double[::1, :] Q,
-                            double[:] Q_mult,
-                            double[:] Q_norm,
-                            double[::1, :] A, double[::1, :] B,
-                            double[::1, :] G,
-                            double[::1, :] R,
-                            double[::1, :] Q_idx,
-                            double[::1, :] old_sub_G,
-                            long[:] idx,
-                            bint fit_intercept, long[:] components_range,
-                            bint impute,
-                            bint partial):
-
-    cdef int n_components = Q.shape[0]
-    cdef int idx_len = idx.shape[0]
-    cdef unsigned int components_range_len = components_range.shape[0]
-    cdef double* Q_ptr = &Q[0, 0]
-    cdef double* Q_idx_ptr = &Q_idx[0, 0]
-    cdef double* A_ptr = &A[0, 0]
-    cdef double* R_ptr = &R[0, 0]
-    cdef double* G_ptr = &G[0, 0]
-    cdef double* old_sub_G_ptr = &old_sub_G[0, 0]
-    cdef double this_Q_mult, old_norm = 0
-    cdef unsigned int k, kk, j, jj
-
-    # print("Q mult: % .4f" % Q_mult[1])
-    # print("Q norm: % .4f" % Q_norm[1])
-
-    for kk in range(n_components):
-        this_Q_mult = exp(Q_mult[kk])
-        for jj in range(idx_len):
-            j = idx[jj]
-            R[kk, jj] = B[kk, j]
-            Q_idx[kk, jj] = Q[kk, j] * this_Q_mult
-
-    if impute:
-        dgemm(&NTRANS, &TRANS,
-              &n_components, &n_components, &idx_len,
-              &oned,
-              Q_idx_ptr, &n_components,
-              Q_idx_ptr, &n_components,
-              &zerod,
-              old_sub_G_ptr, &n_components
-              )
-
-    # R = B - AQ
-    dgemm(&NTRANS, &NTRANS,
-          &n_components, &idx_len, &n_components,
-          &moned,
-          A_ptr, &n_components,
-          Q_idx_ptr, &n_components,
-          &oned,
-          R_ptr, &n_components)
-
-    for kk in range(components_range_len):
-        k = components_range[kk]
-        if partial:
-            old_norm = 0
-            Q_norm[k] = 0
-            for jj in range(idx_len):
-                old_norm += Q_idx[k, jj] ** 2
-            if old_norm == 0:
-                continue
-        else:
-            for jj in range(idx_len):
-                Q_norm[k] -= Q_idx[k, jj] ** 2
-        dger(&n_components, &idx_len, &oned,
-             A_ptr + k * n_components,
-             &one, Q_idx_ptr + k, &n_components, R_ptr, &n_components)
-        for jj in range(idx_len):
-            Q_idx[k, jj] = R[k, jj] / A[k, k]
-            Q_norm[k] += Q_idx[k, jj] ** 2
-        if partial:
-            Q_norm[k] /= old_norm
-        if Q_norm[k] > 1:
-            # Live update of Q_idx
-            for jj in range(idx_len):
-                Q_idx[k, jj] /= sqrt(Q_norm[k])
-            if not partial:
-                Q_mult[k] -= .5 * log(Q_norm[k])
-                Q_norm[k] = 1
-        # R -= A[:, k] Q[:, k].T
-        dger(&n_components, &idx_len, &moned,
-             A_ptr + k  * n_components,
-             &one, Q_idx_ptr + k, &n_components, R_ptr, &n_components)
-
-    for kk in range(n_components):
-        this_Q_mult = exp(Q_mult[kk])
-        for jj in range(idx_len):
-            j = idx[jj]
-            Q[kk, j] = Q_idx[kk, jj] / this_Q_mult
-
-    if impute:
-        dgemm(&NTRANS, &TRANS,
-              &n_components, &n_components, &idx_len,
-              &oned,
-              Q_idx_ptr, &n_components,
-              Q_idx_ptr, &n_components,
-              &oned,
-              G_ptr, &n_components
-              )
-        for k in range(n_components):
-            for j in range(n_components):
-                G[j, k] -= old_sub_G[j, k]
 
 
 # def _online_dl_main_loop_sparse_fast(X, double[::1, :] Q, double[:, ::1] P,
