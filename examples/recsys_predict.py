@@ -19,6 +19,7 @@ def sqnorm(M):
 
 
 class Callback(object):
+    """Utility class for plotting RMSE"""
     def __init__(self, X_tr, X_te):
         self.X_tr = X_tr
         self.X_te = X_te
@@ -37,14 +38,6 @@ class Callback(object):
         regul = mf.alpha * (sqnorm(mf.P_))
         self.obj.append(loss + regul)
 
-        # if mf.detrend:
-        #     if not hasattr(self, 'X_tr_c_'):
-        #         self.X_tr_c_, _, _ = csr_center_data(self.X_tr)
-        #     else:
-        #         mf._refit(self.X_tr_c_)
-        # else:
-        #     mf._refit(self.X_tr)
-
         X_pred = mf.predict(self.X_te)
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
         print(rmse)
@@ -61,17 +54,17 @@ class Callback(object):
 random_state = 0
 
 mf = DictCompleter(n_components=30, alpha=.8, verbose=5,
-                   batch_size=100, detrend=True,
+                   batch_size=600, detrend=True,
                    offset=0,
                    impute=False,
                    fit_intercept=True,
                    random_state=0,
                    learning_rate=.75,
-                   max_n_iter=60000,
+                   max_n_iter=600000,
                    backend='c',
                    debug=True)
 
-X = load_movielens('1m')
+X = load_movielens('10m')
 X_tr, X_te = train_test_split(X, train_size=0.75,
                               random_state=random_state)
 X_tr = X_tr.tocsr()
@@ -86,15 +79,23 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 plt.figure()
-plt.plot(np.arange(len(cb.rmse)), cb.rmse, label='MODL')
+plt.plot(np.arange(len(cb.rmse)), cb.rmse, label='Test')
 plt.plot(np.arange(len(cb.rmse_tr)), cb.rmse_tr, label='Train')
 
 plt.legend()
 plt.xlabel("CPU time")
 plt.xscale("log")
 plt.ylabel("RMSE")
+plt.title('Prediction scores')
+
 plt.figure()
 plt.plot(np.arange(len(mf._stat.loss)), mf._stat.loss)
+plt.xlabel('Iteration')
+plt.ylabel('Label')
+
 plt.figure()
 plt.plot(np.arange(len(cb.q)), cb.q)
+plt.xlabel('Iteration')
+plt.ylabel('Dictionary value')
+plt.title('Dictionary convergence')
 plt.show()

@@ -1,32 +1,26 @@
+"""
+Author: Arthur Mensch (2016)
+Dictionary learning with masked data
+"""
+
 from math import pow, ceil, sqrt
 
 import numpy as np
 import scipy.sparse as sp
-from numba import autojit, jitclass, float64, int64
 from scipy import linalg
 
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from .enet_proj import enet_projection, enet_scale, enet_norm
-from .dict_fact_fast import _update_dict
+from .dict_fact_fast import _update_dict, _update_code
 
 
-@jitclass([
-    ('loss', float64[:]),
-    ('loss_indep', float64),
-    ('subset_stop', int64),
-    ('subset_start', int64),
-    ('subset_array', int64[:]),
-    ('T', float64[:]),
-    ('G', float64[:, :]),
-    ('counter', int64[:]),
-    ('B', float64[:, :]),
-    ('A', float64[:, :]),
-    ('n_iter', int64),
-    ('n_verbose_call', int64)
-])
 class DictMFStats:
+    """ Data structure holding all the necessary variables to perform online
+    dictionary learning with masks.
+    """
+
     def __init__(self, A, B, counter, G, T, loss,
                  loss_indep, subset_array, subset_start,
                  subset_stop,
@@ -48,6 +42,26 @@ class DictMFStats:
 
 def _init_stats(Q, impute=False, reduction=1, max_n_iter=0,
                 random_state=None):
+    """
+
+    Parameters
+    ----------
+    Q: ndarray (n_component, n_cols)
+        Initial dictionary
+    impute: boolean
+        Initialize variables to perform online update of G and Qx
+    reduction: float
+        Reduction factor
+    max_n_iter:
+        Max number of iteration (useful for debugging)
+    random_state: int or RandomState
+        Pseudo number generator state used for random sampling.
+
+    Returns
+    -------
+    stat: DictMFStats
+        Data structure used by dictionary learning algorithm
+    """
     random_state = check_random_state(random_state)
     n_components, n_cols = Q.shape
 
@@ -66,7 +80,7 @@ def _init_stats(Q, impute=False, reduction=1, max_n_iter=0,
         G = Q.dot(Q.T).T
         T = np.zeros((n_components, n_cols + 1), order="F")
 
-    subset_array = random_state.permutation(n_cols)
+    subset_array = random_state.permutation(n_cols).astype('i4')
     subset_start = 0
     subset_stop = subset_size
 
@@ -79,6 +93,51 @@ def _init_stats(Q, impute=False, reduction=1, max_n_iter=0,
 
 
 class DictMF(BaseEstimator):
+    """Matrix factorization estimator based on masked online dictionary
+     learning.
+
+    Parameters
+    ----------
+    alpha: float,
+        Regularization of the code (ridge penalty)
+    n_components: int,
+        Number of components for the dictionary
+    learning_rate: float in [0.5, 1],
+        Controls the sequence of weights in
+         the update of the surrogate function
+    batch_size: int,
+        Number of samples to consider between each dictionary update
+    offset: float,
+        Offset in the
+    reduction: float,
+        Sets how much the data is masked during the algorithm
+    fit_intercept: boolean,
+        Fixes the first dictionary atom to [1, .., 1]
+    dict_init: ndarray (n_components, n_cols),
+        Initial dictionary
+    l1_ratio: float in [0, 1]:
+        Controls the sparsity of the dictionary
+    impute: boolean,
+        Updates the Gram matrix online (Experimental, non tested)
+    max_n_iter: int,
+        Number of samples to visit before stopping
+    random_state: int or RandomState
+        Pseudo number generator state used for random sampling.
+    verbose: boolean,
+        Degree of output the procedure will print.
+    backend: str in {'c', 'python'},
+        'c' is fastter, but 'python' is easier to hack
+    debug: boolean,
+        Keep tracks of the surrogate loss during the procedure
+    callback: callable,
+        Function to be called when printing information
+
+    Attributes
+    -------
+        self.Q_: ndarray (n_components, n_cols):
+            Learned dictionary
+    """
+
     def __init__(self, alpha=1.0,
                  n_components=30,
                  # Hyper-parameters
@@ -86,7 +145,6 @@ class DictMF(BaseEstimator):
                  batch_size=1,
                  offset=0,
                  reduction=1,
-                 n_iter=None,
                  # Preproc parameters
                  fit_intercept=False,
                  # Dict parameter
@@ -126,9 +184,10 @@ class DictMF(BaseEstimator):
         self.callback = callback
 
     def _init(self, X):
+        """Initialize statistic and dictionary"""
         _, n_cols = X.shape
 
-        self.random_state_ = check_random_state(self.random_state)
+        self._random_state = check_random_state(self.random_state)
 
         # Q dictionary
         if self.dict_init is not None:
@@ -151,10 +210,10 @@ class DictMF(BaseEstimator):
 
             if self.fit_intercept:
                 self.Q_[0] = 1
-                self.Q_[1:] = self.random_state_.randn(self.n_components - 1,
+                self.Q_[1:] = self._random_state.randn(self.n_components - 1,
                                                        n_cols)
             else:
-                self.Q_[:] = self.random_state_.randn(self.n_components,
+                self.Q_[:] = self._random_state.randn(self.n_components,
                                                       n_cols)
         # Fix this
         self.Q_ = np.asfortranarray(
@@ -163,22 +222,52 @@ class DictMF(BaseEstimator):
         self._stat = _init_stats(self.Q_, impute=self.impute,
                                  max_n_iter=self.max_n_iter,
                                  reduction=self.reduction,
-                                 random_state=self.random_state_)
+                                 random_state=self._random_state)
 
     def _check_init(self):
         return hasattr(self, 'Q_')
 
     def fit(self, X, y=None):
+        """Use X to learn a dictionary Q_. The algorithm cycles on X
+        until it reaches the max number of iteration
+
+        Parameters
+        ----------
+        X: ndarray (n_samples, n_features)
+            Dataset to learn the dictionary from
+        """
         while not self._check_init() or self._stat.n_iter < self.max_n_iter:
             self.partial_fit(X)
 
     def _refit(self, X):
+        """Use X and Q to learn a code P"""
         self.P_ = self.transform(X)
 
     def transform(self, X, y=None):
+        """Computes the loadings to reconstruct dataset X
+        from the dictionary Q
+
+        Parameters
+        ----------
+        X: ndarray (n_samples, n_features)
+            Dataset to learn the code from
+
+        Returns
+        -------
+        code: ndarray(n_samples, n_components)
+            Code obtained projecting X on the dictionary
+        """
         return compute_code(X, self.Q_, self.alpha)
 
     def partial_fit(self, X, y=None):
+        """Stream data X to update the estimator dictionary
+
+        Parameters
+        ----------
+        X: ndarray (n_samples, n_features)
+            Dataset to learn the code from
+
+        """
         if not self._check_init():
             self._init(X)
         self.P_, self.Q_ = online_dl(X, self.Q_,
@@ -193,7 +282,7 @@ class DictMF(BaseEstimator):
                                      stat=self._stat,
                                      freeze_first_col=self.fit_intercept,
                                      batch_size=self.batch_size,
-                                     random_state=self.random_state_,
+                                     # random_state=self._random_state,
                                      verbose=self.verbose,
                                      impute=self.impute,
                                      max_n_iter=self.max_n_iter,
@@ -208,6 +297,24 @@ class DictMF(BaseEstimator):
 
 
 def compute_code(X, Q, alpha):
+    """Ridge with missing value.
+
+    Useful to relearn code from a given dictionary
+
+    Parameters
+    ----------
+    X: ndarray( n_samples, n_features)
+        Data matrix
+    Q: ndarray (n_components, n_features)
+        Dictionary
+    alpha: float,
+        Regularization parameter
+
+    Returns
+    -------
+    P: ndarray (n_components, n_samples)
+        Code for each of X sample
+    """
     X = check_array(X, accept_sparse='csr', order='F')
     Q = check_array(Q, order='F')
     n_components = Q.shape[0]
@@ -236,8 +343,9 @@ def compute_code(X, Q, alpha):
         return P
 
 
-@autojit(nopython=True)
 def _get_weights(idx, counter, batch_size, learning_rate, offset):
+    """Utility function to get the update weights at a given iteration
+    """
     idx_len = idx.shape[0]
     count = counter[0]
     w_A = 1
@@ -256,6 +364,16 @@ def _get_weights(idx, counter, batch_size, learning_rate, offset):
 
 
 def _update_subset_stat(stat, random_state):
+    """Utility function to track forced masks, using a permutation array
+    with rolling limits
+
+    Parameters
+    ----------
+    stat: DictMFStats,
+        stat holding the subset array and limits
+    random_state:
+
+    """
     n_cols = stat.subset_array.shape[0]
     subset_size = stat.subset_stop - stat.subset_start
     if stat.subset_stop + subset_size < n_cols:
@@ -290,6 +408,47 @@ def online_dl(X, Q,
               debug=False,
               callback=None,
               backend='python'):
+    """Matrix factorization estimation based on masked online dictionary
+     learning.
+
+    Parameters
+    ----------
+    alpha: float,
+        Regularization of the code (ridge penalty)
+    learning_rate: float in [0.5, 1],
+        Controls the sequence of weights in
+         the update of the surrogate function
+    batch_size: int,
+        Number of samples to consider between each dictionary update
+    offset: float,
+        Offset in the sequence of weights in
+         the update of the surrogate function
+    reduction: float,
+        Sets how much the data is masked during the algorithm
+    freeze_first_col: boolean,
+        Fixes the first dictionary atom
+    Q: ndarray (n_components, n_features),
+        Initial dictionary
+    P: ndarray (n_components, n_samples), optional
+        Array where the rolling code is kept (for matrix completion)
+    l1_ratio: float in [0, 1]:
+        Controls the sparsity of the dictionary
+    impute: boolean,
+        Updates the Gram matrix online (Experimental, non tested)
+    max_n_iter: int,
+        Number of samples to visit before stopping
+    random_state: int or RandomState
+        Pseudo number generator state used for random sampling.
+    verbose: boolean,
+        Degree of output the procedure will print.
+    backend: str in {'c', 'python'},
+        'c' is faster, but 'python' is easier to hack
+    debug: boolean,
+        Keep tracks of the surrogate loss during the procedure
+    callback: callable,
+        Function to be called when printing information
+    """
+
     n_rows, n_cols = X.shape
     n_components = Q.shape[0]
     X = check_array(X, accept_sparse='csr', dtype='float', order='F')
@@ -321,16 +480,23 @@ def online_dl(X, Q,
     random_state.shuffle(row_range)
     batches = gen_batches(len(row_range), batch_size)
 
-    if backend == 'c':
+    if backend in ['c', 'c_testing']:
         R = np.empty((n_components, n_cols), order='F')
         Q_subset = np.empty((n_components, max_subset_size), order='F')
         norm = np.zeros(n_components)
         buffer = np.zeros(max_subset_size)
         old_sub_G = np.empty((n_components, n_components), order='F')
+        G_temp = np.empty((n_components, n_components), order='F')
+        if sp.isspmatrix_csr(X):
+            P_temp = np.empty((1, n_components), order='F')
+        else:
+            P_temp = np.empty((batch_size, n_components), order='F')
         if freeze_first_col:
             components_range = np.arange(1, n_components)
         else:
             components_range = np.arange(n_components)
+        weights = np.zeros(max_subset_size + 1)
+        idx_mask = np.zeros(n_cols, dtype='int')
     for batch in batches:
         row_batch = row_range[batch]
         if sp.isspmatrix_csr(X):
@@ -339,14 +505,29 @@ def online_dl(X, Q,
                     return P, Q
                 subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
                 reg = alpha * subset.shape[0] / n_cols
-                this_X = X.data[X.indptr[j]:X.indptr[j + 1]]
-                this_X = this_X[np.newaxis, :]
-                this_P = _update_code_slow(this_X, subset,
-                                           reg, learning_rate,
-                                           offset,
-                                           Q, stat,
-                                           impute,
-                                           debug)
+                this_X = np.empty((1, subset.shape[0]), order='F')
+                this_X[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
+                if backend == 'python':
+                    this_P = _update_code_slow(this_X, subset,
+                                               reg, learning_rate,
+                                               offset,
+                                               Q, stat,
+                                               impute,
+                                               debug)
+                else:
+                    _update_code(this_X, subset, reg, learning_rate,
+                                 offset, Q, stat.A, stat.B,
+                                 stat.counter,
+                                 stat.G,
+                                 stat.T,
+                                 impute,
+                                 Q_subset,
+                                 P_temp,
+                                 G_temp,
+                                 idx_mask,
+                                 weights,
+                                 debug)
+                    this_P = P_temp
                 if P is not None:
                     P[j] = this_P
                 stat.n_iter += 1
@@ -360,14 +541,29 @@ def online_dl(X, Q,
             subset = stat.subset_array[stat.subset_start:stat.subset_stop]
             reg = alpha * subset.shape[0] / n_cols
             this_X = X[row_batch][:, subset]
-            this_P = _update_code_slow(this_X, subset, reg, learning_rate,
-                                       offset,
-                                       Q, stat,
-                                       impute,
-                                       debug)
+            if backend == 'python':
+                this_P = _update_code_slow(this_X, subset, reg, learning_rate,
+                                           offset,
+                                           Q, stat,
+                                           impute,
+                                           debug)
+            else:
+                _update_code(this_X, subset, reg, learning_rate,
+                             offset, Q, stat.A, stat.B,
+                             stat.counter,
+                             stat.G,
+                             stat.T,
+                             impute,
+                             Q_subset,
+                             P_temp,
+                             G_temp,
+                             idx_mask,
+                             weights,
+                             debug)
+                this_P = P_temp
             dict_subset = subset
             if P is not None:
-                P[row_batch] = this_P.copy()
+                P[row_batch] = this_P
             stat.n_iter += len(row_batch)
             _update_subset_stat(stat, random_state)
         if backend == 'python':
@@ -394,27 +590,6 @@ def online_dl(X, Q,
             stat.n_verbose_call += 1
             if callback is not None:
                 callback()
-    # else:
-    #     if sp.isspmatrix_csr(X):
-    #         random_seed = random_state.randint(0, np.iinfo(np.uint32).max)
-    #         _online_dl_main_loop_sparse_fast(X, Q, P if P is not None else
-    #         np.zeros((1, 1), order='F'),
-    #                                          stat,
-    #                                          alpha, learning_rate,
-    #                                          offset,
-    #                                          freeze_first_col,
-    #                                          batch_size,
-    #                                          max_n_iter,
-    #                                          impute,
-    #                                          True,
-    #                                          verbose,
-    #                                          random_seed,
-    #                                          callback)
-    #     else:
-    #         raise NotImplementedError
-    #         _online_dl_dense_main_loop_fast(X, P, Q,
-    #
-    #                                         stat)
     return P, Q
 
 
@@ -422,6 +597,35 @@ def _update_code_slow(X, subset, alpha, learning_rate,
                       offset,
                       Q, stat,
                       impute, debug):
+    """Compute code for a mini-batch and update algorithm stat accordingly
+
+    Parameters
+    ----------
+    X: ndarray, (batch_size, len_subset)
+        Mini-batch of masked data to perform the update from
+    subset: ndarray (len_subset),
+        Mask used on X
+    alpha: float,
+        Regularization of the code (ridge penalty)
+    learning_rate: float in [0.5, 1],
+        Controls the sequence of weights in
+         the update of the surrogate function
+    offset: float,
+        Offset in the sequence of weights in
+         the update of the surrogate function
+    Q: ndarray (n_components, n_features):
+        Dictionary to perform ridge regression
+    stat: DictMFStats,
+        Statistics kept by the algorithm, to be updated by the function
+    impute: boolean,
+        Online update of the Gram matrix (Experimental)
+    debug: boolean,
+        Keeps track of the surrogate loss function
+    Returns
+    -------
+    P: ndarray,
+        Code for the mini-batch X
+    """
     batch_size, n_cols = X.shape
     n_components = Q.shape[0]
 
@@ -469,14 +673,28 @@ def _update_dict_slow(Q, subset,
                       stat,
                       impute,
                       random_state):
+    """Update dictionary from statistic
+    Parameters
+    ----------
+    subset: ndarray (len_subset),
+        Mask used on X
+    Q: ndarray (n_components, n_features):
+        Dictionary to perform ridge regression
+    l1_ratio: float in [0, 1]:
+        Controls the sparsity of the dictionary
+    stat: DictMFStats,
+        Statistics kept by the algorithm, to be updated by the function
+    impute: boolean,
+        Online update of the Gram matrix (Experimental)
+    random_state: int or RandomState
+        Pseudo number generator state used for random sampling.
+
+    """
     n_components = Q.shape[0]
     len_subset = subset.shape[0]
     Q_subset = np.zeros((n_components, len_subset))
     Q_subset[:] = Q[:, subset]
     norm = enet_norm(Q_subset, l1_ratio)
-    # norm = np.zeros(n_components)
-    # for j in range(n_components):
-    #     norm[j] = sqrt(np.sum(Q_subset[j] ** 2))
     if impute:
         stat.G -= Q_subset.dot(Q_subset.T)
 
@@ -493,9 +711,6 @@ def _update_dict_slow(Q, subset,
         # R += np.dot(stat.A[:, j].reshape(n_components, 1), Q_subset[j].reshape(len_subset, 1).T)
         Q_subset[j] = R[j] / stat.A[j, j]
         Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)
-        # new_norm = sqrt(np.sum(Q_subset ** 2))
-        # if new_norm > norm[j]:
-        #     Q_subset[j] /= new_norm / norm[j]
         ger(-1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R -= np.dot(stat.A[:, j].reshape(n_components, 1), Q_subset[j].reshape(len_subset, 1).T)
 

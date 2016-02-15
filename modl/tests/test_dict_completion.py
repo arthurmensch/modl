@@ -81,7 +81,5 @@ def test_dict_completion_missing():
     rmse = sqrt(np.sum((X_te.data - X_pred.data) ** 2) / X_te.data.shape[0])
     X_te_c, _, _ = csr_center_data(X_te)
     rmse_c = sqrt(np.sum((X_te.data - X_te_c.data) ** 2) / X_te.data.shape[0])
-    print(rmse)
-    print(rmse_c)
     assert(rmse < rmse_c)
     # assert_array_almost_equal(X_te.data, X_pred.data)
