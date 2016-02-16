@@ -11,6 +11,12 @@ Randomized online matrix factorization
 Installing from source with pip
 -------------------------------
 
+    git clone https://github.com/arthurmensch/modl.git
+
+    cd modl
+
     pip install -r requirements.txt
 
     pip install .
+
+    make test
