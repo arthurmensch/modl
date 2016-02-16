@@ -80,8 +80,6 @@ create_new_conda_env() {
     fi
 }
 
-pip install psutil memory_profiler
-
 if [[ "$COVERAGE" == "true" ]]; then
     pip install coverage coveralls pytest-cov
 fi
