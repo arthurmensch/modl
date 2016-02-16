@@ -8,7 +8,6 @@ component sparsity
 from __future__ import division
 
 import itertools
-import warnings
 from math import ceil
 
 import numpy as np
@@ -24,7 +23,6 @@ from sklearn.utils.extmath import randomized_svd, randomized_range_finder
 
 from modl.dict_fact import DictMF
 
-warnings.filterwarnings('error')
 
 class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
     """Perform a map learning algorithm based on component sparsity,
