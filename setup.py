@@ -38,6 +38,7 @@ if __name__ == "__main__":
     sys.path.insert(0, local_path)
 
     setup(configuration=configuration,
+          packages=['modl/externals/spira', 'modl/externals/spira/tests'],
           name=DISTNAME,
           maintainer=MAINTAINER,
           include_package_data=True,
