@@ -1,12 +1,12 @@
-modl
-====
+Masked Online Dictionary Learning
+=================================
 
 |Travis|_
 
 .. |Travis| image:: https://travis-ci.org/arthurmensch/modl.svg?branch=master
 .. _Travis: https://travis-ci.org/arthurmensch/modl
 
-Randomized online matrix factorization
+MODL : Masked Online Dictionary Learning
 
 Installing from source with pip
 -------------------------------
