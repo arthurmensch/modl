@@ -1,4 +1,4 @@
-Masked Online Dictionary Learning
+MODL
 =================================
 
 |Travis|_
