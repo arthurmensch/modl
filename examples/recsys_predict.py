@@ -4,8 +4,8 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from spira.cross_validation import train_test_split
-from spira.datasets import load_movielens
+from modl.externals.spira.cross_validation import train_test_split
+from modl.externals.spira.datasets import load_movielens
 
 from modl.dict_completion import DictCompleter
 
@@ -59,6 +59,7 @@ mf = DictCompleter(n_components=30, alpha=.8, verbose=5,
                    max_n_iter=60000,
                    backend='c')
 
+# Need to download from spira
 X = load_movielens('1m')
 X_tr, X_te = train_test_split(X, train_size=0.75,
                               random_state=random_state)
@@ -70,7 +71,7 @@ mf.fit(X_tr)
 
 plt.figure()
 plt.plot(np.arange(len(cb.rmse)), cb.rmse, label='Test')
-# plt.plot(np.arange(len(cb.rmse_tr)), cb.rmse_tr, label='Train')
+plt.plot(np.arange(len(cb.rmse_tr)), cb.rmse_tr, label='Train')
 
 plt.legend()
 plt.xlabel("CPU time")

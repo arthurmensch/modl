@@ -5,7 +5,7 @@ from nilearn._utils.testing import assert_less_equal
 from nilearn.image import iter_img
 from nilearn.input_data import NiftiMasker
 
-from modl.spca_fmri import fmriMF
+from modl.spca_fmri import SpcaFmri
 
 backends = ['c', 'python']
 
@@ -72,11 +72,11 @@ def test_sparse_pca(backend):
     data, mask_img, components, rng = _make_test_data(n_subjects=16)
     mask = NiftiMasker(mask_img=mask_img).fit()
     dict_init = mask.inverse_transform(components)
-    sparse_pca = fmriMF(n_components=4, random_state=0,
-                        dict_init=dict_init,
-                        mask=mask_img,
-                        backend=backend,
-                        smoothing_fwhm=0., n_epochs=1, alpha=0.05)
+    sparse_pca = SpcaFmri(n_components=4, random_state=0,
+                          dict_init=dict_init,
+                          mask=mask_img,
+                          backend=backend,
+                          smoothing_fwhm=0., n_epochs=1, alpha=0.05)
     sparse_pca.fit(data)
     maps = sparse_pca.masker_. \
         inverse_transform(sparse_pca.components_).get_data()
@@ -96,18 +96,18 @@ def test_sparse_pca(backend):
     assert(recovered_maps >= 4)
 
     # Smoke test n_epochs > 1
-    sparse_pca = fmriMF(n_components=4, random_state=0,
-                        dict_init=dict_init,
-                        mask=mask_img,
-                        smoothing_fwhm=0., n_epochs=2, alpha=1)
+    sparse_pca = SpcaFmri(n_components=4, random_state=0,
+                          dict_init=dict_init,
+                          mask=mask_img,
+                          smoothing_fwhm=0., n_epochs=2, alpha=1)
     sparse_pca.fit(data)
 
     # Smoke test reduction_ratio < 1
-    sparse_pca = fmriMF(n_components=4, random_state=0,
-                        dict_init=dict_init,
-                        reduction=2,
-                        mask=mask_img,
-                        smoothing_fwhm=0., n_epochs=1, alpha=1)
+    sparse_pca = SpcaFmri(n_components=4, random_state=0,
+                          dict_init=dict_init,
+                          reduction=2,
+                          mask=mask_img,
+                          smoothing_fwhm=0., n_epochs=1, alpha=1)
     sparse_pca.fit(data)
 
 
@@ -121,9 +121,9 @@ def test_component_sign():
     for mp in components:
         assert_less_equal(-mp.min(), mp.max())
 
-    sparse_pca = fmriMF(n_components=4, random_state=rng,
-                        mask=mask_img,
-                        smoothing_fwhm=0.)
+    sparse_pca = SpcaFmri(n_components=4, random_state=rng,
+                          mask=mask_img,
+                          smoothing_fwhm=0.)
     sparse_pca.fit(data)
     for mp in iter_img(sparse_pca.masker_.inverse_transform(
             sparse_pca.components_)):

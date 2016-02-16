@@ -8,6 +8,7 @@ component sparsity
 from __future__ import division
 
 import itertools
+import warnings
 from math import ceil
 
 import numpy as np
@@ -23,8 +24,9 @@ from sklearn.utils.extmath import randomized_svd, randomized_range_finder
 
 from modl.dict_fact import DictMF
 
+warnings.filterwarnings('error')
 
-class fmriMF(BaseDecomposition, TransformerMixin, CacheMixin):
+class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
     """Perform a map learning algorithm based on component sparsity,
      over a CanICA initialization.  This yields more stable maps than CanICA.
 
@@ -175,6 +177,7 @@ class fmriMF(BaseDecomposition, TransformerMixin, CacheMixin):
                                     memory_level=
                                     max(0, self.memory_level - 1),
                                     as_shelved_list=True,
+                                    verbose=max(0, self.verbose - 1),
                                     n_jobs=self.n_jobs)
 
         data_list = itertools.chain(*[random_state.permutation(
@@ -243,7 +246,8 @@ def mask_and_reduce(masker, imgs,
                     memory_level=0,
                     memory=Memory(cachedir=None),
                     as_shelved_list=False,
-                    n_jobs=1):
+                    n_jobs=1,
+                    verbose=0):
     """Mask and reduce provided 4D images with given masker.
 
     Uses a PCA (randomized for small reduction ratio) or a range finding matrix
@@ -324,7 +328,7 @@ def mask_and_reduce(masker, imgs,
                      func_memory_level=0).call_and_shelve
     else:
         func = _mask_and_reduce_single
-    data_list = Parallel(n_jobs=n_jobs, verbose=True)(
+    data_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
             delayed(func)(
                     masker,
                     img, confound,

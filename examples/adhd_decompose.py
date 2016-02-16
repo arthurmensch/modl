@@ -7,9 +7,9 @@ import time
 from nilearn import datasets
 from nilearn.datasets import fetch_atlas_smith_2009
 
-from modl.spca_fmri import fmriMF
+from modl.spca_fmri import SpcaFmri
 
-adhd_dataset = datasets.fetch_adhd(n_subjects=40)
+adhd_dataset = datasets.fetch_adhd(n_subjects=4)
 
 func_filenames = adhd_dataset.func  # list of 4D nifti files for each subject
 
@@ -20,16 +20,16 @@ print('First functional nifti image (4D) is at: %s' %
 # Apply our decomposition estimator with reduction
 n_components = 20
 
-dict_fact = fmriMF(n_components=n_components, smoothing_fwhm=6.,
-                   memory="nilearn_cache", memory_level=2,
-                   reduction=3,
-                   verbose=4,
-                   alpha=0.001,
-                   random_state=0,
-                   n_epochs=1,
-                   dict_init=fetch_atlas_smith_2009().rsn20,
-                   n_jobs=3,
-                   )
+dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
+                     memory="nilearn_cache", memory_level=2,
+                     reduction=3,
+                     verbose=4,
+                     alpha=0.001,
+                     random_state=0,
+                     n_epochs=1,
+                     dict_init=fetch_atlas_smith_2009().rsn20,
+                     n_jobs=3,
+                     )
 
 print('[Example] Learning maps')
 t0 = time.time()

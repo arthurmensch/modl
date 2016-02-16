@@ -1,15 +1,17 @@
 PYTHON ?= python
 CYTHON ?= cython
-NOSETESTS ?= nosetests
+PYTEST ?= py.test --pyargs
 DATADIR=$(HOME)/modl_data
 
 # Compilation...
 
-CYTHONSRC= $(wildcard modl/impl/*.pyx)
+CYTHONSRC= $(wildcard modl/*.pyx)
 CSRC= $(CYTHONSRC:.pyx=.c)
 
 inplace:
 	$(PYTHON) setup.py build_ext -i
+
+in: inplace
 
 all: cython inplace
 
@@ -19,6 +21,8 @@ clean:
 	rm -f modl/impl/*.html
 	rm -f `find modl -name "*.pyc"`
 	rm -f `find modl -name "*.so"`
+	rm -rf htmlcov
+	rm -rf build
 
 %.c: %.pyx
 	$(CYTHON) $<
@@ -26,13 +30,12 @@ clean:
 # Tests...
 #
 test-code: in
-	$(NOSETESTS) -s modl
+	$(PYTEST) modl
 
 test-coverage:
-	$(NOSETESTS) -s --with-coverage --cover-html --cover-html-dir=coverage \
-	--cover-package=modl modl
+	$(PYTEST) --cov=modl --cov-report html modl
 
-test: test-code test-doc
+test: test-code
 
 # Datasets...
 #
