@@ -4,12 +4,13 @@
 
 # Load ADDH
 import time
+
 from nilearn import datasets
 from nilearn.datasets import fetch_atlas_smith_2009
 
 from modl.spca_fmri import SpcaFmri
 
-adhd_dataset = datasets.fetch_adhd(n_subjects=4)
+adhd_dataset = datasets.fetch_adhd(n_subjects=40)
 
 func_filenames = adhd_dataset.func  # list of 4D nifti files for each subject
 
@@ -28,7 +29,7 @@ dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      random_state=0,
                      n_epochs=1,
                      dict_init=fetch_atlas_smith_2009().rsn20,
-                     n_jobs=3,
+                     n_jobs=1,
                      )
 
 print('[Example] Learning maps')
