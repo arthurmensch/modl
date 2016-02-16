@@ -13,16 +13,14 @@ MODL : Masked Online Dictionary Learning
 
 Installing from source with pip
 -------------------------------
+In a command prompt::
 
     git clone https://github.com/arthurmensch/modl.git
-
     cd modl
-
     pip install -r requirements.txt
-
     pip install .
-
-    make test
+    cd $HOME
+    py.test --pyargs modl
 
 Examples
 --------
