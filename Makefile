@@ -31,10 +31,10 @@ clean:
 
 # Tests...
 #
-test-code: in
+test-code:
 	$(PYTEST) --pyargs modl
 
-test-coverage: in
+test-coverage:
 	rm -rf coverage .coverage
 	$(PYTEST) --pyargs --cov=modl modl
 
