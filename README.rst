@@ -1,10 +1,10 @@
-# modl
+modl
+====
 
 Randomized online matrix factorization
 
-## Installing from source with pip
+Installing from source with pip
+-------------------------------
 
-```
-pip install -r requirements.txt
-pip install .
-```
+    pip install -r requirements.txt
+    pip install .
