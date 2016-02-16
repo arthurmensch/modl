@@ -1,0 +1,26 @@
+language: python
+
+virtualenv:
+  system_site_packages: true
+
+env:
+  global:
+    - TEST_RUN_FOLDER="/tmp" # folder where the tests are run from
+
+matrix:
+  # Do not wait for the allowed_failures entry to finish before
+  # setting the status
+  fast_finish: true
+  include:
+    # Most recent versions
+    - env: DISTRIB="conda" PYTHON_VERSION="3.5"
+           NUMPY_VERSION="*" SCIPY_VERSION="*"
+           SCIKIT_LEARN_VERSION="*" MATPLOTLIB_VERSION="*" COVERAGE="true"
+
+install: source continuous_integration/install.sh
+
+before_script: make clean
+
+script: source continuous_integration/test_script.sh
+
+after_success: source continuous_integration/after_success.sh

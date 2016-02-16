@@ -23,6 +23,8 @@ clean:
 	rm -f `find modl -name "*.so"`
 	rm -rf htmlcov
 	rm -rf build
+	rm .coverage
+	rm -rf .cache
 
 %.c: %.pyx
 	$(CYTHON) $<
@@ -30,16 +32,16 @@ clean:
 # Tests...
 #
 test-code: in
-	$(PYTEST) modl
+	$(PYTEST) --pyargs modl
 
-test-coverage:
-	$(PYTEST) --cov=modl --cov-report html modl
+test-coverage: in
+	rm -rf coverage .coverage
+	$(PYTEST) --pyargs --cov=modl modl
 
 test: test-code
 
 # Datasets...
-#
-#
+# from Mathieu Blondel
 datadir:
 	mkdir -p $(DATADIR)
 

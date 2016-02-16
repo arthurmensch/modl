@@ -4,11 +4,7 @@
 import os
 
 from sklearn.datasets.base import get_data_home as _get_data_home
-
-try:
-    import joblib
-except ImportError:
-    from sklearn.externals import joblib
+from sklearn.externals import joblib
 
 
 def get_data_home():

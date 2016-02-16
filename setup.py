@@ -26,6 +26,8 @@ def configuration(parent_package='', top_path=None):
     config = Configuration(None, parent_package, top_path)
 
     config.add_subpackage('modl')
+    config.add_subpackage('modl/externals/spira')
+    config.add_subpackage('modl/externals/spira/tests')
 
     return config
 
@@ -38,7 +40,6 @@ if __name__ == "__main__":
     sys.path.insert(0, local_path)
 
     setup(configuration=configuration,
-          packages=['modl/externals/spira', 'modl/externals/spira/tests'],
           name=DISTNAME,
           maintainer=MAINTAINER,
           include_package_data=True,
