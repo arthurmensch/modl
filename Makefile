@@ -23,7 +23,7 @@ clean:
 	rm -f `find modl -name "*.so"`
 	rm -rf htmlcov
 	rm -rf build
-	rm .coverage
+	rm -rf coverage .coverage
 	rm -rf .cache
 
 %.c: %.pyx
