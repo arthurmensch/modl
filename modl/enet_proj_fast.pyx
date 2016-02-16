@@ -5,16 +5,20 @@ J. Mairal, F. Bach, J. Ponce, G. Sapiro, 2009: Online dictionary learning
 for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 """
 
-# Author: Arthur Mensch
-# License: BSD
+# encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
+
 import cython
 
-import numpy as np
 cimport numpy as np
+import numpy as np
 
 from libc.math cimport sqrt, fabs
 
 from .enet_proj_fast cimport UINT32_t
+
 
 cdef enum:
     # Max value for our rand_r replacement (near the bottom).
@@ -24,7 +28,6 @@ cdef enum:
 
 
 # The following two functions are shamelessly copied from the tree code.
-@cython.cdivision(True)
 cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:
     seed[0] ^= <UINT32_t>(seed[0] << 13)
     seed[0] ^= <UINT32_t>(seed[0] >> 17)
@@ -33,7 +36,6 @@ cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:
     return seed[0] % (<UINT32_t>RAND_R_MAX + 1)
 
 
-@cython.cdivision(True)
 cdef inline UINT32_t randint(UINT32_t end,
                               UINT32_t* random_state) nogil:
     """Generate a random integer in [0; end)."""

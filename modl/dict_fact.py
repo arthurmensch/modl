@@ -13,7 +13,8 @@ from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from .enet_proj import enet_projection, enet_scale, enet_norm
-from .dict_fact_fast import _update_dict, _update_code
+from .dict_fact_fast import _update_dict, _update_code, \
+    _update_code_sparse_batch
 
 
 class DictMFStats:
@@ -25,7 +26,7 @@ class DictMFStats:
                  loss_indep, subset_array, subset_start,
                  subset_stop,
                  n_iter,
-                 n_verbose_call):
+                 ):
         self.loss = loss
         self.loss_indep = loss_indep
         self.subset_stop = subset_stop
@@ -37,7 +38,6 @@ class DictMFStats:
         self.B = B
         self.A = A
         self.n_iter = n_iter
-        self.n_verbose_call = n_verbose_call
 
 
 def _init_stats(Q, impute=False, reduction=1, max_n_iter=0,
@@ -89,7 +89,7 @@ def _init_stats(Q, impute=False, reduction=1, max_n_iter=0,
 
     return DictMFStats(A, B, counter, G, T, loss, loss_indep, subset_array,
                        subset_start,
-                       subset_stop, 0, 0)
+                       subset_stop, 0, )
 
 
 class DictMF(BaseEstimator):
@@ -120,7 +120,8 @@ class DictMF(BaseEstimator):
     impute: boolean,
         Updates the Gram matrix online (Experimental, non tested)
     max_n_iter: int,
-        Number of samples to visit before stopping
+        Number of samples to visit before stopping. If None, fit performs
+         a single epoch on data
     random_state: int or RandomState
         Pseudo number generator state used for random sampling.
     verbose: boolean,
@@ -151,11 +152,11 @@ class DictMF(BaseEstimator):
                  dict_init=None,
                  l1_ratio=0,
                  impute=False,
-                 max_n_iter=50,
+                 max_n_iter=0,
                  # Generic parameters
                  random_state=None,
                  verbose=0,
-                 backend='python',
+                 backend='c',
                  debug=False,
                  callback=None):
 
@@ -236,7 +237,11 @@ class DictMF(BaseEstimator):
         X: ndarray (n_samples, n_features)
             Dataset to learn the dictionary from
         """
-        while not self._check_init() or self._stat.n_iter < self.max_n_iter:
+        if self.max_n_iter > 0:
+            while not self._check_init() or \
+                            self._stat.n_iter < self.max_n_iter:
+                self.partial_fit(X)
+        else:
             self.partial_fit(X)
 
     def _refit(self, X):
@@ -282,7 +287,7 @@ class DictMF(BaseEstimator):
                                      stat=self._stat,
                                      freeze_first_col=self.fit_intercept,
                                      batch_size=self.batch_size,
-                                     # random_state=self._random_state,
+                                     random_state=self._random_state,
                                      verbose=self.verbose,
                                      impute=self.impute,
                                      max_n_iter=self.max_n_iter,
@@ -401,13 +406,13 @@ def online_dl(X, Q,
               l1_ratio=1.,
               stat=None,
               impute=False,
-              max_n_iter=10000,
+              max_n_iter=0,
               freeze_first_col=False,
               random_state=None,
               verbose=0,
               debug=False,
               callback=None,
-              backend='python'):
+              backend='c'):
     """Matrix factorization estimation based on masked online dictionary
      learning.
 
@@ -436,7 +441,8 @@ def online_dl(X, Q,
     impute: boolean,
         Updates the Gram matrix online (Experimental, non tested)
     max_n_iter: int,
-        Number of samples to visit before stopping
+        Number of samples to visit before stopping. If None, fit performs
+         a single epoch on data
     random_state: int or RandomState
         Pseudo number generator state used for random sampling.
     verbose: boolean,
@@ -463,12 +469,18 @@ def online_dl(X, Q,
             raise ValueError('Bad P shape: expected %r, got %r' %
                              ((n_rows, Q.shape[0]), P.shape))
 
+    if debug and backend == 'c':
+        raise NotImplementedError("Recording objective loss is only available"
+                                  "with backend == 'python'")
     random_state = check_random_state(random_state)
 
     if stat is None:
         stat = _init_stats(Q, impute=impute, reduction=reduction,
                            max_n_iter=max_n_iter,
                            random_state=random_state)
+
+    old_n_iter = stat.n_iter
+    n_verbose_call = 0
 
     if sp.isspmatrix_csr(X):
         row_range = X.getnnz(axis=1).nonzero()[0]
@@ -480,7 +492,7 @@ def online_dl(X, Q,
     random_state.shuffle(row_range)
     batches = gen_batches(len(row_range), batch_size)
 
-    if backend in ['c', 'c_testing']:
+    if backend == 'c':
         R = np.empty((n_components, n_cols), order='F')
         Q_subset = np.empty((n_components, max_subset_size), order='F')
         norm = np.zeros(n_components)
@@ -496,47 +508,70 @@ def online_dl(X, Q,
         else:
             components_range = np.arange(n_components)
         weights = np.zeros(max_subset_size + 1)
-        idx_mask = np.zeros(n_cols, dtype='int')
+        subset_mask = np.zeros(n_cols, dtype='i1')
+        dict_subset = np.zeros(max_subset_size, dtype='i4')
+        dict_subset_lim = np.zeros(1, dtype='i4')
+        this_X = np.zeros((1, max_subset_size), order='F')
+        P_dummy = np.zeros((1, 1), order='C')
     for batch in batches:
         row_batch = row_range[batch]
         if sp.isspmatrix_csr(X):
-            for j in row_batch:
-                if stat.n_iter >= max_n_iter:
-                    return P, Q
-                subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
-                reg = alpha * subset.shape[0] / n_cols
-                this_X = np.empty((1, subset.shape[0]), order='F')
-                this_X[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
-                if backend == 'python':
+            if backend == 'c':
+                stat.n_iter = _update_code_sparse_batch(X.data, X.indices,
+                                                        X.indptr,
+                                                        n_rows,
+                                                        n_cols,
+                                                        row_batch,
+                                                        alpha,
+                                                        learning_rate,
+                                                        offset,
+                                                        Q,
+                                                        P if P is not None else
+                                                        P_dummy,
+                                                        stat.A,
+                                                        stat.B,
+                                                        stat.counter,
+                                                        stat.G,
+                                                        stat.T,
+                                                        impute,
+                                                        Q_subset,
+                                                        P_temp,
+                                                        G_temp,
+                                                        this_X,
+                                                        subset_mask,
+                                                        dict_subset,
+                                                        dict_subset_lim,
+                                                        weights,
+                                                        stat.n_iter,
+                                                        max_n_iter,
+                                                        P is not None
+                                                        )
+                # This is hackish, but np.where becomes a
+                # bottleneck for low batch size otherwise
+                dict_subset = dict_subset[:dict_subset_lim[0]]
+            else:
+                for j in row_batch:
+                    if 0 < max_n_iter <= stat.n_iter:
+                        return P, Q
+                    subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
+                    reg = alpha * subset.shape[0] / n_cols
+                    this_X = np.empty((1, subset.shape[0]), order='F')
+                    this_X[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
                     this_P = _update_code_slow(this_X, subset,
                                                reg, learning_rate,
                                                offset,
                                                Q, stat,
                                                impute,
                                                debug)
-                else:
-                    _update_code(this_X, subset, reg, learning_rate,
-                                 offset, Q, stat.A, stat.B,
-                                 stat.counter,
-                                 stat.G,
-                                 stat.T,
-                                 impute,
-                                 Q_subset,
-                                 P_temp,
-                                 G_temp,
-                                 idx_mask,
-                                 weights,
-                                 debug)
-                    this_P = P_temp
-                if P is not None:
-                    P[j] = this_P
-                stat.n_iter += 1
-            dict_subset = np.concatenate([X.indices[
-                                          X.indptr[j]:X.indptr[j + 1]]
-                                          for j in row_batch])
-            dict_subset = np.unique(dict_subset)
-        else:
-            if stat.n_iter + len(row_batch) - 1 >= max_n_iter:
+                    if P is not None:
+                        P[j] = this_P
+                    stat.n_iter += 1
+                dict_subset = np.concatenate([X.indices[
+                                              X.indptr[j]:X.indptr[j + 1]]
+                                              for j in row_batch])
+                dict_subset = np.unique(dict_subset)
+        else:  # X is a dense matrix : we force masks
+            if 0 < max_n_iter <= stat.n_iter + len(row_batch) - 1:
                 return P, Q
             subset = stat.subset_array[stat.subset_start:stat.subset_stop]
             reg = alpha * subset.shape[0] / n_cols
@@ -548,6 +583,11 @@ def online_dl(X, Q,
                                            impute,
                                            debug)
             else:
+                P_python = _update_code_slow(this_X, subset, reg, learning_rate,
+                               offset,
+                               Q, copy.deepcopy(stat),
+                               impute,
+                               debug)
                 _update_code(this_X, subset, reg, learning_rate,
                              offset, Q, stat.A, stat.B,
                              stat.counter,
@@ -557,15 +597,15 @@ def online_dl(X, Q,
                              Q_subset,
                              P_temp,
                              G_temp,
-                             idx_mask,
-                             weights,
-                             debug)
+                             subset_mask,
+                             weights)
                 this_P = P_temp
             dict_subset = subset
             if P is not None:
                 P[row_batch] = this_P
             stat.n_iter += len(row_batch)
             _update_subset_stat(stat, random_state)
+        # Dictionary update
         if backend == 'python':
             _update_dict_slow(Q, dict_subset, freeze_first_col,
                               l1_ratio,
@@ -584,10 +624,10 @@ def online_dl(X, Q,
                          norm,
                          buffer,
                          components_range)
-        if verbose and stat.n_iter // ceil(
-                int(n_rows / verbose)) == stat.n_verbose_call + 1:
+        if verbose and (stat.n_iter - old_n_iter) // ceil(
+                int(n_rows / verbose)) == n_verbose_call:
             print("Iteration %i" % stat.n_iter)
-            stat.n_verbose_call += 1
+            n_verbose_call += 1
             if callback is not None:
                 callback()
     return P, Q
@@ -597,7 +637,7 @@ def _update_code_slow(X, subset, alpha, learning_rate,
                       offset,
                       Q, stat,
                       impute, debug):
-    """Compute code for a mini-batch and update algorithm stat accordingly
+    """Compute code for a mini-batch and update algorithm statistics accordingly
 
     Parameters
     ----------

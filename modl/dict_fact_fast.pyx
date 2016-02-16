@@ -1,4 +1,7 @@
 # encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 
 cimport numpy as np
 from libc.math cimport sqrt, log, exp, ceil, pow, fabs
@@ -47,66 +50,6 @@ cdef void _shuffle(long[:] arr, UINT32_t* random_state):
         j = rand_int(i + 1, random_state)
         arr[i], arr[j] = arr[j], arr[i]
 
-# cpdef int _update_code_sparse_full_fast(double[:] X_data, int[:] X_indices,
-#                   int[:] X_indptr, long n_rows, long n_cols,
-#                   long[:] row_range,
-#                   double alpha, double[::1, :] P, double[::1, :] Q,
-#                   double[:] Q_mult,
-#                   double[::1, :] Q_idx,
-#                   double[::1, :] G_temp,
-#                   ):
-#     cdef int len_row_range = row_range.shape[0]
-#     cdef int n_components = P.shape[0]
-#     cdef double* Q_idx_ptr = &Q_idx[0, 0]
-#     cdef double* Q_ptr = &Q[0, 0]
-#     cdef double* P_ptr = &P[0, 0]
-#     cdef double* G_temp_ptr = &G_temp[0, 0]
-#     cdef double* X_data_ptr = &X_data[0]
-#     cdef int info = 0
-#     cdef int ii, jj, i
-#     cdef int nnz
-#     cdef double reg
-#     cdef double this_Q_mult
-#     for ii in range(len_row_range):
-#         i = row_range[ii]
-#         nnz = X_indptr[i + 1] - X_indptr[i]
-#         # print('Filling Q')
-#         for k in range(n_components):
-#             this_Q_mult = exp(Q_mult[k])
-#             for jj in range(nnz):
-#                 Q_idx[k, jj] = Q[k, X_indices[X_indptr[i] + jj]] * this_Q_mult
-#         # print('Computing Gram')
-#         dgemm(&NTRANS, &TRANS,
-#               &n_components, &n_components, &nnz,
-#               &oned,
-#               Q_idx_ptr, &n_components,
-#               Q_idx_ptr, &n_components,
-#               &zerod,
-#               G_temp_ptr, &n_components
-#               )
-#         # C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
-#         reg = 2 * alpha * nnz / n_cols
-#         for p in range(n_components):
-#             G_temp[p, p] += reg
-#         # print('Computing Q**T x')
-#         # Qx = Q_idx.dot(x)
-#         dgemv(&NTRANS,
-#               &n_components, &nnz,
-#               &oned,
-#               Q_idx_ptr, &n_components,
-#               X_data_ptr + X_indptr[i], &one,
-#               &zerod,
-#               P_ptr + i * n_components, &one
-#               )
-#         # P[j] = linalg.solve(C, Qx, sym_pos=True,
-#         #                     overwrite_a=True, check_finite=False)
-#         # print('Solving linear system')
-#         dposv(&UP, &n_components, &one, G_temp_ptr, &n_components,
-#               P_ptr + i * n_components, &n_components,
-#               &info)
-#         if info != 0:
-#             return -1
-#     return 0
 
 cdef _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
@@ -126,26 +69,147 @@ cdef _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
         w[jj + 1] = 1 - w[jj + 1]
 
 
-def _update_sparse_batch_code():
+cpdef long _update_code_sparse_batch(double[:] X_data,
+                                     int[:] X_indices,
+                                     int[:] X_indptr,
+                                     int n_rows,
+                                     int n_cols,
+                                     long[:] row_batch,
+                                     double alpha,
+                                     double learning_rate,
+                                     double offset,
+                                     double[::1, :] Q,
+                                     double[:, ::1] P,
+                                     double[::1, :] A,
+                                     double[::1, :] B,
+                                     long[:] counter,
+                                     double[::1, :] G,
+                                     double[:] T,
+                                     bint impute,
+                                     double[::1, :] Q_subset,
+                                     double[::1, :] P_temp,
+                                     double[::1, :] G_temp,
+                                     double[::1, :] this_X,
+                                     char[:] subset_mask,
+                                     int[:] dict_subset,
+                                     int[:] dict_subset_lim,
+                                     double[:] weights,
+                                     long n_iter,
+                                     long max_n_iter,
+                                     bint update_P,
+                                     ):
+    """
+    Parameters
+    ----------
+    X_data: masked data matrix (csr)
+    X_indices: masked data matrix (csr)
+    X_indptr: masked data matrix (csr)
+    n_rows: masked data matrix (csr)
+    n_cols: masked data matrix (csr)
+    alpha: regularization parameter
+    learning_rate: decrease rate in the learning sequence (in [.5, 1])
+    offset: offset in the learning sequence
+    Q: Dictionary
+    A: Algorithm variable
+    B: Algorithm variable
+    counter: Algorithm variable
+    G: Algorithm variable
+    T: Algorithm variable
+    impute: Online update of Gram matrix
+    Q_subset : Temporary array. Holds the subdictionary
+    P_temp: Temporary array. Holds the codes for the mini batch
+    G_temp: Temporary array. Holds the Gram matrix.
+    subset_mask: Holds the binary mask for visited features
+    dict_subset: for union of seen features
+    dict_subset_lim: for union of seen features (holds the number of seen
+     features)
+    weights: Temporary array. Holds the update weights
+    n_iter: Updated by the function, for early stopping
+    max_n_iter: Iteration budget
+    update_P: keeps an updated version of the code
+    """
+    cdef int len_batch = row_batch.shape[0]
+    cdef int n_components = Q.shape[0]
+    cdef int ii, i, j, jj, k, idx_j
+    cdef int l = 0
+    cdef double reg
+    cdef int[:] subset
+    subset_mask[:] = 0
+    for ii in range(len_batch):
+        i = row_batch[ii]
+        if n_iter >= max_n_iter > 0:
+            break
+        subset = X_indices[X_indptr[i]:X_indptr[i + 1]]
+        len_subset = subset.shape[0]
+        reg = alpha * subset.shape[0] / n_cols
+        for jj in range(len_subset):
+            idx_j = X_indptr[i] + jj
+            this_X[0, jj] = X_data[idx_j]
+            j = subset[jj]
+            if not subset_mask[j]:
+                subset_mask[j] = 1
+                dict_subset[l] = j
+                l += 1
 
+        _update_code(this_X, subset, reg, learning_rate,
+                     offset, Q, A, B,
+                     counter,
+                     G,
+                     T,
+                     impute,
+                     Q_subset,
+                     P_temp,
+                     G_temp,
+                     subset_mask,
+                     weights,
+                     )
+        if update_P:
+            for k in range(n_components):
+                P[i, k] = P_temp[0, k]
+        n_iter += 1
+    dict_subset_lim[0] = l
+    return n_iter
 
-def _update_code(double[::1, :] X, int[:] subset,
-                  double alpha,
-                  double learning_rate,
-                  double offset,
-                  double[::1, :] Q,
-                  double[::1, :] A,
-                  double[::1, :] B,
-                  long[:] counter,
-                  double[::1, :] G,
-                  double[:] T,
-                  bint impute,
-                  double[::1, :] Q_subset,
-                  double[::1, :] P_temp,
-                  double[::1, :] G_temp,
-                  long[:] idx_mask,
-                  double[:] weights,
-                  bint debug):
+cpdef _update_code(double[::1, :] X, int[:] subset,
+                   double alpha,
+                   double learning_rate,
+                   double offset,
+                   double[::1, :] Q,
+                   double[::1, :] A,
+                   double[::1, :] B,
+                   long[:] counter,
+                   double[::1, :] G,
+                   double[:] T,
+                   bint impute,
+                   double[::1, :] Q_subset,
+                   double[::1, :] P_temp,
+                   double[::1, :] G_temp,
+                   char[:] subset_mask,
+                   double[:] weights):
+    """
+    Compute code for a mini-batch and update algorithm statistics accordingly
+
+    Parameters
+    ----------
+    X: masked data matrix
+    subset: indices (loci) of masked data
+    alpha: regularization parameter
+    learning_rate: decrease rate in the learning sequence (in [.5, 1])
+    offset: offset in the learning sequence
+    Q: Dictionary
+    A: algorithm variable
+    B: algorithm variable
+    counter: algorithm variable
+    G: algorithm variable
+    T: algorithm variable
+    impute: Online update of Gram matrix
+    Q_subset : Temporary array. Holds the subdictionary
+    P_temp: Temporary array. Holds the codes for the mini batch
+    G_temp: emporary array. Holds the Gram matrix.
+    subset_mask: Holds the binary mask for visited features
+    weights: Temporary array. Holds the update weights
+
+    """
     cdef int batch_size = X.shape[0]
     cdef int len_subset = subset.shape[0]
     cdef int n_components = Q.shape[0]
@@ -173,14 +237,14 @@ def _update_code(double[::1, :] X, int[:] subset,
 
     counter[0] += batch_size
 
-    for ii in range(len_subset):
-        i = subset[ii]
-        counter[i + 1] += batch_size
+    for jj in range(len_subset):
+        j = subset[jj]
+        counter[j + 1] += batch_size
 
     if impute:
         raise NotImplementedError
     else:
-        # print('Computing Gram')
+        # G = Q.T.dot(Q)
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
               &oned,
@@ -190,7 +254,6 @@ def _update_code(double[::1, :] X, int[:] subset,
               G_temp_ptr, &n_components
               )
 
-        # print('Computing Q**T x')
         # Qx = Q_subset.dot(x)
         dgemm(&NTRANS, &TRANS,
               &n_components, &batch_size, &len_subset,
@@ -205,7 +268,6 @@ def _update_code(double[::1, :] X, int[:] subset,
     for p in range(n_components):
         G_temp[p, p] += alpha
 
-    # print('Solving linear system')
     # P[j] = linalg.solve(G_temp, Qx, sym_pos=True,
     #                     overwrite_a=True, check_finite=False)
     dposv(&UP, &n_components, &batch_size, G_temp_ptr, &n_components,
@@ -218,7 +280,6 @@ def _update_code(double[::1, :] X, int[:] subset,
     # A += P[row_batch].T.dot(P[row_batch]) * w_A
     one_m_w_A = 1 - weights[0]
     w_A = weights[0] / batch_size
-    # print('Update A')
     dgemm(&TRANS, &NTRANS,
           &n_components, &n_components, &batch_size,
           &w_A,
@@ -228,15 +289,14 @@ def _update_code(double[::1, :] X, int[:] subset,
           A_ptr, &n_components
           )
     # B[:, idx] *= 1 - w_B
-    for ii in range(len_subset):
-        i = subset[ii]
-        idx_mask[i] = 1
+    for jj in range(len_subset):
+        j = subset[jj]
+        subset_mask[j] = 1
         # Reuse Q_subset as B_subset
         for k in range(n_components):
-            Q_subset[k, ii] = B[k, i] * (1 - weights[ii + 1])
-        for jj in range(batch_size):
-            X[jj, ii] *= weights[ii + 1] / batch_size
-    # print('Update B')
+            Q_subset[k, jj] = B[k, j] * (1 - weights[jj + 1])
+        for ii in range(batch_size):
+            X[ii, jj] *= weights[jj + 1] / batch_size
 
     dgemm(&TRANS, &NTRANS,
           &n_components, &len_subset, &batch_size,
@@ -245,12 +305,12 @@ def _update_code(double[::1, :] X, int[:] subset,
           X_ptr, &batch_size,
           &oned,
           Q_subset_ptr, &n_components)
-    for ii in range(len_subset):
-        i = subset[ii]
+    for jj in range(len_subset):
+        j = subset[jj]
         for k in range(n_components):
-            B[k, i] = Q_subset[k, ii]
+            B[k, j] = Q_subset[k, jj]
 
-# Tested
+
 cpdef _update_dict(double[::1, :] Q,
                   int[:] subset,
                   bint freeze_first_col,
@@ -312,7 +372,8 @@ cpdef _update_dict(double[::1, :] Q,
              &one, Q_subset_ptr + k, &n_components, R_ptr, &n_components)
         for jj in range(len_subset):
             Q_subset[k, jj] = R[k, jj] / A[k, k]
-        enet_projection_inplace(Q_subset[k, :len_subset], buffer[:len_subset], norm[k], l1_ratio)
+        enet_projection_inplace(Q_subset[k, :len_subset], buffer[:len_subset],
+                                norm[k], l1_ratio)
         for jj in range(len_subset):
             Q_subset[k, jj] = buffer[jj]
         # R -= A[:, k] Q[:, k].T
@@ -369,248 +430,3 @@ def _predict(double[:] X_data,
                 dot += P[u, k] * Q[k, i]
 
             data[ii] = dot
-
-
-
-
-
-
-
-
-
-# cdef void _update_dict_fast(double[::1, :] Q,
-#                             double[:] Q_mult,
-#                             double[:] Q_norm,
-#                             double[::1, :] A, double[::1, :] B,
-#                             double[::1, :] G,
-#                             double[::1, :] R,
-#                             double[::1, :] Q_idx,
-#                             double[::1, :] old_sub_G,
-#                             long[:] idx,
-#                             bint fit_intercept, long[:] components_range,
-#                             bint impute,
-#                             bint partial):
-#
-#     cdef int n_components = Q.shape[0]
-#     cdef int idx_len = idx.shape[0]
-#     cdef unsigned int components_range_len = components_range.shape[0]
-#     cdef double* Q_ptr = &Q[0, 0]
-#     cdef double* Q_idx_ptr = &Q_idx[0, 0]
-#     cdef double* A_ptr = &A[0, 0]
-#     cdef double* R_ptr = &R[0, 0]
-#     cdef double* G_ptr = &G[0, 0]
-#     cdef double* old_sub_G_ptr = &old_sub_G[0, 0]
-#     cdef double this_Q_mult, old_norm = 0
-#     cdef unsigned int k, kk, j, jj
-#
-#     for kk in range(n_components):
-#         this_Q_mult = exp(Q_mult[kk])
-#         for jj in range(idx_len):
-#             j = idx[jj]
-#             R[kk, jj] = B[kk, j]
-#             Q_idx[kk, jj] = Q[kk, j] * this_Q_mult
-#
-#     if impute:
-#         dgemm(&NTRANS, &TRANS,
-#               &n_components, &n_components, &idx_len,
-#               &oned,
-#               Q_idx_ptr, &n_components,
-#               Q_idx_ptr, &n_components,
-#               &zerod,
-#               old_sub_G_ptr, &n_components
-#               )
-#
-#     # R = B - AQ
-#     dgemm(&NTRANS, &NTRANS,
-#           &n_components, &idx_len, &n_components,
-#           &moned,
-#           A_ptr, &n_components,
-#           Q_idx_ptr, &n_components,
-#           &oned,
-#           R_ptr, &n_components)
-#
-#     for kk in range(components_range_len):
-#         k = components_range[kk]
-#         if partial:
-#             old_norm = 0
-#             Q_norm[k] = 0
-#             for jj in range(idx_len):
-#                 old_norm += Q_idx[k, jj] ** 2
-#             if old_norm == 0:
-#                 continue
-#         else:
-#             for jj in range(idx_len):
-#                 Q_norm[k] -= Q_idx[k, jj] ** 2
-#         dger(&n_components, &idx_len, &oned,
-#              A_ptr + k * n_components,
-#              &one, Q_idx_ptr + k, &n_components, R_ptr, &n_components)
-#         for jj in range(idx_len):
-#             Q_idx[k, jj] = R[k, jj] / A[k, k]
-#             Q_norm[k] += Q_idx[k, jj] ** 2
-#         if partial:
-#             Q_norm[k] /= old_norm
-#         if Q_norm[k] > 1:
-#             # Live update of Q_idx
-#             for jj in range(idx_len):
-#                 Q_idx[k, jj] /= sqrt(Q_norm[k])
-#             if not partial:
-#                 Q_mult[k] -= .5 * log(Q_norm[k])
-#                 Q_norm[k] = 1
-#         # R -= A[:, k] Q[:, k].T
-#         dger(&n_components, &idx_len, &moned,
-#              A_ptr + k  * n_components,
-#              &one, Q_idx_ptr + k, &n_components, R_ptr, &n_components)
-#
-#     for kk in range(n_components):
-#         this_Q_mult = exp(Q_mult[kk])
-#         for jj in range(idx_len):
-#             j = idx[jj]
-#             Q[kk, j] = Q_idx[kk, jj] / this_Q_mult
-#
-#     if impute:
-#         dgemm(&NTRANS, &TRANS,
-#               &n_components, &n_components, &idx_len,
-#               &oned,
-#               Q_idx_ptr, &n_components,
-#               Q_idx_ptr, &n_components,
-#               &oned,
-#               G_ptr, &n_components
-#               )
-#         for k in range(n_components):
-#             for j in range(n_components):
-#                 G[j, k] -= old_sub_G[j, k]
-
-
-# def _online_dl_main_loop_sparse_fast(X, double[::1, :] Q, double[:, ::1] P,
-#                                      stat_slow,
-#                                      double alpha, double learning_rate,
-#                                      double offset,
-#                                      bint freeze_first_col,
-#                                      long batch_size,
-#                                      long max_n_iter,
-#                                      bint impute,
-#                                      bint partial,
-#                                      long verbose,
-#                                      UINT32_t random_seed,
-#                                      callback):
-#
-#     cdef double[:] X_data = X.data
-#     cdef int[:] X_indices = X.indices
-#     cdef int[:] X_indptr = X.indptr
-#     cdef int n_rows = X.shape[0]
-#     cdef int n_cols = X.shape[1]
-#
-#     cdef long[:] row_range = X.getnnz(axis=1).nonzero()[0]
-#     cdef int len_row_range = row_range.shape[0]
-#
-#     cdef FastDictMFStats stat = _stat_from_slow_stat(stat_slow)
-#
-#     cdef int max_idx_size = min(n_cols, X.getnnz(axis=1).max() * batch_size)
-#
-#     cdef int n_batches = int(ceil(len_row_range / batch_size))
-#     cdef int n_components = Q.shape[0]
-#
-#     cdef UINT32_t seed = random_seed
-#
-#     cdef double[::1, :] Q_idx = np.zeros((n_components, max_idx_size),
-#                                          order='F')
-#     cdef double[::1, :] R = np.zeros((n_components, max_idx_size),
-#                                      order='F')
-#     cdef double[::1, :] P_batch = np.zeros((n_components, batch_size),
-#                                            order='F')
-#     cdef double[::1, :] G_temp = np.zeros((n_components, n_components),
-#                                           order='F')
-#     cdef double[:] sub_Qx = np.zeros(n_components)
-#     cdef double[::1, :] old_sub_G = np.zeros((n_components, n_components),
-#                                              order='F')
-#     cdef char[:] idx_mask = np.zeros(n_cols, dtype='i1')
-#     cdef long[:] idx_concat = np.zeros(max_idx_size, dtype='int')
-#     cdef long[:] components_range
-#     cdef int i, start, stop, last, last_call = 0
-#     cdef long[:] row_batch
-#     cdef double[:] Q_norm = np.ones(n_components)
-#     cdef double[:] Q_mult = np.zeros(n_components)
-#     cdef double norm = 0
-#
-#     cdef double new_rmse, old_rmse
-#
-#     cdef double this_Q_mult
-#     cdef bint update
-#
-#     for k in range(n_components):
-#         for j in range(n_cols):
-#             norm += Q[k, j] ** 2
-#         norm = sqrt(norm)
-#         for j in range(n_cols):
-#            Q[k, j] /= norm
-#            Q_mult[k] = 0
-#
-#     if not freeze_first_col:
-#         components_range = np.arange(n_components)
-#     else:
-#         components_range = np.arange(1, n_components)
-#
-#     n_batches = int(ceil(len_row_range / batch_size))
-#     _shuffle(row_range, &seed)
-#     for i in range(n_batches):
-#         start = i * batch_size
-#         stop = start + batch_size
-#         if stop > len_row_range:
-#             stop = len_row_range
-#         row_batch = row_range[start:stop]
-#         if stat.n_iter + len(row_batch) - 1 >= max_n_iter:
-#             return
-#         last = _update_code_sparse_fast(X_data, X_indices,
-#                                  X_indptr, n_rows, n_cols,
-#                                  P, Q,
-#                                  Q_mult,
-#                                  alpha, learning_rate,
-#                                  offset,
-#                                  stat.A, stat.B, stat.G, stat.T,
-#                                  stat.counter,
-#                                  row_batch,
-#                                  G_temp,
-#                                  Q_idx,
-#                                  P_batch,
-#                                  sub_Qx,
-#                                  idx_mask,
-#                                  idx_concat,
-#                                  impute)
-#         _shuffle(components_range, &seed)
-#         _update_dict_fast(
-#                 Q,
-#                 Q_mult,
-#                 Q_norm,
-#                 stat.A,
-#                 stat.B,
-#                 stat.G,
-#                 R,
-#                 Q_idx,
-#                 old_sub_G,
-#                 idx_concat[:last],
-#                 freeze_first_col,
-#                 components_range,
-#                 impute,
-#                 partial)
-#         stat.n_iter += row_batch.shape[0]
-#         # Numerical stability
-#         if not partial:
-#             update = False
-#             lim = -50
-#             for k in range(n_components):
-#                 if stat.Q_mult[k] < lim:
-#                     update = True
-#             if update:
-#                 for k in range(n_components):
-#                     this_Q_mult = exp(stat.Q_mult[k])
-#                     for j in range(n_cols):
-#                             Q[k, j] *= this_Q_mult
-#                     Q_mult[k] = 0
-#         if verbose and stat.n_iter // ceil(
-#                 int(n_rows / verbose)) == stat.n_verbose_call + 1:
-#             print("Iteration %i" % stat.n_iter)
-#             stat.n_verbose_call += 1
-#             if callback is not None:
-#                 callback()
-#         stat_slow.n_iter = stat.n_iter
-#         stat_slow.n_verbose_call = stat.n_verbose_call

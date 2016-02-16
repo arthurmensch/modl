@@ -94,6 +94,7 @@ def test_dict_mf_reconstruction_sparse():
     # Much stronger
     # assert_array_almost_equal(X, Y, decimal=2)
 
+
 def test_dict_mf_reconstruction_sparse_dict():
     X, Q = generate_sparse_synthetic(300, 4)
     dict_init = Q + rng_global.randn(*Q.shape) * 0.01

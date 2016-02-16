@@ -48,7 +48,7 @@ if __name__ == "__main__":
           version=VERSION,
           download_url=DOWNLOAD_URL,
           long_description=LONG_DESCRIPTION,
-          zip_safe=False, # the package can run out of an .egg file
+          zip_safe=False,  # the package can run out of an .egg file
           classifiers=[
               'Intended Audience :: Science/Research',
               'Intended Audience :: Developers',
@@ -60,6 +60,11 @@ if __name__ == "__main__":
               'Operating System :: Microsoft :: Windows',
               'Operating System :: POSIX',
               'Operating System :: Unix',
-              'Operating System :: MacOS'
-             ]
-    )
+              'Operating System :: MacOS',
+              'Programming Language :: Python :: 3.5'
+             ],
+          # requires=['nilearn(>=0.2.1)',
+          #           'scikit_learn(>=0.17)', 'numpy(>=1.10)',
+          #           'scipy(>=0.16)',
+          #           'spira(>=0.1)']
+          )

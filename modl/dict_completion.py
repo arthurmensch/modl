@@ -33,7 +33,8 @@ class DictCompleter(DictMF):
     impute: boolean,
         Updates the Gram matrix online (Experimental, non tested)
     max_n_iter: int,
-        Number of samples to visit before stopping
+        Number of samples to visit before stopping. If None, fit performs
+         a single epoch on data
     random_state: int or RandomState
         Pseudo number generator state used for random sampling.
     verbose: boolean,
@@ -75,7 +76,7 @@ class DictCompleter(DictMF):
                  # Generic parameters
                  random_state=None,
                  verbose=0,
-                 backend='python',
+                 backend='c',
                  debug=False,
                  callback=None):
         DictMF.__init__(self, alpha,

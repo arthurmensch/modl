@@ -831,8 +831,8 @@ typedef npy_clongdouble __pyx_t_5numpy_clongdouble_t;
  */
 typedef npy_cdouble __pyx_t_5numpy_complex_t;
 
-/* "modl/enet_proj_fast.pyx":19
- * from .enet_proj_fast cimport UINT32_t
+/* "modl/enet_proj_fast.pyx":23
+ * 
  * 
  * cdef enum:             # <<<<<<<<<<<<<<
  *     # Max value for our rand_r replacement (near the bottom).
@@ -1032,6 +1032,19 @@ static CYTHON_INLINE PyObject* __Pyx_PyObject_GetAttrStr(PyObject* obj, PyObject
 
 static PyObject *__Pyx_GetBuiltinName(PyObject *name);
 
+static CYTHON_INLINE long __Pyx_mod_long(long, long);
+
+#ifndef __PYX_FORCE_INIT_THREADS
+  #define __PYX_FORCE_INIT_THREADS 0
+#endif
+
+static CYTHON_INLINE void __Pyx_ErrRestore(PyObject *type, PyObject *value, PyObject *tb);
+static CYTHON_INLINE void __Pyx_ErrFetch(PyObject **type, PyObject **value, PyObject **tb);
+
+static void __Pyx_WriteUnraisable(const char *name, int clineno,
+                                  int lineno, const char *filename,
+                                  int full_traceback, int nogil);
+
 static CYTHON_INLINE int  __Pyx_GetBufferAndValidate(Py_buffer* buf, PyObject* obj,
     __Pyx_TypeInfo* dtype, int flags, int nd, int cast, __Pyx_BufFmt_StackElem* stack);
 static CYTHON_INLINE void __Pyx_SafeReleaseBuffer(Py_buffer* info);
@@ -1060,17 +1073,6 @@ static CYTHON_INLINE int __pyx_sub_acquisition_count_locked(
 #define __PYX_XDEC_MEMVIEW(slice, have_gil) __Pyx_XDEC_MEMVIEW(slice, have_gil, __LINE__)
 static CYTHON_INLINE void __Pyx_INC_MEMVIEW(__Pyx_memviewslice *, int, int);
 static CYTHON_INLINE void __Pyx_XDEC_MEMVIEW(__Pyx_memviewslice *, int, int);
-
-#ifndef __PYX_FORCE_INIT_THREADS
-  #define __PYX_FORCE_INIT_THREADS 0
-#endif
-
-static CYTHON_INLINE void __Pyx_ErrRestore(PyObject *type, PyObject *value, PyObject *tb);
-static CYTHON_INLINE void __Pyx_ErrFetch(PyObject **type, PyObject **value, PyObject **tb);
-
-static void __Pyx_WriteUnraisable(const char *name, int clineno,
-                                  int lineno, const char *filename,
-                                  int full_traceback, int nogil);
 
 static void __Pyx_RaiseArgtupleInvalid(const char* func_name, int exact,
     Py_ssize_t num_min, Py_ssize_t num_max, Py_ssize_t num_found);
@@ -1799,9 +1801,9 @@ static PyObject *__pyx_tuple__22;
 static PyObject *__pyx_tuple__23;
 static PyObject *__pyx_tuple__24;
 
-/* "modl/enet_proj_fast.pyx":28
+/* "modl/enet_proj_fast.pyx":31
+ * 
  * # The following two functions are shamelessly copied from the tree code.
- * @cython.cdivision(True)
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:             # <<<<<<<<<<<<<<
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)
@@ -1810,9 +1812,12 @@ static PyObject *__pyx_tuple__24;
 static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14enet_proj_fast_our_rand_r(__pyx_t_4modl_14enet_proj_fast_UINT32_t *__pyx_v_seed) {
   __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_r;
   long __pyx_t_1;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
 
-  /* "modl/enet_proj_fast.pyx":29
- * @cython.cdivision(True)
+  /* "modl/enet_proj_fast.pyx":32
+ * # The following two functions are shamelessly copied from the tree code.
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)             # <<<<<<<<<<<<<<
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)
@@ -1821,7 +1826,7 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
   __pyx_t_1 = 0;
   (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) << 13)));
 
-  /* "modl/enet_proj_fast.pyx":30
+  /* "modl/enet_proj_fast.pyx":33
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)             # <<<<<<<<<<<<<<
@@ -1831,7 +1836,7 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
   __pyx_t_1 = 0;
   (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) >> 17)));
 
-  /* "modl/enet_proj_fast.pyx":31
+  /* "modl/enet_proj_fast.pyx":34
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)
  *     seed[0] ^= <UINT32_t>(seed[0] << 5)             # <<<<<<<<<<<<<<
@@ -1841,32 +1846,46 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
   __pyx_t_1 = 0;
   (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) << 5)));
 
-  /* "modl/enet_proj_fast.pyx":33
+  /* "modl/enet_proj_fast.pyx":36
  *     seed[0] ^= <UINT32_t>(seed[0] << 5)
  * 
  *     return seed[0] % (<UINT32_t>RAND_R_MAX + 1)             # <<<<<<<<<<<<<<
  * 
  * 
  */
-  __pyx_r = ((__pyx_v_seed[0]) % (((__pyx_t_4modl_14enet_proj_fast_UINT32_t)__pyx_e_4modl_14enet_proj_fast_RAND_R_MAX) + 1));
+  __pyx_t_1 = (((__pyx_t_4modl_14enet_proj_fast_UINT32_t)__pyx_e_4modl_14enet_proj_fast_RAND_R_MAX) + 1);
+  if (unlikely(__pyx_t_1 == 0)) {
+    #ifdef WITH_THREAD
+    PyGILState_STATE __pyx_gilstate_save = PyGILState_Ensure();
+    #endif
+    PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
+    #ifdef WITH_THREAD
+    PyGILState_Release(__pyx_gilstate_save);
+    #endif
+    {__pyx_filename = __pyx_f[0]; __pyx_lineno = 36; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  }
+  __pyx_r = __Pyx_mod_long((__pyx_v_seed[0]), __pyx_t_1);
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":28
+  /* "modl/enet_proj_fast.pyx":31
+ * 
  * # The following two functions are shamelessly copied from the tree code.
- * @cython.cdivision(True)
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:             # <<<<<<<<<<<<<<
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)
  */
 
   /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_WriteUnraisable("modl.enet_proj_fast.our_rand_r", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
+  __pyx_r = 0;
   __pyx_L0:;
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":37
+/* "modl/enet_proj_fast.pyx":39
  * 
- * @cython.cdivision(True)
+ * 
  * cdef inline UINT32_t randint(UINT32_t end,             # <<<<<<<<<<<<<<
  *                               UINT32_t* random_state) nogil:
  *     """Generate a random integer in [0; end)."""
@@ -1874,31 +1893,49 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
 
 static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14enet_proj_fast_randint(__pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_v_end, __pyx_t_4modl_14enet_proj_fast_UINT32_t *__pyx_v_random_state) {
   __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_r;
+  __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_t_1;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
 
-  /* "modl/enet_proj_fast.pyx":40
+  /* "modl/enet_proj_fast.pyx":42
  *                               UINT32_t* random_state) nogil:
  *     """Generate a random integer in [0; end)."""
  *     return our_rand_r(random_state) % end             # <<<<<<<<<<<<<<
  * 
  * 
  */
-  __pyx_r = (__pyx_f_4modl_14enet_proj_fast_our_rand_r(__pyx_v_random_state) % __pyx_v_end);
+  __pyx_t_1 = __pyx_f_4modl_14enet_proj_fast_our_rand_r(__pyx_v_random_state);
+  if (unlikely(__pyx_v_end == 0)) {
+    #ifdef WITH_THREAD
+    PyGILState_STATE __pyx_gilstate_save = PyGILState_Ensure();
+    #endif
+    PyErr_SetString(PyExc_ZeroDivisionError, "integer division or modulo by zero");
+    #ifdef WITH_THREAD
+    PyGILState_Release(__pyx_gilstate_save);
+    #endif
+    {__pyx_filename = __pyx_f[0]; __pyx_lineno = 42; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  }
+  __pyx_r = (__pyx_t_1 % __pyx_v_end);
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":37
+  /* "modl/enet_proj_fast.pyx":39
  * 
- * @cython.cdivision(True)
+ * 
  * cdef inline UINT32_t randint(UINT32_t end,             # <<<<<<<<<<<<<<
  *                               UINT32_t* random_state) nogil:
  *     """Generate a random integer in [0; end)."""
  */
 
   /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_WriteUnraisable("modl.enet_proj_fast.randint", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
+  __pyx_r = 0;
   __pyx_L0:;
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":43
+/* "modl/enet_proj_fast.pyx":45
  * 
  * 
  * cdef inline double positive(double a) nogil:             # <<<<<<<<<<<<<<
@@ -1910,7 +1947,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
   double __pyx_r;
   int __pyx_t_1;
 
-  /* "modl/enet_proj_fast.pyx":44
+  /* "modl/enet_proj_fast.pyx":46
  * 
  * cdef inline double positive(double a) nogil:
  *     if a > 0:             # <<<<<<<<<<<<<<
@@ -1920,7 +1957,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
   __pyx_t_1 = ((__pyx_v_a > 0.0) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":45
+    /* "modl/enet_proj_fast.pyx":47
  * cdef inline double positive(double a) nogil:
  *     if a > 0:
  *         return a             # <<<<<<<<<<<<<<
@@ -1930,7 +1967,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
     __pyx_r = __pyx_v_a;
     goto __pyx_L0;
 
-    /* "modl/enet_proj_fast.pyx":44
+    /* "modl/enet_proj_fast.pyx":46
  * 
  * cdef inline double positive(double a) nogil:
  *     if a > 0:             # <<<<<<<<<<<<<<
@@ -1939,7 +1976,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
  */
   }
 
-  /* "modl/enet_proj_fast.pyx":47
+  /* "modl/enet_proj_fast.pyx":49
  *         return a
  *     else:
  *         return 0             # <<<<<<<<<<<<<<
@@ -1951,7 +1988,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
     goto __pyx_L0;
   }
 
-  /* "modl/enet_proj_fast.pyx":43
+  /* "modl/enet_proj_fast.pyx":45
  * 
  * 
  * cdef inline double positive(double a) nogil:             # <<<<<<<<<<<<<<
@@ -1964,7 +2001,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":50
+/* "modl/enet_proj_fast.pyx":52
  * 
  * 
  * cdef inline double sign(double a) nogil:             # <<<<<<<<<<<<<<
@@ -1976,7 +2013,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
   double __pyx_r;
   int __pyx_t_1;
 
-  /* "modl/enet_proj_fast.pyx":51
+  /* "modl/enet_proj_fast.pyx":53
  * 
  * cdef inline double sign(double a) nogil:
  *     if a >= 0.:             # <<<<<<<<<<<<<<
@@ -1986,7 +2023,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
   __pyx_t_1 = ((__pyx_v_a >= 0.) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":52
+    /* "modl/enet_proj_fast.pyx":54
  * cdef inline double sign(double a) nogil:
  *     if a >= 0.:
  *         return 1.             # <<<<<<<<<<<<<<
@@ -1996,7 +2033,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
     __pyx_r = 1.;
     goto __pyx_L0;
 
-    /* "modl/enet_proj_fast.pyx":51
+    /* "modl/enet_proj_fast.pyx":53
  * 
  * cdef inline double sign(double a) nogil:
  *     if a >= 0.:             # <<<<<<<<<<<<<<
@@ -2005,7 +2042,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
  */
   }
 
-  /* "modl/enet_proj_fast.pyx":54
+  /* "modl/enet_proj_fast.pyx":56
  *         return 1.
  *     else:
  *         return -1.             # <<<<<<<<<<<<<<
@@ -2017,7 +2054,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
     goto __pyx_L0;
   }
 
-  /* "modl/enet_proj_fast.pyx":50
+  /* "modl/enet_proj_fast.pyx":52
  * 
  * 
  * cdef inline double sign(double a) nogil:             # <<<<<<<<<<<<<<
@@ -2030,7 +2067,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":59
+/* "modl/enet_proj_fast.pyx":61
  * @cython.boundscheck(False)
  * @cython.wraparound(False)
  * cdef inline void swap(double[:] b, unsigned int i, unsigned int j,             # <<<<<<<<<<<<<<
@@ -2044,7 +2081,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   size_t __pyx_t_3;
   size_t __pyx_t_4;
 
-  /* "modl/enet_proj_fast.pyx":61
+  /* "modl/enet_proj_fast.pyx":63
  * cdef inline void swap(double[:] b, unsigned int i, unsigned int j,
  *                       double * buf) nogil:
  *     buf[0] = b[i]             # <<<<<<<<<<<<<<
@@ -2054,7 +2091,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_t_1 = __pyx_v_i;
   (__pyx_v_buf[0]) = (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_1 * __pyx_v_b.strides[0]) )));
 
-  /* "modl/enet_proj_fast.pyx":62
+  /* "modl/enet_proj_fast.pyx":64
  *                       double * buf) nogil:
  *     buf[0] = b[i]
  *     b[i] = b[j]             # <<<<<<<<<<<<<<
@@ -2065,7 +2102,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_t_3 = __pyx_v_i;
   *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_3 * __pyx_v_b.strides[0]) )) = (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_2 * __pyx_v_b.strides[0]) )));
 
-  /* "modl/enet_proj_fast.pyx":63
+  /* "modl/enet_proj_fast.pyx":65
  *     buf[0] = b[i]
  *     b[i] = b[j]
  *     b[j] = buf[0]             # <<<<<<<<<<<<<<
@@ -2075,7 +2112,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_t_4 = __pyx_v_j;
   *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_4 * __pyx_v_b.strides[0]) )) = (__pyx_v_buf[0]);
 
-  /* "modl/enet_proj_fast.pyx":64
+  /* "modl/enet_proj_fast.pyx":66
  *     b[i] = b[j]
  *     b[j] = buf[0]
  *     return             # <<<<<<<<<<<<<<
@@ -2084,7 +2121,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
  */
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":59
+  /* "modl/enet_proj_fast.pyx":61
  * @cython.boundscheck(False)
  * @cython.wraparound(False)
  * cdef inline void swap(double[:] b, unsigned int i, unsigned int j,             # <<<<<<<<<<<<<<
@@ -2096,7 +2133,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_L0:;
 }
 
-/* "modl/enet_proj_fast.pyx":71
+/* "modl/enet_proj_fast.pyx":73
  * @cython.initializedcheck(False)
  * @cython.nonecheck(False)
  * cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,             # <<<<<<<<<<<<<<
@@ -2155,7 +2192,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
 
-  /* "modl/enet_proj_fast.pyx":73
+  /* "modl/enet_proj_fast.pyx":75
  * cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,
  *                              double l1_ratio) nogil:
  *     cdef unsigned int m = v.shape[0]             # <<<<<<<<<<<<<<
@@ -2164,7 +2201,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_m = (__pyx_v_v.shape[0]);
 
-  /* "modl/enet_proj_fast.pyx":74
+  /* "modl/enet_proj_fast.pyx":76
  *                              double l1_ratio) nogil:
  *     cdef unsigned int m = v.shape[0]
  *     cdef UINT32_t random_state = 0             # <<<<<<<<<<<<<<
@@ -2173,7 +2210,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_random_state = 0;
 
-  /* "modl/enet_proj_fast.pyx":79
+  /* "modl/enet_proj_fast.pyx":81
  *     cdef unsigned int size_U
  *     cdef unsigned int start_U
  *     cdef double buf = 0             # <<<<<<<<<<<<<<
@@ -2182,7 +2219,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_buf = 0.0;
 
-  /* "modl/enet_proj_fast.pyx":90
+  /* "modl/enet_proj_fast.pyx":92
  *     cdef double c
  *     cdef double l
  *     cdef double norm = 0             # <<<<<<<<<<<<<<
@@ -2191,7 +2228,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_norm = 0.0;
 
-  /* "modl/enet_proj_fast.pyx":91
+  /* "modl/enet_proj_fast.pyx":93
  *     cdef double l
  *     cdef double norm = 0
  *     if radius == 0:             # <<<<<<<<<<<<<<
@@ -2201,7 +2238,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
   __pyx_t_1 = ((__pyx_v_radius == 0.0) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":92
+    /* "modl/enet_proj_fast.pyx":94
  *     cdef double norm = 0
  *     if radius == 0:
  *         b[:] = 0             # <<<<<<<<<<<<<<
@@ -2231,7 +2268,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     }
     __PYX_XDEC_MEMVIEW(&__pyx_t_2, 0);
 
-    /* "modl/enet_proj_fast.pyx":93
+    /* "modl/enet_proj_fast.pyx":95
  *     if radius == 0:
  *         b[:] = 0
  *         return             # <<<<<<<<<<<<<<
@@ -2240,7 +2277,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
  */
     goto __pyx_L0;
 
-    /* "modl/enet_proj_fast.pyx":91
+    /* "modl/enet_proj_fast.pyx":93
  *     cdef double l
  *     cdef double norm = 0
  *     if radius == 0:             # <<<<<<<<<<<<<<
@@ -2249,7 +2286,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
  */
   }
 
-  /* "modl/enet_proj_fast.pyx":96
+  /* "modl/enet_proj_fast.pyx":98
  * 
  *     # L2 projection
  *     if l1_ratio == 0:             # <<<<<<<<<<<<<<
@@ -2259,7 +2296,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
   __pyx_t_1 = ((__pyx_v_l1_ratio == 0.0) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":97
+    /* "modl/enet_proj_fast.pyx":99
  *     # L2 projection
  *     if l1_ratio == 0:
  *         for i in range(m):             # <<<<<<<<<<<<<<
@@ -2270,7 +2307,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
       __pyx_v_i = __pyx_t_4;
 
-      /* "modl/enet_proj_fast.pyx":98
+      /* "modl/enet_proj_fast.pyx":100
  *     if l1_ratio == 0:
  *         for i in range(m):
  *             norm += v[i] ** 2             # <<<<<<<<<<<<<<
@@ -2281,7 +2318,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       __pyx_v_norm = (__pyx_v_norm + pow((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_5 * __pyx_v_v.strides[0]) ))), 2.0));
     }
 
-    /* "modl/enet_proj_fast.pyx":99
+    /* "modl/enet_proj_fast.pyx":101
  *         for i in range(m):
  *             norm += v[i] ** 2
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2291,7 +2328,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     __pyx_t_1 = ((__pyx_v_norm <= __pyx_v_radius) != 0);
     if (__pyx_t_1) {
 
-      /* "modl/enet_proj_fast.pyx":100
+      /* "modl/enet_proj_fast.pyx":102
  *             norm += v[i] ** 2
  *         if norm <= radius:
  *             norm = 1             # <<<<<<<<<<<<<<
@@ -2300,7 +2337,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
  */
       __pyx_v_norm = 1.0;
 
-      /* "modl/enet_proj_fast.pyx":99
+      /* "modl/enet_proj_fast.pyx":101
  *         for i in range(m):
  *             norm += v[i] ** 2
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2310,7 +2347,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       goto __pyx_L7;
     }
 
-    /* "modl/enet_proj_fast.pyx":102
+    /* "modl/enet_proj_fast.pyx":104
  *             norm = 1
  *         else:
  *             norm = sqrt(norm / radius)             # <<<<<<<<<<<<<<
@@ -2326,13 +2363,13 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
         #ifdef WITH_THREAD
         PyGILState_Release(__pyx_gilstate_save);
         #endif
-        {__pyx_filename = __pyx_f[0]; __pyx_lineno = 102; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       }
       __pyx_v_norm = sqrt((__pyx_v_norm / __pyx_v_radius));
     }
     __pyx_L7:;
 
-    /* "modl/enet_proj_fast.pyx":103
+    /* "modl/enet_proj_fast.pyx":105
  *         else:
  *             norm = sqrt(norm / radius)
  *         for i in range(m):             # <<<<<<<<<<<<<<
@@ -2343,7 +2380,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
       __pyx_v_i = __pyx_t_4;
 
-      /* "modl/enet_proj_fast.pyx":104
+      /* "modl/enet_proj_fast.pyx":106
  *             norm = sqrt(norm / radius)
  *         for i in range(m):
  *             b[i] = v[i] / norm             # <<<<<<<<<<<<<<
@@ -2360,13 +2397,13 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
         #ifdef WITH_THREAD
         PyGILState_Release(__pyx_gilstate_save);
         #endif
-        {__pyx_filename = __pyx_f[0]; __pyx_lineno = 104; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+        {__pyx_filename = __pyx_f[0]; __pyx_lineno = 106; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       }
       __pyx_t_8 = __pyx_v_i;
       *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_8 * __pyx_v_b.strides[0]) )) = (__pyx_t_7 / __pyx_v_norm);
     }
 
-    /* "modl/enet_proj_fast.pyx":96
+    /* "modl/enet_proj_fast.pyx":98
  * 
  *     # L2 projection
  *     if l1_ratio == 0:             # <<<<<<<<<<<<<<
@@ -2376,7 +2413,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     goto __pyx_L4;
   }
 
-  /* "modl/enet_proj_fast.pyx":107
+  /* "modl/enet_proj_fast.pyx":109
  *     else:
  *         # Scaling by 1 / l1_ratio
  *         gamma = 2 / l1_ratio - 2             # <<<<<<<<<<<<<<
@@ -2392,11 +2429,11 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       #ifdef WITH_THREAD
       PyGILState_Release(__pyx_gilstate_save);
       #endif
-      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 107; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 109; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     }
     __pyx_v_gamma = ((2.0 / __pyx_v_l1_ratio) - 2.0);
 
-    /* "modl/enet_proj_fast.pyx":108
+    /* "modl/enet_proj_fast.pyx":110
  *         # Scaling by 1 / l1_ratio
  *         gamma = 2 / l1_ratio - 2
  *         radius /= l1_ratio             # <<<<<<<<<<<<<<
@@ -2411,11 +2448,11 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       #ifdef WITH_THREAD
       PyGILState_Release(__pyx_gilstate_save);
       #endif
-      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 108; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+      {__pyx_filename = __pyx_f[0]; __pyx_lineno = 110; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     }
     __pyx_v_radius = (__pyx_v_radius / __pyx_v_l1_ratio);
 
-    /* "modl/enet_proj_fast.pyx":110
+    /* "modl/enet_proj_fast.pyx":112
  *         radius /= l1_ratio
  *         # Preparing data
  *         for j in range(m):             # <<<<<<<<<<<<<<
@@ -2426,7 +2463,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
       __pyx_v_j = __pyx_t_4;
 
-      /* "modl/enet_proj_fast.pyx":111
+      /* "modl/enet_proj_fast.pyx":113
  *         # Preparing data
  *         for j in range(m):
  *             b[j] = fabs(v[j])             # <<<<<<<<<<<<<<
@@ -2437,7 +2474,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       __pyx_t_10 = __pyx_v_j;
       *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_10 * __pyx_v_b.strides[0]) )) = fabs((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_9 * __pyx_v_v.strides[0]) ))));
 
-      /* "modl/enet_proj_fast.pyx":112
+      /* "modl/enet_proj_fast.pyx":114
  *         for j in range(m):
  *             b[j] = fabs(v[j])
  *             norm += b[j] * (1 + gamma / 2 * b[j])             # <<<<<<<<<<<<<<
@@ -2449,7 +2486,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       __pyx_v_norm = (__pyx_v_norm + ((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_11 * __pyx_v_b.strides[0]) ))) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_12 * __pyx_v_b.strides[0]) )))))));
     }
 
-    /* "modl/enet_proj_fast.pyx":113
+    /* "modl/enet_proj_fast.pyx":115
  *             b[j] = fabs(v[j])
  *             norm += b[j] * (1 + gamma / 2 * b[j])
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2459,7 +2496,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     __pyx_t_1 = ((__pyx_v_norm <= __pyx_v_radius) != 0);
     if (__pyx_t_1) {
 
-      /* "modl/enet_proj_fast.pyx":114
+      /* "modl/enet_proj_fast.pyx":116
  *             norm += b[j] * (1 + gamma / 2 * b[j])
  *         if norm <= radius:
  *             b[:] = v[:]             # <<<<<<<<<<<<<<
@@ -2480,11 +2517,11 @@ __pyx_t_14.data = __pyx_v_b.data;
 __pyx_t_14.strides[0] = __pyx_v_b.strides[0];
     __pyx_t_14.suboffsets[0] = -1;
 
-if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 114; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 116; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
       __PYX_XDEC_MEMVIEW(&__pyx_t_14, 0);
       __PYX_XDEC_MEMVIEW(&__pyx_t_13, 0);
 
-      /* "modl/enet_proj_fast.pyx":113
+      /* "modl/enet_proj_fast.pyx":115
  *             b[j] = fabs(v[j])
  *             norm += b[j] * (1 + gamma / 2 * b[j])
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2494,7 +2531,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       goto __pyx_L12;
     }
 
-    /* "modl/enet_proj_fast.pyx":117
+    /* "modl/enet_proj_fast.pyx":119
  *         else:
  *             # s and rho computation
  *             s = 0             # <<<<<<<<<<<<<<
@@ -2504,7 +2541,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
     /*else*/ {
       __pyx_v_s = 0.0;
 
-      /* "modl/enet_proj_fast.pyx":118
+      /* "modl/enet_proj_fast.pyx":120
  *             # s and rho computation
  *             s = 0
  *             rho = 0             # <<<<<<<<<<<<<<
@@ -2513,7 +2550,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
       __pyx_v_rho = 0;
 
-      /* "modl/enet_proj_fast.pyx":119
+      /* "modl/enet_proj_fast.pyx":121
  *             s = 0
  *             rho = 0
  *             start_U = 0             # <<<<<<<<<<<<<<
@@ -2522,7 +2559,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
       __pyx_v_start_U = 0;
 
-      /* "modl/enet_proj_fast.pyx":120
+      /* "modl/enet_proj_fast.pyx":122
  *             rho = 0
  *             start_U = 0
  *             size_U = m             # <<<<<<<<<<<<<<
@@ -2531,7 +2568,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
       __pyx_v_size_U = __pyx_v_m;
 
-      /* "modl/enet_proj_fast.pyx":121
+      /* "modl/enet_proj_fast.pyx":123
  *             start_U = 0
  *             size_U = m
  *             while size_U > 0:             # <<<<<<<<<<<<<<
@@ -2542,7 +2579,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         __pyx_t_1 = ((__pyx_v_size_U > 0) != 0);
         if (!__pyx_t_1) break;
 
-        /* "modl/enet_proj_fast.pyx":122
+        /* "modl/enet_proj_fast.pyx":124
  *             size_U = m
  *             while size_U > 0:
  *                 pivot = randint(size_U, &random_state) + start_U             # <<<<<<<<<<<<<<
@@ -2551,7 +2588,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_pivot = (__pyx_f_4modl_14enet_proj_fast_randint(__pyx_v_size_U, (&__pyx_v_random_state)) + __pyx_v_start_U);
 
-        /* "modl/enet_proj_fast.pyx":124
+        /* "modl/enet_proj_fast.pyx":126
  *                 pivot = randint(size_U, &random_state) + start_U
  *                 # Putting pivot at the beginning
  *                 swap(b, pivot, start_U, &buf)             # <<<<<<<<<<<<<<
@@ -2560,7 +2597,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_f_4modl_14enet_proj_fast_swap(__pyx_v_b, __pyx_v_pivot, __pyx_v_start_U, (&__pyx_v_buf));
 
-        /* "modl/enet_proj_fast.pyx":125
+        /* "modl/enet_proj_fast.pyx":127
  *                 # Putting pivot at the beginning
  *                 swap(b, pivot, start_U, &buf)
  *                 pivot = start_U             # <<<<<<<<<<<<<<
@@ -2569,7 +2606,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_pivot = __pyx_v_start_U;
 
-        /* "modl/enet_proj_fast.pyx":126
+        /* "modl/enet_proj_fast.pyx":128
  *                 swap(b, pivot, start_U, &buf)
  *                 pivot = start_U
  *                 drho = 1             # <<<<<<<<<<<<<<
@@ -2578,7 +2615,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_drho = 1;
 
-        /* "modl/enet_proj_fast.pyx":127
+        /* "modl/enet_proj_fast.pyx":129
  *                 pivot = start_U
  *                 drho = 1
  *                 ds = b[pivot] * (1 + gamma / 2 * b[pivot])             # <<<<<<<<<<<<<<
@@ -2589,7 +2626,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         __pyx_t_16 = __pyx_v_pivot;
         __pyx_v_ds = ((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_15 * __pyx_v_b.strides[0]) ))) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_16 * __pyx_v_b.strides[0]) ))))));
 
-        /* "modl/enet_proj_fast.pyx":129
+        /* "modl/enet_proj_fast.pyx":131
  *                 ds = b[pivot] * (1 + gamma / 2 * b[pivot])
  *                 # Ordering : [pivot, >=, <], using Lobato quicksort
  *                 for i in range(start_U + 1, start_U + size_U):             # <<<<<<<<<<<<<<
@@ -2600,7 +2637,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         for (__pyx_t_4 = (__pyx_v_start_U + 1); __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
           __pyx_v_i = __pyx_t_4;
 
-          /* "modl/enet_proj_fast.pyx":130
+          /* "modl/enet_proj_fast.pyx":132
  *                 # Ordering : [pivot, >=, <], using Lobato quicksort
  *                 for i in range(start_U + 1, start_U + size_U):
  *                     if b[i] >= b[pivot]:             # <<<<<<<<<<<<<<
@@ -2612,7 +2649,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           __pyx_t_1 = (((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_17 * __pyx_v_b.strides[0]) ))) >= (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_18 * __pyx_v_b.strides[0]) )))) != 0);
           if (__pyx_t_1) {
 
-            /* "modl/enet_proj_fast.pyx":131
+            /* "modl/enet_proj_fast.pyx":133
  *                 for i in range(start_U + 1, start_U + size_U):
  *                     if b[i] >= b[pivot]:
  *                         ds += b[i] * (1 + gamma / 2 * b[i])             # <<<<<<<<<<<<<<
@@ -2623,7 +2660,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
             __pyx_t_20 = __pyx_v_i;
             __pyx_v_ds = (__pyx_v_ds + ((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_19 * __pyx_v_b.strides[0]) ))) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_20 * __pyx_v_b.strides[0]) )))))));
 
-            /* "modl/enet_proj_fast.pyx":132
+            /* "modl/enet_proj_fast.pyx":134
  *                     if b[i] >= b[pivot]:
  *                         ds += b[i] * (1 + gamma / 2 * b[i])
  *                         swap(b, i, start_U + drho, &buf)             # <<<<<<<<<<<<<<
@@ -2632,7 +2669,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
             __pyx_f_4modl_14enet_proj_fast_swap(__pyx_v_b, __pyx_v_i, (__pyx_v_start_U + __pyx_v_drho), (&__pyx_v_buf));
 
-            /* "modl/enet_proj_fast.pyx":133
+            /* "modl/enet_proj_fast.pyx":135
  *                         ds += b[i] * (1 + gamma / 2 * b[i])
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1             # <<<<<<<<<<<<<<
@@ -2641,7 +2678,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
             __pyx_v_drho = (__pyx_v_drho + 1);
 
-            /* "modl/enet_proj_fast.pyx":130
+            /* "modl/enet_proj_fast.pyx":132
  *                 # Ordering : [pivot, >=, <], using Lobato quicksort
  *                 for i in range(start_U + 1, start_U + size_U):
  *                     if b[i] >= b[pivot]:             # <<<<<<<<<<<<<<
@@ -2651,7 +2688,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           }
         }
 
-        /* "modl/enet_proj_fast.pyx":134
+        /* "modl/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2660,7 +2697,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_21 = __pyx_v_pivot;
 
-        /* "modl/enet_proj_fast.pyx":135
+        /* "modl/enet_proj_fast.pyx":137
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\
  *                         * b[pivot] < radius * (1 + gamma * b[pivot]) ** 2:             # <<<<<<<<<<<<<<
@@ -2669,7 +2706,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_22 = __pyx_v_pivot;
 
-        /* "modl/enet_proj_fast.pyx":134
+        /* "modl/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2678,7 +2715,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_23 = __pyx_v_pivot;
 
-        /* "modl/enet_proj_fast.pyx":135
+        /* "modl/enet_proj_fast.pyx":137
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\
  *                         * b[pivot] < radius * (1 + gamma * b[pivot]) ** 2:             # <<<<<<<<<<<<<<
@@ -2687,7 +2724,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_1 = ((((__pyx_v_s + __pyx_v_ds) - (((__pyx_v_rho + __pyx_v_drho) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_21 * __pyx_v_b.strides[0]) )))))) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_22 * __pyx_v_b.strides[0]) ))))) < (__pyx_v_radius * pow((1.0 + (__pyx_v_gamma * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_23 * __pyx_v_b.strides[0]) ))))), 2.0))) != 0);
 
-        /* "modl/enet_proj_fast.pyx":134
+        /* "modl/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2696,7 +2733,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         if (__pyx_t_1) {
 
-          /* "modl/enet_proj_fast.pyx":137
+          /* "modl/enet_proj_fast.pyx":139
  *                         * b[pivot] < radius * (1 + gamma * b[pivot]) ** 2:
  *                     # U <- L : [<]
  *                     start_U += drho             # <<<<<<<<<<<<<<
@@ -2705,7 +2742,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_start_U = (__pyx_v_start_U + __pyx_v_drho);
 
-          /* "modl/enet_proj_fast.pyx":138
+          /* "modl/enet_proj_fast.pyx":140
  *                     # U <- L : [<]
  *                     start_U += drho
  *                     size_U -= drho             # <<<<<<<<<<<<<<
@@ -2714,7 +2751,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_size_U = (__pyx_v_size_U - __pyx_v_drho);
 
-          /* "modl/enet_proj_fast.pyx":139
+          /* "modl/enet_proj_fast.pyx":141
  *                     start_U += drho
  *                     size_U -= drho
  *                     rho += drho             # <<<<<<<<<<<<<<
@@ -2723,7 +2760,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_rho = (__pyx_v_rho + __pyx_v_drho);
 
-          /* "modl/enet_proj_fast.pyx":140
+          /* "modl/enet_proj_fast.pyx":142
  *                     size_U -= drho
  *                     rho += drho
  *                     s += ds             # <<<<<<<<<<<<<<
@@ -2732,7 +2769,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_s = (__pyx_v_s + __pyx_v_ds);
 
-          /* "modl/enet_proj_fast.pyx":134
+          /* "modl/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2742,7 +2779,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           goto __pyx_L18;
         }
 
-        /* "modl/enet_proj_fast.pyx":143
+        /* "modl/enet_proj_fast.pyx":145
  *                 else:
  *                     # U <- G \ k : [>=]
  *                     start_U += 1             # <<<<<<<<<<<<<<
@@ -2752,7 +2789,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         /*else*/ {
           __pyx_v_start_U = (__pyx_v_start_U + 1);
 
-          /* "modl/enet_proj_fast.pyx":144
+          /* "modl/enet_proj_fast.pyx":146
  *                     # U <- G \ k : [>=]
  *                     start_U += 1
  *                     size_U = drho - 1             # <<<<<<<<<<<<<<
@@ -2764,7 +2801,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         __pyx_L18:;
       }
 
-      /* "modl/enet_proj_fast.pyx":147
+      /* "modl/enet_proj_fast.pyx":149
  * 
  *             # Projection
  *             if gamma != 0:             # <<<<<<<<<<<<<<
@@ -2774,7 +2811,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       __pyx_t_1 = ((__pyx_v_gamma != 0.0) != 0);
       if (__pyx_t_1) {
 
-        /* "modl/enet_proj_fast.pyx":148
+        /* "modl/enet_proj_fast.pyx":150
  *             # Projection
  *             if gamma != 0:
  *                 a = gamma ** 2 * radius + gamma * rho * 0.5             # <<<<<<<<<<<<<<
@@ -2783,7 +2820,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_a = ((pow(__pyx_v_gamma, 2.0) * __pyx_v_radius) + ((__pyx_v_gamma * __pyx_v_rho) * 0.5));
 
-        /* "modl/enet_proj_fast.pyx":149
+        /* "modl/enet_proj_fast.pyx":151
  *             if gamma != 0:
  *                 a = gamma ** 2 * radius + gamma * rho * 0.5
  *                 d = 2 * radius * gamma + rho             # <<<<<<<<<<<<<<
@@ -2792,7 +2829,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_d = (((2.0 * __pyx_v_radius) * __pyx_v_gamma) + __pyx_v_rho);
 
-        /* "modl/enet_proj_fast.pyx":150
+        /* "modl/enet_proj_fast.pyx":152
  *                 a = gamma ** 2 * radius + gamma * rho * 0.5
  *                 d = 2 * radius * gamma + rho
  *                 c = radius - s             # <<<<<<<<<<<<<<
@@ -2801,7 +2838,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_c = (__pyx_v_radius - __pyx_v_s);
 
-        /* "modl/enet_proj_fast.pyx":151
+        /* "modl/enet_proj_fast.pyx":153
  *                 d = 2 * radius * gamma + rho
  *                 c = radius - s
  *                 l = (-d + sqrt(d ** 2 - 4 * a * c)) / (2 * a)             # <<<<<<<<<<<<<<
@@ -2818,11 +2855,11 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           #ifdef WITH_THREAD
           PyGILState_Release(__pyx_gilstate_save);
           #endif
-          {__pyx_filename = __pyx_f[0]; __pyx_lineno = 151; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+          {__pyx_filename = __pyx_f[0]; __pyx_lineno = 153; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         }
         __pyx_v_l = (__pyx_t_7 / __pyx_t_24);
 
-        /* "modl/enet_proj_fast.pyx":147
+        /* "modl/enet_proj_fast.pyx":149
  * 
  *             # Projection
  *             if gamma != 0:             # <<<<<<<<<<<<<<
@@ -2832,7 +2869,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         goto __pyx_L19;
       }
 
-      /* "modl/enet_proj_fast.pyx":153
+      /* "modl/enet_proj_fast.pyx":155
  *                 l = (-d + sqrt(d ** 2 - 4 * a * c)) / (2 * a)
  *             else:
  *                 l = (s - radius) / rho             # <<<<<<<<<<<<<<
@@ -2849,13 +2886,13 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           #ifdef WITH_THREAD
           PyGILState_Release(__pyx_gilstate_save);
           #endif
-          {__pyx_filename = __pyx_f[0]; __pyx_lineno = 153; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+          {__pyx_filename = __pyx_f[0]; __pyx_lineno = 155; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         }
         __pyx_v_l = (__pyx_t_24 / __pyx_v_rho);
       }
       __pyx_L19:;
 
-      /* "modl/enet_proj_fast.pyx":154
+      /* "modl/enet_proj_fast.pyx":156
  *             else:
  *                 l = (s - radius) / rho
  *             for i in range(m):             # <<<<<<<<<<<<<<
@@ -2866,7 +2903,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
         __pyx_v_i = __pyx_t_4;
 
-        /* "modl/enet_proj_fast.pyx":155
+        /* "modl/enet_proj_fast.pyx":157
  *                 l = (s - radius) / rho
  *             for i in range(m):
  *                 b[i] = sign(v[i]) * positive(fabs(v[i]) - l) / (1 + l * gamma)             # <<<<<<<<<<<<<<
@@ -2885,7 +2922,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           #ifdef WITH_THREAD
           PyGILState_Release(__pyx_gilstate_save);
           #endif
-          {__pyx_filename = __pyx_f[0]; __pyx_lineno = 155; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+          {__pyx_filename = __pyx_f[0]; __pyx_lineno = 157; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
         }
         __pyx_t_27 = __pyx_v_i;
         *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_27 * __pyx_v_b.strides[0]) )) = (__pyx_t_24 / __pyx_t_7);
@@ -2895,7 +2932,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
   }
   __pyx_L4:;
 
-  /* "modl/enet_proj_fast.pyx":156
+  /* "modl/enet_proj_fast.pyx":158
  *             for i in range(m):
  *                 b[i] = sign(v[i]) * positive(fabs(v[i]) - l) / (1 + l * gamma)
  *     return             # <<<<<<<<<<<<<<
@@ -2904,7 +2941,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":71
+  /* "modl/enet_proj_fast.pyx":73
  * @cython.initializedcheck(False)
  * @cython.nonecheck(False)
  * cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,             # <<<<<<<<<<<<<<
@@ -2956,21 +2993,21 @@ static PyObject *__pyx_pw_4modl_14enet_proj_fast_1enet_projection_inplace(PyObje
         case  1:
         if (likely((values[1] = PyDict_GetItem(__pyx_kwds, __pyx_n_s_b)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, 1); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+          __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, 1); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
         }
         case  2:
         if (likely((values[2] = PyDict_GetItem(__pyx_kwds, __pyx_n_s_radius)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, 2); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+          __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, 2); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
         }
         case  3:
         if (likely((values[3] = PyDict_GetItem(__pyx_kwds, __pyx_n_s_l1_ratio)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, 3); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+          __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, 3); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
         }
       }
       if (unlikely(kw_args > 0)) {
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "enet_projection_inplace") < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "enet_projection_inplace") < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
       }
     } else if (PyTuple_GET_SIZE(__pyx_args) != 4) {
       goto __pyx_L5_argtuple_error;
@@ -2980,14 +3017,14 @@ static PyObject *__pyx_pw_4modl_14enet_proj_fast_1enet_projection_inplace(PyObje
       values[2] = PyTuple_GET_ITEM(__pyx_args, 2);
       values[3] = PyTuple_GET_ITEM(__pyx_args, 3);
     }
-    __pyx_v_v = __Pyx_PyObject_to_MemoryviewSlice_ds_double(values[0]); if (unlikely(!__pyx_v_v.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
-    __pyx_v_b = __Pyx_PyObject_to_MemoryviewSlice_ds_double(values[1]); if (unlikely(!__pyx_v_b.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
-    __pyx_v_radius = __pyx_PyFloat_AsDouble(values[2]); if (unlikely((__pyx_v_radius == (double)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
-    __pyx_v_l1_ratio = __pyx_PyFloat_AsDouble(values[3]); if (unlikely((__pyx_v_l1_ratio == (double)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 72; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+    __pyx_v_v = __Pyx_PyObject_to_MemoryviewSlice_ds_double(values[0]); if (unlikely(!__pyx_v_v.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+    __pyx_v_b = __Pyx_PyObject_to_MemoryviewSlice_ds_double(values[1]); if (unlikely(!__pyx_v_b.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+    __pyx_v_radius = __pyx_PyFloat_AsDouble(values[2]); if (unlikely((__pyx_v_radius == (double)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+    __pyx_v_l1_ratio = __pyx_PyFloat_AsDouble(values[3]); if (unlikely((__pyx_v_l1_ratio == (double)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 74; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+  __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   __pyx_L3_error:;
   __Pyx_AddTraceback("modl.enet_proj_fast.enet_projection_inplace", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
@@ -3009,7 +3046,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("enet_projection_inplace", 0);
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__pyx_v_v, __pyx_v_b, __pyx_v_radius, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 71; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__pyx_v_v, __pyx_v_b, __pyx_v_radius, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -3028,7 +3065,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":162
+/* "modl/enet_proj_fast.pyx":164
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
  * cpdef double enet_norm(double[:] v, double l1_ratio) nogil:             # <<<<<<<<<<<<<<
@@ -3047,7 +3084,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
   unsigned int __pyx_t_2;
   size_t __pyx_t_3;
 
-  /* "modl/enet_proj_fast.pyx":178
+  /* "modl/enet_proj_fast.pyx":180
  *         Elastic-net norm
  *     """
  *     cdef int n = v.shape[0]             # <<<<<<<<<<<<<<
@@ -3056,7 +3093,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
  */
   __pyx_v_n = (__pyx_v_v.shape[0]);
 
-  /* "modl/enet_proj_fast.pyx":179
+  /* "modl/enet_proj_fast.pyx":181
  *     """
  *     cdef int n = v.shape[0]
  *     cdef double res = 0             # <<<<<<<<<<<<<<
@@ -3065,7 +3102,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
  */
   __pyx_v_res = 0.0;
 
-  /* "modl/enet_proj_fast.pyx":182
+  /* "modl/enet_proj_fast.pyx":184
  *     cdef double v_abs
  *     cdef unsigned int i
  *     for i in range(n):             # <<<<<<<<<<<<<<
@@ -3076,7 +3113,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
   for (__pyx_t_2 = 0; __pyx_t_2 < __pyx_t_1; __pyx_t_2+=1) {
     __pyx_v_i = __pyx_t_2;
 
-    /* "modl/enet_proj_fast.pyx":183
+    /* "modl/enet_proj_fast.pyx":185
  *     cdef unsigned int i
  *     for i in range(n):
  *         v_abs = fabs(v[i])             # <<<<<<<<<<<<<<
@@ -3086,7 +3123,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
     __pyx_t_3 = __pyx_v_i;
     __pyx_v_v_abs = fabs((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_3 * __pyx_v_v.strides[0]) ))));
 
-    /* "modl/enet_proj_fast.pyx":184
+    /* "modl/enet_proj_fast.pyx":186
  *     for i in range(n):
  *         v_abs = fabs(v[i])
  *         res += v_abs * (l1_ratio + (1 - l1_ratio) * v_abs)             # <<<<<<<<<<<<<<
@@ -3095,7 +3132,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
     __pyx_v_res = (__pyx_v_res + (__pyx_v_v_abs * (__pyx_v_l1_ratio + ((1.0 - __pyx_v_l1_ratio) * __pyx_v_v_abs))));
   }
 
-  /* "modl/enet_proj_fast.pyx":185
+  /* "modl/enet_proj_fast.pyx":187
  *         v_abs = fabs(v[i])
  *         res += v_abs * (l1_ratio + (1 - l1_ratio) * v_abs)
  *     return res             # <<<<<<<<<<<<<<
@@ -3103,7 +3140,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
   __pyx_r = __pyx_v_res;
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":162
+  /* "modl/enet_proj_fast.pyx":164
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
  * cpdef double enet_norm(double[:] v, double l1_ratio) nogil:             # <<<<<<<<<<<<<<
@@ -3148,11 +3185,11 @@ static PyObject *__pyx_pw_4modl_14enet_proj_fast_3enet_norm(PyObject *__pyx_self
         case  1:
         if (likely((values[1] = PyDict_GetItem(__pyx_kwds, __pyx_n_s_l1_ratio)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("enet_norm", 1, 2, 2, 1); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+          __Pyx_RaiseArgtupleInvalid("enet_norm", 1, 2, 2, 1); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
         }
       }
       if (unlikely(kw_args > 0)) {
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "enet_norm") < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "enet_norm") < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
       }
     } else if (PyTuple_GET_SIZE(__pyx_args) != 2) {
       goto __pyx_L5_argtuple_error;
@@ -3160,12 +3197,12 @@ static PyObject *__pyx_pw_4modl_14enet_proj_fast_3enet_norm(PyObject *__pyx_self
       values[0] = PyTuple_GET_ITEM(__pyx_args, 0);
       values[1] = PyTuple_GET_ITEM(__pyx_args, 1);
     }
-    __pyx_v_v = __Pyx_PyObject_to_MemoryviewSlice_ds_double(values[0]); if (unlikely(!__pyx_v_v.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
-    __pyx_v_l1_ratio = __pyx_PyFloat_AsDouble(values[1]); if (unlikely((__pyx_v_l1_ratio == (double)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+    __pyx_v_v = __Pyx_PyObject_to_MemoryviewSlice_ds_double(values[0]); if (unlikely(!__pyx_v_v.memview)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+    __pyx_v_l1_ratio = __pyx_PyFloat_AsDouble(values[1]); if (unlikely((__pyx_v_l1_ratio == (double)-1) && PyErr_Occurred())) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("enet_norm", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
+  __Pyx_RaiseArgtupleInvalid("enet_norm", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   __pyx_L3_error:;
   __Pyx_AddTraceback("modl.enet_proj_fast.enet_norm", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
@@ -3187,7 +3224,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_2enet_norm(CYTHON_UNUSED PyObje
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("enet_norm", 0);
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = PyFloat_FromDouble(__pyx_f_4modl_14enet_proj_fast_enet_norm(__pyx_v_v, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 162; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = PyFloat_FromDouble(__pyx_f_4modl_14enet_proj_fast_enet_norm(__pyx_v_v, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -17631,7 +17668,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, 0, 0, 0, 0, 0, 0}
 };
 static int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 97; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 99; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 218; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_RuntimeError = __Pyx_GetBuiltinName(__pyx_n_s_RuntimeError); if (!__pyx_builtin_RuntimeError) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 799; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 144; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -18072,16 +18109,16 @@ PyMODINIT_FUNC PyInit_enet_proj_fast(void)
   if (__Pyx_patch_abc() < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   #endif
 
-  /* "modl/enet_proj_fast.pyx":12
- * import cython
+  /* "modl/enet_proj_fast.pyx":16
  * 
- * import numpy as np             # <<<<<<<<<<<<<<
  * cimport numpy as np
+ * import numpy as np             # <<<<<<<<<<<<<<
  * 
+ * from libc.math cimport sqrt, fabs
  */
-  __pyx_t_1 = __Pyx_Import(__pyx_n_s_numpy, 0, -1); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 12; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_Import(__pyx_n_s_numpy, 0, -1); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 16; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_np, __pyx_t_1) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 12; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_np, __pyx_t_1) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 16; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
   /* "modl/enet_proj_fast.pyx":1
@@ -18261,6 +18298,79 @@ static PyObject *__Pyx_GetBuiltinName(PyObject *name) {
 #endif
     }
     return result;
+}
+
+static CYTHON_INLINE long __Pyx_mod_long(long a, long b) {
+    long r = a % b;
+    r += ((r != 0) & ((r ^ b) < 0)) * b;
+    return r;
+}
+
+static CYTHON_INLINE void __Pyx_ErrRestore(PyObject *type, PyObject *value, PyObject *tb) {
+#if CYTHON_COMPILING_IN_CPYTHON
+    PyObject *tmp_type, *tmp_value, *tmp_tb;
+    PyThreadState *tstate = PyThreadState_GET();
+    tmp_type = tstate->curexc_type;
+    tmp_value = tstate->curexc_value;
+    tmp_tb = tstate->curexc_traceback;
+    tstate->curexc_type = type;
+    tstate->curexc_value = value;
+    tstate->curexc_traceback = tb;
+    Py_XDECREF(tmp_type);
+    Py_XDECREF(tmp_value);
+    Py_XDECREF(tmp_tb);
+#else
+    PyErr_Restore(type, value, tb);
+#endif
+}
+static CYTHON_INLINE void __Pyx_ErrFetch(PyObject **type, PyObject **value, PyObject **tb) {
+#if CYTHON_COMPILING_IN_CPYTHON
+    PyThreadState *tstate = PyThreadState_GET();
+    *type = tstate->curexc_type;
+    *value = tstate->curexc_value;
+    *tb = tstate->curexc_traceback;
+    tstate->curexc_type = 0;
+    tstate->curexc_value = 0;
+    tstate->curexc_traceback = 0;
+#else
+    PyErr_Fetch(type, value, tb);
+#endif
+}
+
+static void __Pyx_WriteUnraisable(const char *name, CYTHON_UNUSED int clineno,
+                                  CYTHON_UNUSED int lineno, CYTHON_UNUSED const char *filename,
+                                  int full_traceback, CYTHON_UNUSED int nogil) {
+    PyObject *old_exc, *old_val, *old_tb;
+    PyObject *ctx;
+#ifdef WITH_THREAD
+    PyGILState_STATE state;
+    if (nogil)
+        state = PyGILState_Ensure();
+#endif
+    __Pyx_ErrFetch(&old_exc, &old_val, &old_tb);
+    if (full_traceback) {
+        Py_XINCREF(old_exc);
+        Py_XINCREF(old_val);
+        Py_XINCREF(old_tb);
+        __Pyx_ErrRestore(old_exc, old_val, old_tb);
+        PyErr_PrintEx(1);
+    }
+    #if PY_MAJOR_VERSION < 3
+    ctx = PyString_FromString(name);
+    #else
+    ctx = PyUnicode_FromString(name);
+    #endif
+    __Pyx_ErrRestore(old_exc, old_val, old_tb);
+    if (!ctx) {
+        PyErr_WriteUnraisable(Py_None);
+    } else {
+        PyErr_WriteUnraisable(ctx);
+        Py_DECREF(ctx);
+    }
+#ifdef WITH_THREAD
+    if (nogil)
+        PyGILState_Release(state);
+#endif
 }
 
 static CYTHON_INLINE int __Pyx_IsLittleEndian(void) {
@@ -18944,73 +19054,6 @@ static CYTHON_INLINE void __Pyx_XDEC_MEMVIEW(__Pyx_memviewslice *memslice,
     } else {
         memslice->memview = NULL;
     }
-}
-
-static CYTHON_INLINE void __Pyx_ErrRestore(PyObject *type, PyObject *value, PyObject *tb) {
-#if CYTHON_COMPILING_IN_CPYTHON
-    PyObject *tmp_type, *tmp_value, *tmp_tb;
-    PyThreadState *tstate = PyThreadState_GET();
-    tmp_type = tstate->curexc_type;
-    tmp_value = tstate->curexc_value;
-    tmp_tb = tstate->curexc_traceback;
-    tstate->curexc_type = type;
-    tstate->curexc_value = value;
-    tstate->curexc_traceback = tb;
-    Py_XDECREF(tmp_type);
-    Py_XDECREF(tmp_value);
-    Py_XDECREF(tmp_tb);
-#else
-    PyErr_Restore(type, value, tb);
-#endif
-}
-static CYTHON_INLINE void __Pyx_ErrFetch(PyObject **type, PyObject **value, PyObject **tb) {
-#if CYTHON_COMPILING_IN_CPYTHON
-    PyThreadState *tstate = PyThreadState_GET();
-    *type = tstate->curexc_type;
-    *value = tstate->curexc_value;
-    *tb = tstate->curexc_traceback;
-    tstate->curexc_type = 0;
-    tstate->curexc_value = 0;
-    tstate->curexc_traceback = 0;
-#else
-    PyErr_Fetch(type, value, tb);
-#endif
-}
-
-static void __Pyx_WriteUnraisable(const char *name, CYTHON_UNUSED int clineno,
-                                  CYTHON_UNUSED int lineno, CYTHON_UNUSED const char *filename,
-                                  int full_traceback, CYTHON_UNUSED int nogil) {
-    PyObject *old_exc, *old_val, *old_tb;
-    PyObject *ctx;
-#ifdef WITH_THREAD
-    PyGILState_STATE state;
-    if (nogil)
-        state = PyGILState_Ensure();
-#endif
-    __Pyx_ErrFetch(&old_exc, &old_val, &old_tb);
-    if (full_traceback) {
-        Py_XINCREF(old_exc);
-        Py_XINCREF(old_val);
-        Py_XINCREF(old_tb);
-        __Pyx_ErrRestore(old_exc, old_val, old_tb);
-        PyErr_PrintEx(1);
-    }
-    #if PY_MAJOR_VERSION < 3
-    ctx = PyString_FromString(name);
-    #else
-    ctx = PyUnicode_FromString(name);
-    #endif
-    __Pyx_ErrRestore(old_exc, old_val, old_tb);
-    if (!ctx) {
-        PyErr_WriteUnraisable(Py_None);
-    } else {
-        PyErr_WriteUnraisable(ctx);
-        Py_DECREF(ctx);
-    }
-#ifdef WITH_THREAD
-    if (nogil)
-        PyGILState_Release(state);
-#endif
 }
 
 static void __Pyx_RaiseArgtupleInvalid(
