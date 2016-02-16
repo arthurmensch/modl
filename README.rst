@@ -1,12 +1,12 @@
 MODL
 =================================
 
+MODL : Masked Online Dictionary Learning
+
 |Travis|_
 
 .. |Travis| image:: https://travis-ci.org/arthurmensch/modl.svg?branch=master
 .. _Travis: https://travis-ci.org/arthurmensch/modl
-
-MODL : Masked Online Dictionary Learning
 
 Installing from source with pip
 -------------------------------
