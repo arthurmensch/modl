@@ -1,5 +1,6 @@
 from math import sqrt
 
+import pytest
 import scipy.sparse as sp
 import numpy as np
 from numpy.testing import assert_almost_equal
@@ -8,8 +9,11 @@ from spira.cross_validation import train_test_split
 
 from modl.dict_completion import DictCompleter, csr_center_data
 
+backends = ['c', 'python']
 
-def test_dict_completion():
+
+@pytest.mark.parametrize("backend", backends)
+def test_dict_completion(backend):
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(50, 3)
@@ -19,6 +23,7 @@ def test_dict_completion():
     mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
                        random_state=0,
                        detrend=False,
+                       backend=backend,
                        verbose=0, )
 
     mf.fit(X)
@@ -34,7 +39,8 @@ def test_dict_completion():
     assert_almost_equal(rmse, rmse2)
 
 
-def test_dict_completion_normalise():
+@pytest.mark.parametrize("backend", backends)
+def test_dict_completion_normalise(backend):
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(50, 3)
@@ -43,6 +49,7 @@ def test_dict_completion_normalise():
 
     mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
                        random_state=0,
+                       backend=backend,
                        verbose=0, detrend=True)
 
     mf.fit(X)
@@ -60,7 +67,8 @@ def test_dict_completion_normalise():
     assert_almost_equal(rmse, rmse2)
 
 
-def test_dict_completion_missing():
+@pytest.mark.parametrize("backend", backends)
+def test_dict_completion_missing(backend):
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(100, 4)
@@ -73,6 +81,7 @@ def test_dict_completion_missing():
 
     mf = DictCompleter(n_components=4, max_n_iter=400, alpha=1,
                        random_state=0,
+                       backend=backend,
                        detrend=True,
                        verbose=0, )
 

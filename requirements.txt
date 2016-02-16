@@ -2,4 +2,5 @@ nilearn>=0.2.2
 scikit_learn>=0.17
 numpy>=1.10
 scipy>=0.16
+pytest>=2.8.7
 git+https://github.com/mblondel/spira

@@ -2,7 +2,8 @@
 # License: BSD
 # Adapted from nilearn example
 
-### Load ADHD rest dataset ####################################################
+# Load ADDH
+import time
 from nilearn import datasets
 from nilearn.datasets import fetch_atlas_smith_2009
 
@@ -31,14 +32,15 @@ dict_fact = fmriMF(n_components=n_components, smoothing_fwhm=6.,
                    )
 
 print('[Example] Learning maps')
+t0 = time.time()
 dict_fact.fit(func_filenames)
 print('[Example] Dumping results')
 # Decomposition estimator embeds their own masker
 masker = dict_fact.masker_
 components_img = masker.inverse_transform(dict_fact.components_)
 components_img.to_filename('components.nii.gz')
-
-### Visualize the results #####################################################
+time = time.time() - t0
+print('[Example] Run in %.2f s' % time)
 # Show components from both methods using 4D plotting tools
 from nilearn.plotting import plot_prob_atlas, show
 

@@ -104,7 +104,7 @@ class fmriMF(BaseDecomposition, TransformerMixin, CacheMixin):
                  target_affine=None, target_shape=None,
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=0,
-                 n_jobs=1, verbose=0,
+                 n_jobs=1, backend='c', verbose=0,
                  ):
         BaseDecomposition.__init__(self, n_components=n_components,
                                    random_state=random_state,
@@ -129,6 +129,7 @@ class fmriMF(BaseDecomposition, TransformerMixin, CacheMixin):
         self.batch_size = batch_size
         self.reduction = reduction
         self.callback = callback
+        self.backend = backend
 
     def fit(self, imgs, y=None, confounds=None):
         """Compute the mask and the ICA maps across subjects
@@ -163,6 +164,7 @@ class fmriMF(BaseDecomposition, TransformerMixin, CacheMixin):
                          batch_size=self.batch_size,
                          random_state=random_state,
                          l1_ratio=1,
+                         backend=self.backend,
                          verbose=max(0, self.verbose - 1))
 
         data_list = mask_and_reduce(self.masker_, imgs, confounds,

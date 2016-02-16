@@ -1,14 +1,16 @@
 import nibabel
 import numpy as np
+import pytest
 from nilearn._utils.testing import assert_less_equal
 from nilearn.image import iter_img
 from nilearn.input_data import NiftiMasker
 
 from modl.spca_fmri import fmriMF
 
+backends = ['c', 'python']
+
 
 # Utils function are copied from nilearn.decomposition.tests.test_canica
-
 def _make_data_from_components(components, affine, shape, rng=None,
                                n_subjects=8):
     data = []
@@ -65,13 +67,15 @@ def _make_test_data(rng=None, n_subjects=8, noisy=False):
     return data, mask_img, components, rng
 
 
-def test_sparse_pca():
+@pytest.mark.parametrize("backend", backends)
+def test_sparse_pca(backend):
     data, mask_img, components, rng = _make_test_data(n_subjects=16)
     mask = NiftiMasker(mask_img=mask_img).fit()
     dict_init = mask.inverse_transform(components)
     sparse_pca = fmriMF(n_components=4, random_state=0,
                         dict_init=dict_init,
                         mask=mask_img,
+                        backend=backend,
                         smoothing_fwhm=0., n_epochs=1, alpha=0.05)
     sparse_pca.fit(data)
     maps = sparse_pca.masker_. \
@@ -87,7 +91,6 @@ def test_sparse_pca():
     maps /= S[:, np.newaxis]
 
     G = np.abs(components.dot(maps.T))
-    print(G)
     recovered_maps = min(np.sum(np.any(G > 0.95, axis=1)),
                          np.sum(np.any(G > 0.95, axis=0)))
     assert(recovered_maps >= 4)

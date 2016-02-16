@@ -165,7 +165,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                      )
         if update_P:
             for k in range(n_components):
-                P[i, k] = P_temp[0, k]
+                P[i, k] = P_temp[k, 0]
         n_iter += 1
     dict_subset_lim[0] = l
     return n_iter
@@ -253,7 +253,6 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
               &zerod,
               G_temp_ptr, &n_components
               )
-
         # Qx = Q_subset.dot(x)
         dgemm(&NTRANS, &TRANS,
               &n_components, &batch_size, &len_subset,
@@ -267,7 +266,6 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
     # C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
     for p in range(n_components):
         G_temp[p, p] += alpha
-
     # P[j] = linalg.solve(G_temp, Qx, sym_pos=True,
     #                     overwrite_a=True, check_finite=False)
     dposv(&UP, &n_components, &batch_size, G_temp_ptr, &n_components,
@@ -280,11 +278,11 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
     # A += P[row_batch].T.dot(P[row_batch]) * w_A
     one_m_w_A = 1 - weights[0]
     w_A = weights[0] / batch_size
-    dgemm(&TRANS, &NTRANS,
+    dgemm(&NTRANS, &TRANS,
           &n_components, &n_components, &batch_size,
           &w_A,
-          P_temp_ptr, &batch_size,
-          P_temp_ptr, &batch_size,
+          P_temp_ptr, &n_components,
+          P_temp_ptr, &n_components,
           &one_m_w_A,
           A_ptr, &n_components
           )
@@ -297,11 +295,10 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
             Q_subset[k, jj] = B[k, j] * (1 - weights[jj + 1])
         for ii in range(batch_size):
             X[ii, jj] *= weights[jj + 1] / batch_size
-
-    dgemm(&TRANS, &NTRANS,
+    dgemm(&NTRANS, &NTRANS,
           &n_components, &len_subset, &batch_size,
           &oned,
-          P_temp_ptr, &batch_size,
+          P_temp_ptr, &n_components,
           X_ptr, &batch_size,
           &oned,
           Q_subset_ptr, &n_components)

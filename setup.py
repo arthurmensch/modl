@@ -65,6 +65,7 @@ if __name__ == "__main__":
              ],
           # requires=['nilearn(>=0.2.1)',
           #           'scikit_learn(>=0.17)', 'numpy(>=1.10)',
-          #           'scipy(>=0.16)',
-          #           'spira(>=0.1)']
+          #           'scipy(>=0.16.1)',
+          #           'spira(>=0.1)',
+          #           'pytest(>=2.8.7)]
           )

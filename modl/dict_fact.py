@@ -2,19 +2,19 @@
 Author: Arthur Mensch (2016)
 Dictionary learning with masked data
 """
-
-from math import pow, ceil, sqrt
+import copy
+from math import pow, ceil
 
 import numpy as np
 import scipy.sparse as sp
+from numpy.testing import assert_array_almost_equal
 from scipy import linalg
-
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
 
-from .enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import _update_dict, _update_code, \
     _update_code_sparse_batch
+from .enet_proj import enet_projection, enet_scale, enet_norm
 
 
 class DictMFStats:
@@ -500,9 +500,9 @@ def online_dl(X, Q,
         old_sub_G = np.empty((n_components, n_components), order='F')
         G_temp = np.empty((n_components, n_components), order='F')
         if sp.isspmatrix_csr(X):
-            P_temp = np.empty((1, n_components), order='F')
+            P_temp = np.empty((n_components, batch_size), order='F')
         else:
-            P_temp = np.empty((batch_size, n_components), order='F')
+            P_temp = np.empty((n_components, batch_size), order='F')
         if freeze_first_col:
             components_range = np.arange(1, n_components)
         else:
@@ -583,11 +583,6 @@ def online_dl(X, Q,
                                            impute,
                                            debug)
             else:
-                P_python = _update_code_slow(this_X, subset, reg, learning_rate,
-                               offset,
-                               Q, copy.deepcopy(stat),
-                               impute,
-                               debug)
                 _update_code(this_X, subset, reg, learning_rate,
                              offset, Q, stat.A, stat.B,
                              stat.counter,
@@ -599,10 +594,10 @@ def online_dl(X, Q,
                              G_temp,
                              subset_mask,
                              weights)
-                this_P = P_temp
+                this_P = P_temp.T
             dict_subset = subset
             if P is not None:
-                P[row_batch] = this_P
+                P[row_batch] = this_P[:len(row_batch)]
             stat.n_iter += len(row_batch)
             _update_subset_stat(stat, random_state)
         # Dictionary update
@@ -701,10 +696,8 @@ def _update_code_slow(X, subset, alpha, learning_rate,
     stat.A += P.dot(P.T) * w_A / batch_size
     stat.B[:, subset] *= 1 - w_B
     stat.B[:, subset] += P.dot(X) * w_B / batch_size
-    if batch_size == 1:
-        P = P[:, 0]
 
-    return P
+    return P.T
 
 
 def _update_dict_slow(Q, subset,
