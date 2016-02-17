@@ -1,3 +1,5 @@
+import numpy as np
+
 from modl.datasets.hcp import DummyMasker, fetch_hcp_rest
 
 
@@ -6,6 +8,12 @@ def test_dummy_masker():
     data_dir = '/storage/data/HCP_unmasked'
     dummy_masker = DummyMasker(data_dir=data_dir)
     dummy_masker.fit()
-    imgs = fetch_hcp_rest(data_dir='/storage/data')
-    data = dummy_masker.transform(imgs[0])
-    data = dummy_masker.transform(imgs[:2])
+    imgs = fetch_hcp_rest(data_dir='/storage/data', n_subjects=10).func
+    data = dummy_masker.transform(imgs[:1])
+    assert(len(data) == 1)
+    single_data = data[0]
+    print(single_data.shape)
+    mask_img = dummy_masker.mask_img_
+    mask_size = np.sum(mask_img.get_data() != 0)
+    assert(mask_size == 212445)
+    assert(single_data.shape == (1200, mask_size))

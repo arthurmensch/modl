@@ -4,6 +4,7 @@ import os
 from os.path import join
 
 import numpy as np
+from nilearn import _utils
 from nilearn.datasets.utils import _get_dataset_dir
 from nilearn.input_data import NiftiMasker, MultiNiftiMasker
 from sklearn.datasets.base import Bunch
@@ -92,7 +93,9 @@ class DummyMasker(MultiNiftiMasker):
         self.data_dir = data_dir
 
     def fit(self, imgs=None, y=None):
-        with open(join(self.data_dir, 'mapping.json', 'r')) as f:
+        self.mask_img_ = _utils.check_niimg_3d('/storage/data/HCP_mask/'
+                                               'mask_img.nii.gz')
+        with open(join(self.data_dir, 'mapping.json'), 'r') as f:
             self.mapping_ = json.load(f)
 
     def transform_single_imgs(self, imgs, confounds=None, copy=True):
