@@ -1,8 +1,10 @@
 import numpy as np
+import pytest
 
 from modl.datasets.hcp import DummyMasker, fetch_hcp_rest
 
 
+@pytest.mark.slow
 def test_dummy_masker():
     # Smoke test dummy masker
     data_dir = '/storage/data/HCP_unmasked'

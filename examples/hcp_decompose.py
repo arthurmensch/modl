@@ -6,7 +6,9 @@ import time
 from os.path import expanduser
 
 from modl import datasets
+from modl.datasets.hcp import DummyMasker
 from modl.spca_fmri import SpcaFmri
+from modl.utils.openblas import num_threads
 
 adhd_dataset = datasets.fetch_hcp_rest(n_subjects=10)
 
@@ -18,20 +20,27 @@ print('First functional nifti image (4D) is at: %s' %
 
 # Apply our decomposition estimator with reduction
 n_components = 70
+n_jobs = 20
 
-dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
-                     memory=expanduser("~/nilearn_cache"), memory_level=2,
-                     reduction=12,
-                     verbose=4,
-                     alpha=0.001,
-                     random_state=0,
-                     n_epochs=1,
-                     n_jobs=20,
-                     )
+masker = DummyMasker(data_dir='/storage/data/HCP_unmasked',
+                     mmap_mode='r')
+
+with num_threads(1):
+    dict_fact = SpcaFmri(mask=masker,
+                         n_components=n_components,
+                         reduction=12,
+                         alpha=0.001,
+                         random_state=0,
+                         n_epochs=1,
+                         memory=expanduser("~/nilearn_cache"), memory_level=2,
+                         verbose=4,
+                         n_jobs=n_jobs,
+                         )
 
 print('[Example] Learning maps')
 t0 = time.time()
-dict_fact.fit(func_filenames)
+with num_threads(n_jobs):
+    dict_fact.fit(func_filenames)
 print('[Example] Dumping results')
 # Decomposition estimator embeds their own masker
 masker = dict_fact.masker_
