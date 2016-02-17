@@ -17,6 +17,7 @@ from sklearn.externals.joblib import Memory
 from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
 
+from modl._utils.masking import DummyMasker
 from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
 from modl.dict_fact import DictMF
 
@@ -142,14 +143,19 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             related documentation for details
         """
         # Base logic for decomposition estimators
-        BaseDecomposition.fit(self, imgs)
+        if not isinstance(self.mask, DummyMasker):
+            BaseDecomposition.fit(self, imgs)
 
-        # Cast to MultiNiftiMasker with shelving
-        if self.shelve:
-            masker_params = self.masker_.get_params()
-            mask_img = self.masker_.mask_img_
-            masker_params['mask_img'] = mask_img
-            self.masker_ = MultiNiftiMasker(**masker_params).fit()
+            # Cast to MultiNiftiMasker with shelving
+            if self.shelve:
+                masker_params = self.masker_.get_params()
+                mask_img = self.masker_.mask_img_
+                masker_params['mask_img'] = mask_img
+                self.masker_ = MultiNiftiMasker(**masker_params).fit()
+        else:
+            if self.shelve:
+                raise NotImplementedError('Cannot shelve with a DummyMasker')
+            self.masker_ = self.mask
 
         random_state = check_random_state(self.random_state)
 

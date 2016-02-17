@@ -21,7 +21,8 @@ print('First functional nifti image (4D) is at: %s' %
 
 # Apply our decomposition estimator with reduction
 n_components = 20
-n_jobs = 20
+n_jobs = 3
+
 with num_threads(1):
     dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                          memory=expanduser("~/nilearn_cache"), memory_level=2,
@@ -35,7 +36,7 @@ with num_threads(1):
 
 print('[Example] Learning maps')
 t0 = time.time()
-with num_threads(5):
+with num_threads(min(n_jobs, 5)):
     dict_fact.fit(func_filenames)
 print('[Example] Dumping results')
 # Decomposition estimator embeds their own masker

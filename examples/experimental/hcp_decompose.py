@@ -6,11 +6,11 @@ import time
 from os.path import expanduser
 
 from modl import datasets
+from modl._utils.masking import DummyMasker
 from modl._utils.system.openblas import num_threads
-from modl.datasets.hcp import DummyMasker
 from modl.spca_fmri import SpcaFmri
 
-adhd_dataset = datasets.fetch_hcp_rest(n_subjects=500)
+adhd_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data', n_subjects=10)
 
 func_filenames = adhd_dataset.func  # list of 4D nifti files for each subject
 
@@ -27,6 +27,7 @@ masker = DummyMasker(data_dir='/storage/data/HCP_unmasked',
 
 with num_threads(1):
     dict_fact = SpcaFmri(mask=masker,
+                         shelve=False,
                          n_components=n_components,
                          reduction=12,
                          alpha=0.001,

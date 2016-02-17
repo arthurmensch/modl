@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from modl.datasets.hcp import DummyMasker, fetch_hcp_rest
+from modl._utils.masking import DummyMasker
+from modl.datasets.hcp import fetch_hcp_rest
 
 
 @pytest.mark.slow
@@ -10,7 +11,7 @@ def test_dummy_masker():
     data_dir = '/storage/data/HCP_unmasked'
     dummy_masker = DummyMasker(data_dir=data_dir)
     dummy_masker.fit()
-    imgs = fetch_hcp_rest(data_dir='/storage/data', n_subjects=10).func
+    imgs = fetch_hcp_rest(data_dir='/storage/data', n_subjects=1).func
     data = dummy_masker.transform(imgs[:1])
     assert(len(data) == 1)
     single_data = data[0]
