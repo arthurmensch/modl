@@ -8,6 +8,7 @@ from os.path import expanduser
 from nilearn.datasets import fetch_atlas_smith_2009
 
 from modl import datasets
+from modl._utils.masking import DummyMasker
 from modl.spca_fmri import SpcaFmri
 
 hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data', n_subjects=10)
@@ -22,14 +23,16 @@ print('First functional nifti image (4D) is at: %s' %
 # Apply our decomposition estimator with reduction
 n_components = 70
 n_jobs = 20
+dummy = True
 
-# mask = DummyMasker(data_dir='/storage/data/HCP_unmasked',
-#                    mask_img='/storage/data/HCP_mask/mask_img.nii.gz',
-#                    mmap_mode='r')
+if dummy:
+    mask = DummyMasker(data_dir='/storage/data/HCP_unmasked',
+                       mask_img=mask,
+                       mmap_mode='r')
 
 dict_fact = SpcaFmri(mask=mask,
                      smoothing_fwhm=3,
-                     shelve=True,
+                     shelve=not dummy,
                      n_components=n_components,
                      dict_init=fetch_atlas_smith_2009().rsn70,
                      reduction=12,
