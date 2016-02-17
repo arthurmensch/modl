@@ -1,12 +1,12 @@
 import ctypes
-from ctypes.util import find_library
 
 # enforces priority of hand-compiled OpenBLAS library over version in /usr/lib
 # that comes from Ubuntu repos
-try_paths = ['/opt/OpenBLAS/lib/libopenblas.so',
-             '/lib/libopenblas.so',
-             '/usr/lib/libopenblas.so.0',
-             find_library('openblas')]
+try_paths = ['/opt/anaconda/envs/main/lib/libopenblas.so',
+             '/opt/anaconda/lib/libopenblas.so',
+             '/storage/workspace/amensch/anaconda/envs/main/lib/libopenblas.so',
+             '/storage/workspace/amensch/anaconda/lib/libopenblas.so',
+             '/lib/libopenblas.so']
 openblas_lib = None
 for libpath in try_paths:
     try:
