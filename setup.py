@@ -5,6 +5,8 @@
 import os
 import sys
 
+from setuptools import setup, find_packages
+
 DISTNAME = 'modl'
 DESCRIPTION = "Masked Online Dictionary Learning in Python"
 LONG_DESCRIPTION = open('README.rst').read()
@@ -15,7 +17,7 @@ LICENSE = 'new BSD'
 DOWNLOAD_URL = 'https://github.com/arthurmensch/modl'
 VERSION = '0.1.1'
 
-from numpy.distutils.core import setup
+# from numpy.distutils.core import setup
 
 
 def configuration(parent_package='', top_path=None):
@@ -38,6 +40,7 @@ if __name__ == "__main__":
     sys.path.insert(0, local_path)
 
     setup(configuration=configuration,
+          packages=find_packages(),
           name=DISTNAME,
           maintainer=MAINTAINER,
           include_package_data=True,

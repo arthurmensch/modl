@@ -10,7 +10,7 @@ from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
 
 class DummyMasker(MultiNiftiMasker):
     def __init__(self, data_dir=None,
-                 mmap_mode='r',
+                 mmap_mode=None,
                  mask_img=None, smoothing_fwhm=None,
                  standardize=False,
                  detrend=False, low_pass=None, high_pass=None, t_r=None,
@@ -30,6 +30,26 @@ class DummyMasker(MultiNiftiMasker):
         with open(join(self.data_dir, 'mapping.json'), 'r') as f:
             self.mapping_ = json.load(f)
 
-    def transform_single_imgs(self, imgs, confounds=None, copy=True,
-                              ):
-        return np.load(self.mapping_[imgs], mmap_mode=self.mmap_mode)
+    def transform_single_imgs(self, imgs, confounds=None,
+                              copy=True, shelve=False):
+        try:
+            return np.load(self.mapping_[imgs], mmap_mode=self.mmap_mode)
+        except:
+            return super().transform_single_imgs(self, imgs, confounds=None,
+                              copy=True, shelve=False)
+
+    def transform_imgs(self, imgs_list, confounds=None, copy=True, n_jobs=1,
+                       shelve=False):
+        res = []
+
+        for img, confounds in zip(imgs_list, confounds):
+            try:
+                new_res = np.load(self.mapping_[img],
+                                  mmap_mode=self.mmap_mode)
+            except:
+                new_res = super().transform_single_imgs(img,
+                                                        confounds=confounds,
+                                                        copy=copy,
+                                                        shelve=shelve)[0]
+            res.append(new_res)
+        return res

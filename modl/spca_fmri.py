@@ -19,6 +19,7 @@ from sklearn.utils import check_random_state
 
 from modl._utils.masking import DummyMasker
 from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
+from modl._utils.system.mkl import num_threads
 from modl.dict_fact import DictMF
 
 
@@ -92,6 +93,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
     def __init__(self, n_components=20,
                  n_epochs=1,
                  alpha=0.,
+                 dict_init=None,
                  random_state=None,
                  batch_size=20,
                  reduction=1,
@@ -122,6 +124,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                                    )
 
         self.alpha = alpha
+        self.dict_init = dict_init
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.reduction = reduction
@@ -156,6 +159,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             if self.shelve:
                 raise NotImplementedError('Cannot shelve with a DummyMasker')
             self.masker_ = self.mask
+            self.masker_.fit()
 
         random_state = check_random_state(self.random_state)
 
@@ -167,30 +171,40 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if confounds is None:
             confounds = itertools.repeat(None)
 
-        dict_mf = DictMF(n_components=self.n_components,
-                         alpha=self.alpha,
-                         reduction=self.reduction,
-                         batch_size=self.batch_size,
-                         random_state=random_state,
-                         l1_ratio=1,
-                         backend=self.backend,
-                         verbose=max(0, self.verbose - 1))
-
         if self.shelve:
-            data_list = self.masker_.transform(imgs, confounds, shelve=True)
+            with num_threads(1):
+                data_list = self.masker_.transform(imgs, confounds,
+                                                   shelve=True)
         else:
             data_list = imgs
 
         data_list = itertools.chain(*[random_state.permutation(
             data_list) for _ in range(n_epochs)])
-        for record, data in enumerate(data_list):
-            if self.verbose:
-                print('Streaming record %s' % record)
-            if self.shelve:
-                data = data.get()
-            else:
-                data = self.masker_.transform(imgs, confounds)
-            dict_mf.partial_fit(data)
+
+        if self.dict_init is not None:
+            dict_init = self.masker_.transform(self.dict_init)
+        else:
+            dict_init = None
+
+        dict_mf = DictMF(n_components=self.n_components,
+                         alpha=self.alpha,
+                         reduction=self.reduction,
+                         batch_size=self.batch_size,
+                         random_state=random_state,
+                         dict_init=dict_init,
+                         l1_ratio=1,
+                         backend=self.backend,
+                         verbose=max(0, self.verbose - 1))
+
+        with num_threads(self.n_jobs):
+            for record, data in enumerate(data_list):
+                if self.verbose:
+                    print('Streaming record %s' % record)
+                if self.shelve:
+                    data = data.get()
+                else:
+                    data = self.masker_.transform(imgs, confounds)[0]
+                dict_mf.partial_fit(data)
 
         self.components_ = dict_mf.Q_
         # Post processing normalization
