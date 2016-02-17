@@ -3,12 +3,9 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
-cimport numpy as np
-from libc.math cimport sqrt, log, exp, ceil, pow, fabs
-
-from .enet_proj_fast cimport enet_projection_inplace, enet_norm
-from scipy.linalg.cython_blas cimport dger, dgemm, dgemv
 from scipy.linalg.cython_lapack cimport dposv
+
+from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 import numpy as np
 

@@ -4,9 +4,9 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from modl.externals.spira.cross_validation import train_test_split
 from modl.externals.spira.datasets import load_movielens
 
+from modl._utils.cross_validation import train_test_split
 from modl.dict_completion import DictCompleter
 
 def sqnorm(M):

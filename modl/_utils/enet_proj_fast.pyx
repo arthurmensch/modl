@@ -12,9 +12,6 @@ for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 
 import cython
 
-cimport numpy as np
-import numpy as np
-
 from libc.math cimport sqrt, fabs
 
 from .enet_proj_fast cimport UINT32_t

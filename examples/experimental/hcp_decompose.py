@@ -6,11 +6,11 @@ import time
 from os.path import expanduser
 
 from modl import datasets
+from modl._utils.system.openblas import num_threads
 from modl.datasets.hcp import DummyMasker
 from modl.spca_fmri import SpcaFmri
-from modl.utils.openblas import num_threads
 
-adhd_dataset = datasets.fetch_hcp_rest(n_subjects=10)
+adhd_dataset = datasets.fetch_hcp_rest(n_subjects=500)
 
 func_filenames = adhd_dataset.func  # list of 4D nifti files for each subject
 

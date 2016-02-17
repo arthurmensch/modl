@@ -1,6 +1,7 @@
 import scipy.sparse as sp
 from numpy.testing import assert_equal
-from modl.externals.spira.cross_validation import ShuffleSplit
+
+from modl._utils.cross_validation import ShuffleSplit
 
 
 def test_shuffle_split():

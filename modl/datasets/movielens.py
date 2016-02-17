@@ -1,4 +1,3 @@
-# FIXME add downloader from original data
 # Author: Mathieu Blondel
 # License: BSD
 import os

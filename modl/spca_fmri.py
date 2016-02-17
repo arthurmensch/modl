@@ -8,19 +8,16 @@ component sparsity
 from __future__ import division
 
 import itertools
-from math import ceil
 
 import numpy as np
-from nilearn._utils.cache_mixin import CacheMixin, cache
-from nilearn._utils.niimg import _safe_get_data
-from nilearn.decomposition.base import BaseDecomposition, \
-    _mask_and_reduce_single
+from nilearn._utils.cache_mixin import CacheMixin
+from nilearn.decomposition.base import BaseDecomposition
 from sklearn.base import TransformerMixin
-from sklearn.externals.joblib import Memory, Parallel, delayed
+from sklearn.externals.joblib import Memory
 from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
-from sklearn.utils.extmath import randomized_svd, randomized_range_finder
 
+from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
 from modl.dict_fact import DictMF
 
 
@@ -97,7 +94,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  random_state=None,
                  batch_size=20,
                  reduction=1,
-                 callback=None,
+                 shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
                  low_pass=None, high_pass=None, t_r=None,
@@ -127,8 +124,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.reduction = reduction
-        self.callback = callback
         self.backend = backend
+        self.shelve = shelve
 
     def fit(self, imgs, y=None, confounds=None):
         """Compute the mask and the ICA maps across subjects
@@ -146,6 +143,13 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         """
         # Base logic for decomposition estimators
         BaseDecomposition.fit(self, imgs)
+
+        # Cast to MultiNiftiMasker with shelving
+        if self.shelve:
+            masker_params = self.masker_.get_params()
+            mask_img = self.masker_.mask_img_
+            masker_params['mask_img'] = mask_img
+            self.masker_ = MultiNiftiMasker(**masker_params).fit()
 
         random_state = check_random_state(self.random_state)
 
@@ -166,23 +170,20 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          backend=self.backend,
                          verbose=max(0, self.verbose - 1))
 
-        data_list = mask_and_reduce(self.masker_, imgs, confounds,
-                                    n_components=self.n_components,
-                                    reduction_method=None,
-                                    random_state=self.random_state,
-                                    memory=self.memory,
-                                    memory_level=
-                                    max(0, self.memory_level - 1),
-                                    as_shelved_list=True,
-                                    verbose=max(0, self.verbose - 1),
-                                    n_jobs=self.n_jobs)
+        if self.shelve:
+            data_list = self.masker_.transform(imgs, confounds, shelve=True)
+        else:
+            data_list = imgs
 
         data_list = itertools.chain(*[random_state.permutation(
             data_list) for _ in range(n_epochs)])
         for record, data in enumerate(data_list):
             if self.verbose:
                 print('Streaming record %s' % record)
-            data = data.get()
+            if self.shelve:
+                data = data.get()
+            else:
+                data = self.masker_.transform(imgs, confounds)
             dict_mf.partial_fit(data)
 
         self.components_ = dict_mf.Q_
@@ -233,209 +234,3 @@ def objective_function(X, components, alpha=0.):
     lr.fit(components.T, X.T)
     residuals = X - lr.coef_.dot(components)
     return np.sum(residuals ** 2) + alpha * np.sum(lr.coef_ ** 2)
-
-
-def mask_and_reduce(masker, imgs,
-                    confounds=None,
-                    reduction_ratio='auto',
-                    reduction_method=None,
-                    n_components=None, random_state=None,
-                    memory_level=0,
-                    memory=Memory(cachedir=None),
-                    as_shelved_list=False,
-                    n_jobs=1,
-                    verbose=0):
-    """Mask and reduce provided 4D images with given masker.
-
-    Uses a PCA (randomized for small reduction ratio) or a range finding matrix
-    on time series to reduce data size in time direction. For multiple images,
-    the concatenation of data is returned, either as an ndarray or a memorymap
-    (useful for big datasets that do not fit in memory).
-
-    Parameters
-    ----------
-    masker: NiftiMasker or MultiNiftiMasker
-        Instance used to mask provided data.
-
-    imgs: list of 4D Niimg-like objects
-        See http://nilearn.github.io/manipulating_visualizing/manipulating_images.html#niimg.
-        List of subject data to mask, reduce and stack.
-
-    confounds: CSV file path or 2D matrix, optional
-        This parameter is passed to signal.clean. Please see the
-        corresponding documentation for details.
-
-    reduction_method: 'svd' | 'rf' | 'ss' | None
-
-    reduction_ratio: 'auto' or float in [0., 1.], optional
-        - Between 0. or 1. : controls compression of data, 1. means no
-        compression
-        - if set to 'auto', estimator will set the number of components per
-          reduced session to be n_components.
-
-    n_components: integer, optional
-        Number of components per subject to be extracted by dimension reduction
-
-    random_state: int or RandomState
-        Pseudo number generator state used for random sampling.
-
-    memory_level: integer, optional
-        Integer indicating the level of memorization. The higher, the more
-        function calls are cached.
-
-    memory: joblib.Memory
-        Used to cache the function calls.
-
-    Returns
-    ------
-    data: ndarray or memorymap
-        Concatenation of reduced data.
-    """
-    if not hasattr(imgs, '__iter__'):
-        imgs = [imgs]
-
-    if reduction_ratio == 'auto':
-        if n_components is None:
-            # Reduction ratio is 1 if
-            # neither n_components nor ratio is provided
-            reduction_ratio = 1
-    else:
-        if reduction_ratio is None:
-            reduction_ratio = 1
-        else:
-            reduction_ratio = float(reduction_ratio)
-        if not 0 <= reduction_ratio <= 1:
-            raise ValueError('Reduction ratio should be between 0. and 1.,'
-                             'got %.2f' % reduction_ratio)
-
-    if confounds is None:
-        confounds = itertools.repeat(confounds)
-
-    if reduction_ratio == 'auto':
-        n_samples = n_components
-        reduction_ratio = None
-    else:
-        # We'll let _mask_and_reduce_single decide on the number of
-        # samples based on the reduction_ratio
-        n_samples = None
-
-    data_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(cached_mask_and_reduce_single)(
-            masker,
-            img, confound,
-            reduction_ratio=reduction_ratio,
-            reduction_method=reduction_method,
-            n_samples=n_samples,
-            memory=memory,
-            memory_level=memory_level,
-            random_state=random_state,
-            as_shelved_list=as_shelved_list
-        ) for img, confound in zip(imgs, confounds))
-
-    if as_shelved_list:
-        return data_list
-    else:
-        subject_n_samples = [subject_data.shape[0]
-                             for subject_data in data_list]
-
-        n_samples = np.sum(subject_n_samples)
-        n_voxels = np.sum(_safe_get_data(masker.mask_img_))
-        data = np.empty((n_samples, n_voxels), order='F',
-                        dtype='float64')
-
-        current_position = 0
-        for i, next_position in enumerate(np.cumsum(subject_n_samples)):
-            data[current_position:next_position] = data_list[i]
-            current_position = next_position
-            # Clear memory as fast as possible: remove the reference on
-            # the corresponding block of data
-            data_list[i] = None
-        return data
-
-
-def cached_mask_and_reduce_single(masker, img, confound,
-                                  reduction_ratio=1,
-                                  reduction_method=None,
-                                  n_samples=None,
-                                  memory_level=0,
-                                  memory=Memory(cachedir=None),
-                                  random_state=0,
-                                  as_shelved_list=False):
-    if as_shelved_list:
-        return cache(
-            _mask_and_reduce_single, memory=memory,
-            memory_level=memory_level,
-            func_memory_level=0).call_and_shelve(
-            masker, img,
-            confound,
-            reduction_ratio=reduction_ratio,
-            reduction_method=reduction_method,
-            n_samples=n_samples,
-            memory=memory,
-            memory_level=memory_level,
-            random_state=random_state)
-    else:
-        return _mask_and_reduce_single(
-            masker, img, confound,
-            reduction_ratio=reduction_ratio,
-            reduction_method=reduction_method,
-            n_samples=n_samples,
-            memory=memory,
-            memory_level=memory_level,
-            random_state=random_state)
-
-
-def _mask_and_reduce_single(masker,
-                            img, confound,
-                            reduction_ratio=None,
-                            reduction_method=None,
-                            n_samples=None,
-                            memory=None,
-                            memory_level=0,
-                            random_state=None):
-    """Utility function for multiprocessing from MaskReducer"""
-    this_data = masker.transform(img, confound)
-    # Now get rid of the img as fast as possible, to free a
-    # reference count on it, and possibly free the corresponding
-    # data
-    del img
-    random_state = check_random_state(random_state)
-
-    data_n_samples, data_n_features = this_data.shape
-    if reduction_ratio is None:
-        assert n_samples is not None
-        n_samples = min(n_samples, data_n_samples)
-    else:
-        n_samples = int(ceil(data_n_samples * reduction_ratio))
-    if reduction_method == 'svd':
-        if n_samples <= data_n_features // 4:
-            U, S, _ = cache(randomized_svd, memory,
-                            memory_level=memory_level,
-                            func_memory_level=3)(this_data.T,
-                                                 n_samples,
-                                                 transpose=True,
-                                                 random_state=random_state)
-            U = U.T
-        else:
-            U, S, _ = cache(linalg.svd, memory,
-                            memory_level=memory_level,
-                            func_memory_level=3)(this_data.T,
-                                                 full_matrices=False)
-            U = U.T[:n_samples].copy()
-            S = S[:n_samples]
-        U = U * S[:, np.newaxis]
-    elif reduction_method == 'rf':
-        Q = cache(randomized_range_finder, memory,
-                  memory_level=memory_level,
-                  func_memory_level=3)(this_data,
-                                       n_samples, n_iter=3,
-                                       random_state=random_state)
-        U = Q.T.dot(this_data)
-    elif reduction_method == 'ss':
-        indices = np.floor(np.linspace(0, this_data.shape[0] - 1,
-                                       n_samples)).astype('int')
-        U = this_data[indices]
-    else:
-        U = this_data
-
-    return U

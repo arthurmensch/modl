@@ -6,8 +6,8 @@ import scipy.sparse as sp
 from numpy.testing import assert_almost_equal
 from numpy.testing import assert_array_almost_equal
 
+from modl._utils.cross_validation import train_test_split
 from modl.dict_completion import DictCompleter, csr_center_data
-from modl.externals.spira.cross_validation import train_test_split
 
 backends = ['c', 'python']
 

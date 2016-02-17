@@ -4,10 +4,10 @@
 import numpy as np
 from numpy import sqrt
 from numpy.testing import assert_array_almost_equal
-
-from modl.enet_proj import enet_norm, enet_projection, \
-    enet_scale
 from sklearn.utils import check_random_state
+
+from modl._utils.enet_proj import enet_norm, enet_projection, \
+    enet_scale
 
 
 def _enet_norm_for_projection(v, gamma):

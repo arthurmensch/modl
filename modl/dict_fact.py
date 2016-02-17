@@ -10,9 +10,9 @@ from scipy import linalg
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
 
+from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import _update_dict, _update_code, \
     _update_code_sparse_batch
-from .enet_proj import enet_projection, enet_scale, enet_norm
 
 
 class DictMFStats:

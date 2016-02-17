@@ -5,8 +5,8 @@ J. Mairal, F. Bach, J. Ponce, G. Sapiro, 2009: Online dictionary learning
 for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 """
 import numpy as np
-
 from sklearn.utils import check_array
+
 from .enet_proj_fast import enet_norm as c_enet_norm
 from .enet_proj_fast import enet_projection_inplace
 

@@ -760,15 +760,6 @@ typedef npy_double __pyx_t_5numpy_double_t;
  */
 typedef npy_longdouble __pyx_t_5numpy_longdouble_t;
 
-/* "enet_proj_fast.pxd":4
- * 
- * # ctypedef np.float64_t double
- * ctypedef np.uint32_t UINT32_t             # <<<<<<<<<<<<<<
- * 
- * cpdef double enet_norm(double[:] v, double l1_ratio) nogil
- */
-typedef __pyx_t_5numpy_uint32_t __pyx_t_4modl_14enet_proj_fast_UINT32_t;
-
 /* "scipy/linalg/cython_blas.pxd":15
  * # The original libraries should be linked directly.
  * 
@@ -804,6 +795,15 @@ typedef float __pyx_t_5scipy_6linalg_13cython_lapack_s;
  * ctypedef double complex z
  */
 typedef double __pyx_t_5scipy_6linalg_13cython_lapack_d;
+
+/* "_utils/enet_proj_fast.pxd":4
+ * 
+ * # ctypedef np.float64_t double
+ * ctypedef np.uint32_t UINT32_t             # <<<<<<<<<<<<<<
+ * 
+ * cpdef double enet_norm(double[:] v, double l1_ratio) nogil
+ */
+typedef __pyx_t_5numpy_uint32_t __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t;
 
 /* "modl/dict_fact_fast.pyx":24
  * cdef double moned = -1
@@ -1617,10 +1617,6 @@ static CYTHON_INLINE char *__pyx_f_5numpy__util_dtypestring(PyArray_Descr *, cha
 
 /* Module declarations from 'libc.math' */
 
-/* Module declarations from 'modl.enet_proj_fast' */
-static double (*__pyx_f_4modl_14enet_proj_fast_enet_norm)(__Pyx_memviewslice, double, int __pyx_skip_dispatch); /*proto*/
-static void (*__pyx_f_4modl_14enet_proj_fast_enet_projection_inplace)(__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch); /*proto*/
-
 /* Module declarations from 'scipy.linalg.cython_blas' */
 static void (*__pyx_f_5scipy_6linalg_11cython_blas_dgemm)(char *, char *, int *, int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *); /*proto*/
 static void (*__pyx_f_5scipy_6linalg_11cython_blas_dgemv)(char *, int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *); /*proto*/
@@ -1628,6 +1624,10 @@ static void (*__pyx_f_5scipy_6linalg_11cython_blas_dger)(int *, int *, __pyx_t_5
 
 /* Module declarations from 'scipy.linalg.cython_lapack' */
 static void (*__pyx_f_5scipy_6linalg_13cython_lapack_dposv)(char *, int *, int *, __pyx_t_5scipy_6linalg_13cython_lapack_d *, int *, __pyx_t_5scipy_6linalg_13cython_lapack_d *, int *, int *); /*proto*/
+
+/* Module declarations from 'modl._utils.enet_proj_fast' */
+static double (*__pyx_f_4modl_6_utils_14enet_proj_fast_enet_norm)(__Pyx_memviewslice, double, int __pyx_skip_dispatch); /*proto*/
+static void (*__pyx_f_4modl_6_utils_14enet_proj_fast_enet_projection_inplace)(__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch); /*proto*/
 
 /* Module declarations from 'modl.dict_fact_fast' */
 static PyTypeObject *__pyx_array_type = 0;
@@ -4347,7 +4347,7 @@ __pyx_t_13 = -1;
 }
 
 __pyx_t_28 = __pyx_v_k;
-    *((double *) ( /* dim=0 */ (__pyx_v_norm.data + __pyx_t_28 * __pyx_v_norm.strides[0]) )) = __pyx_f_4modl_14enet_proj_fast_enet_norm(__pyx_t_27, __pyx_v_l1_ratio, 0);
+    *((double *) ( /* dim=0 */ (__pyx_v_norm.data + __pyx_t_28 * __pyx_v_norm.strides[0]) )) = __pyx_f_4modl_6_utils_14enet_proj_fast_enet_norm(__pyx_t_27, __pyx_v_l1_ratio, 0);
     __PYX_XDEC_MEMVIEW(&__pyx_t_27, 1);
   }
 
@@ -4516,7 +4516,7 @@ __pyx_t_39 = __pyx_v_k;
  *         for jj in range(len_subset):
  *             Q_subset[k, jj] = buffer[jj]
  */
-    __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__pyx_t_27, __pyx_t_38, (*((double *) ( /* dim=0 */ (__pyx_v_norm.data + __pyx_t_39 * __pyx_v_norm.strides[0]) ))), __pyx_v_l1_ratio, 0);
+    __pyx_f_4modl_6_utils_14enet_proj_fast_enet_projection_inplace(__pyx_t_27, __pyx_t_38, (*((double *) ( /* dim=0 */ (__pyx_v_norm.data + __pyx_t_39 * __pyx_v_norm.strides[0]) ))), __pyx_v_l1_ratio, 0);
     __PYX_XDEC_MEMVIEW(&__pyx_t_27, 1);
     __PYX_XDEC_MEMVIEW(&__pyx_t_38, 1);
 
@@ -20102,17 +20102,17 @@ PyMODINIT_FUNC PyInit_dict_fact_fast(void)
   __pyx_ptype_5numpy_ufunc = __Pyx_ImportType("numpy", "ufunc", sizeof(PyUFuncObject), 0); if (unlikely(!__pyx_ptype_5numpy_ufunc)) {__pyx_filename = __pyx_f[1]; __pyx_lineno = 861; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   /*--- Variable import code ---*/
   /*--- Function import code ---*/
-  __pyx_t_1 = __Pyx_ImportModule("modl.enet_proj_fast"); if (!__pyx_t_1) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ImportFunction(__pyx_t_1, "enet_norm", (void (**)(void))&__pyx_f_4modl_14enet_proj_fast_enet_norm, "double (__Pyx_memviewslice, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ImportFunction(__pyx_t_1, "enet_projection_inplace", (void (**)(void))&__pyx_f_4modl_14enet_proj_fast_enet_projection_inplace, "void (__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_ImportModule("scipy.linalg.cython_blas"); if (!__pyx_t_1) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ImportFunction(__pyx_t_1, "dgemm", (void (**)(void))&__pyx_f_5scipy_6linalg_11cython_blas_dgemm, "void (char *, char *, int *, int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ImportFunction(__pyx_t_1, "dgemv", (void (**)(void))&__pyx_f_5scipy_6linalg_11cython_blas_dgemv, "void (char *, int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ImportFunction(__pyx_t_1, "dger", (void (**)(void))&__pyx_f_5scipy_6linalg_11cython_blas_dger, "void (int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   Py_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_2 = __Pyx_ImportModule("scipy.linalg.cython_blas"); if (!__pyx_t_2) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ImportFunction(__pyx_t_2, "dgemm", (void (**)(void))&__pyx_f_5scipy_6linalg_11cython_blas_dgemm, "void (char *, char *, int *, int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ImportFunction(__pyx_t_2, "dgemv", (void (**)(void))&__pyx_f_5scipy_6linalg_11cython_blas_dgemv, "void (char *, int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ImportFunction(__pyx_t_2, "dger", (void (**)(void))&__pyx_f_5scipy_6linalg_11cython_blas_dger, "void (int *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *, __pyx_t_5scipy_6linalg_11cython_blas_d *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_2 = __Pyx_ImportModule("scipy.linalg.cython_lapack"); if (!__pyx_t_2) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ImportFunction(__pyx_t_2, "dposv", (void (**)(void))&__pyx_f_5scipy_6linalg_13cython_lapack_dposv, "void (char *, int *, int *, __pyx_t_5scipy_6linalg_13cython_lapack_d *, int *, __pyx_t_5scipy_6linalg_13cython_lapack_d *, int *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   Py_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_3 = __Pyx_ImportModule("scipy.linalg.cython_lapack"); if (!__pyx_t_3) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ImportFunction(__pyx_t_3, "dposv", (void (**)(void))&__pyx_f_5scipy_6linalg_13cython_lapack_dposv, "void (char *, int *, int *, __pyx_t_5scipy_6linalg_13cython_lapack_d *, int *, __pyx_t_5scipy_6linalg_13cython_lapack_d *, int *, int *)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_3 = __Pyx_ImportModule("modl._utils.enet_proj_fast"); if (!__pyx_t_3) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ImportFunction(__pyx_t_3, "enet_norm", (void (**)(void))&__pyx_f_4modl_6_utils_14enet_proj_fast_enet_norm, "double (__Pyx_memviewslice, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ImportFunction(__pyx_t_3, "enet_projection_inplace", (void (**)(void))&__pyx_f_4modl_6_utils_14enet_proj_fast_enet_projection_inplace, "void (__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   Py_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   /*--- Execution code ---*/
   #if defined(__Pyx_Generator_USED) || defined(__Pyx_Coroutine_USED)
@@ -20120,7 +20120,7 @@ PyMODINIT_FUNC PyInit_dict_fact_fast(void)
   #endif
 
   /* "modl/dict_fact_fast.pyx":13
- * from scipy.linalg.cython_lapack cimport dposv
+ * from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
  * 
  * import numpy as np             # <<<<<<<<<<<<<<
  * 

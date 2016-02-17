@@ -234,8 +234,8 @@ static CYTHON_INLINE float __PYX_NAN() {
   #endif
 #endif
 
-#define __PYX_HAVE__modl__enet_proj_fast
-#define __PYX_HAVE_API__modl__enet_proj_fast
+#define __PYX_HAVE__modl___utils__enet_proj_fast
+#define __PYX_HAVE_API__modl___utils__enet_proj_fast
 #include "string.h"
 #include "stdio.h"
 #include "stdlib.h"
@@ -473,7 +473,7 @@ static const char *__pyx_filename;
 
 
 static const char *__pyx_f[] = {
-  "modl/enet_proj_fast.pyx",
+  "modl/_utils/enet_proj_fast.pyx",
   "__init__.pxd",
   "stringsource",
   "type.pxd",
@@ -760,14 +760,14 @@ typedef npy_double __pyx_t_5numpy_double_t;
  */
 typedef npy_longdouble __pyx_t_5numpy_longdouble_t;
 
-/* "modl/enet_proj_fast.pxd":4
+/* "modl/_utils/enet_proj_fast.pxd":4
  * 
  * # ctypedef np.float64_t double
  * ctypedef np.uint32_t UINT32_t             # <<<<<<<<<<<<<<
  * 
  * cpdef double enet_norm(double[:] v, double l1_ratio) nogil
  */
-typedef __pyx_t_5numpy_uint32_t __pyx_t_4modl_14enet_proj_fast_UINT32_t;
+typedef __pyx_t_5numpy_uint32_t __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t;
 #if CYTHON_CCOMPLEX
   #ifdef __cplusplus
     typedef ::std::complex< float > __pyx_t_float_complex;
@@ -831,7 +831,7 @@ typedef npy_clongdouble __pyx_t_5numpy_clongdouble_t;
  */
 typedef npy_cdouble __pyx_t_5numpy_complex_t;
 
-/* "modl/enet_proj_fast.pyx":23
+/* "modl/_utils/enet_proj_fast.pyx":23
  * 
  * 
  * cdef enum:             # <<<<<<<<<<<<<<
@@ -839,7 +839,7 @@ typedef npy_cdouble __pyx_t_5numpy_complex_t;
  *     # We don't use RAND_MAX because it's different across platforms and
  */
 enum  {
-  __pyx_e_4modl_14enet_proj_fast_RAND_R_MAX = 0x7FFFFFFF
+  __pyx_e_4modl_6_utils_14enet_proj_fast_RAND_R_MAX = 0x7FFFFFFF
 };
 
 /* "View.MemoryView":101
@@ -1500,7 +1500,7 @@ static CYTHON_INLINE char *__pyx_f_5numpy__util_dtypestring(PyArray_Descr *, cha
 
 /* Module declarations from 'libc.math' */
 
-/* Module declarations from 'modl.enet_proj_fast' */
+/* Module declarations from 'modl._utils.enet_proj_fast' */
 static PyTypeObject *__pyx_array_type = 0;
 static PyTypeObject *__pyx_MemviewEnum_type = 0;
 static PyTypeObject *__pyx_memoryview_type = 0;
@@ -1510,13 +1510,13 @@ static PyObject *strided = 0;
 static PyObject *indirect = 0;
 static PyObject *contiguous = 0;
 static PyObject *indirect_contiguous = 0;
-static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice, double, int __pyx_skip_dispatch); /*proto*/
-static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch); /*proto*/
-static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14enet_proj_fast_our_rand_r(__pyx_t_4modl_14enet_proj_fast_UINT32_t *); /*proto*/
-static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14enet_proj_fast_randint(__pyx_t_4modl_14enet_proj_fast_UINT32_t, __pyx_t_4modl_14enet_proj_fast_UINT32_t *); /*proto*/
-static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double); /*proto*/
-static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double); /*proto*/
-static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice, unsigned int, unsigned int, double *); /*proto*/
+static double __pyx_f_4modl_6_utils_14enet_proj_fast_enet_norm(__Pyx_memviewslice, double, int __pyx_skip_dispatch); /*proto*/
+static void __pyx_f_4modl_6_utils_14enet_proj_fast_enet_projection_inplace(__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch); /*proto*/
+static CYTHON_INLINE __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_f_4modl_6_utils_14enet_proj_fast_our_rand_r(__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t *); /*proto*/
+static CYTHON_INLINE __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_f_4modl_6_utils_14enet_proj_fast_randint(__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t, __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t *); /*proto*/
+static CYTHON_INLINE double __pyx_f_4modl_6_utils_14enet_proj_fast_positive(double); /*proto*/
+static CYTHON_INLINE double __pyx_f_4modl_6_utils_14enet_proj_fast_sign(double); /*proto*/
+static CYTHON_INLINE void __pyx_f_4modl_6_utils_14enet_proj_fast_swap(__Pyx_memviewslice, unsigned int, unsigned int, double *); /*proto*/
 static struct __pyx_array_obj *__pyx_array_new(PyObject *, Py_ssize_t, char *, char *, char *); /*proto*/
 static void *__pyx_align_pointer(void *, size_t); /*proto*/
 static PyObject *__pyx_memoryview_new(PyObject *, int, int, __Pyx_TypeInfo *); /*proto*/
@@ -1550,10 +1550,10 @@ static void __pyx_memoryview_refcount_objects_in_slice(char *, Py_ssize_t *, Py_
 static void __pyx_memoryview_slice_assign_scalar(__Pyx_memviewslice *, int, size_t, void *, int); /*proto*/
 static void __pyx_memoryview__slice_assign_scalar(char *, Py_ssize_t *, Py_ssize_t *, int, size_t, void *); /*proto*/
 static __Pyx_TypeInfo __Pyx_TypeInfo_double = { "double", NULL, sizeof(double), { 0 }, 0, 'R', 0, 0 };
-#define __Pyx_MODULE_NAME "modl.enet_proj_fast"
-int __pyx_module_is_main_modl__enet_proj_fast = 0;
+#define __Pyx_MODULE_NAME "modl._utils.enet_proj_fast"
+int __pyx_module_is_main_modl___utils__enet_proj_fast = 0;
 
-/* Implementation of 'modl.enet_proj_fast' */
+/* Implementation of 'modl._utils.enet_proj_fast' */
 static PyObject *__pyx_builtin_range;
 static PyObject *__pyx_builtin_ValueError;
 static PyObject *__pyx_builtin_RuntimeError;
@@ -1733,8 +1733,8 @@ static PyObject *__pyx_kp_s_unable_to_allocate_shape_and_str;
 static PyObject *__pyx_kp_u_unknown_dtype_code_in_numpy_pxd;
 static PyObject *__pyx_n_s_unpack;
 static PyObject *__pyx_n_s_v;
-static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, __Pyx_memviewslice __pyx_v_b, double __pyx_v_radius, double __pyx_v_l1_ratio); /* proto */
-static PyObject *__pyx_pf_4modl_14enet_proj_fast_2enet_norm(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, double __pyx_v_l1_ratio); /* proto */
+static PyObject *__pyx_pf_4modl_6_utils_14enet_proj_fast_enet_projection_inplace(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, __Pyx_memviewslice __pyx_v_b, double __pyx_v_radius, double __pyx_v_l1_ratio); /* proto */
+static PyObject *__pyx_pf_4modl_6_utils_14enet_proj_fast_2enet_norm(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, double __pyx_v_l1_ratio); /* proto */
 static int __pyx_pf_5numpy_7ndarray___getbuffer__(PyArrayObject *__pyx_v_self, Py_buffer *__pyx_v_info, int __pyx_v_flags); /* proto */
 static void __pyx_pf_5numpy_7ndarray_2__releasebuffer__(PyArrayObject *__pyx_v_self, Py_buffer *__pyx_v_info); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array___cinit__(struct __pyx_array_obj *__pyx_v_self, PyObject *__pyx_v_shape, Py_ssize_t __pyx_v_itemsize, PyObject *__pyx_v_format, PyObject *__pyx_v_mode, int __pyx_v_allocate_buffer); /* proto */
@@ -1801,7 +1801,7 @@ static PyObject *__pyx_tuple__22;
 static PyObject *__pyx_tuple__23;
 static PyObject *__pyx_tuple__24;
 
-/* "modl/enet_proj_fast.pyx":31
+/* "modl/_utils/enet_proj_fast.pyx":31
  * 
  * # The following two functions are shamelessly copied from the tree code.
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:             # <<<<<<<<<<<<<<
@@ -1809,14 +1809,14 @@ static PyObject *__pyx_tuple__24;
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)
  */
 
-static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14enet_proj_fast_our_rand_r(__pyx_t_4modl_14enet_proj_fast_UINT32_t *__pyx_v_seed) {
-  __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_r;
+static CYTHON_INLINE __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_f_4modl_6_utils_14enet_proj_fast_our_rand_r(__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t *__pyx_v_seed) {
+  __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_r;
   long __pyx_t_1;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
 
-  /* "modl/enet_proj_fast.pyx":32
+  /* "modl/_utils/enet_proj_fast.pyx":32
  * # The following two functions are shamelessly copied from the tree code.
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)             # <<<<<<<<<<<<<<
@@ -1824,9 +1824,9 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
  *     seed[0] ^= <UINT32_t>(seed[0] << 5)
  */
   __pyx_t_1 = 0;
-  (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) << 13)));
+  (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) << 13)));
 
-  /* "modl/enet_proj_fast.pyx":33
+  /* "modl/_utils/enet_proj_fast.pyx":33
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)             # <<<<<<<<<<<<<<
@@ -1834,9 +1834,9 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
  * 
  */
   __pyx_t_1 = 0;
-  (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) >> 17)));
+  (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) >> 17)));
 
-  /* "modl/enet_proj_fast.pyx":34
+  /* "modl/_utils/enet_proj_fast.pyx":34
  *     seed[0] ^= <UINT32_t>(seed[0] << 13)
  *     seed[0] ^= <UINT32_t>(seed[0] >> 17)
  *     seed[0] ^= <UINT32_t>(seed[0] << 5)             # <<<<<<<<<<<<<<
@@ -1844,16 +1844,16 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
  *     return seed[0] % (<UINT32_t>RAND_R_MAX + 1)
  */
   __pyx_t_1 = 0;
-  (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) << 5)));
+  (__pyx_v_seed[__pyx_t_1]) = ((__pyx_v_seed[__pyx_t_1]) ^ ((__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t)((__pyx_v_seed[0]) << 5)));
 
-  /* "modl/enet_proj_fast.pyx":36
+  /* "modl/_utils/enet_proj_fast.pyx":36
  *     seed[0] ^= <UINT32_t>(seed[0] << 5)
  * 
  *     return seed[0] % (<UINT32_t>RAND_R_MAX + 1)             # <<<<<<<<<<<<<<
  * 
  * 
  */
-  __pyx_t_1 = (((__pyx_t_4modl_14enet_proj_fast_UINT32_t)__pyx_e_4modl_14enet_proj_fast_RAND_R_MAX) + 1);
+  __pyx_t_1 = (((__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t)__pyx_e_4modl_6_utils_14enet_proj_fast_RAND_R_MAX) + 1);
   if (unlikely(__pyx_t_1 == 0)) {
     #ifdef WITH_THREAD
     PyGILState_STATE __pyx_gilstate_save = PyGILState_Ensure();
@@ -1867,7 +1867,7 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
   __pyx_r = __Pyx_mod_long((__pyx_v_seed[0]), __pyx_t_1);
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":31
+  /* "modl/_utils/enet_proj_fast.pyx":31
  * 
  * # The following two functions are shamelessly copied from the tree code.
  * cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:             # <<<<<<<<<<<<<<
@@ -1877,13 +1877,13 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
 
   /* function exit code */
   __pyx_L1_error:;
-  __Pyx_WriteUnraisable("modl.enet_proj_fast.our_rand_r", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
+  __Pyx_WriteUnraisable("modl._utils.enet_proj_fast.our_rand_r", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
   __pyx_r = 0;
   __pyx_L0:;
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":39
+/* "modl/_utils/enet_proj_fast.pyx":39
  * 
  * 
  * cdef inline UINT32_t randint(UINT32_t end,             # <<<<<<<<<<<<<<
@@ -1891,21 +1891,21 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
  *     """Generate a random integer in [0; end)."""
  */
 
-static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14enet_proj_fast_randint(__pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_v_end, __pyx_t_4modl_14enet_proj_fast_UINT32_t *__pyx_v_random_state) {
-  __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_r;
-  __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_t_1;
+static CYTHON_INLINE __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_f_4modl_6_utils_14enet_proj_fast_randint(__pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_v_end, __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t *__pyx_v_random_state) {
+  __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_r;
+  __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_t_1;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
 
-  /* "modl/enet_proj_fast.pyx":42
+  /* "modl/_utils/enet_proj_fast.pyx":42
  *                               UINT32_t* random_state) nogil:
  *     """Generate a random integer in [0; end)."""
  *     return our_rand_r(random_state) % end             # <<<<<<<<<<<<<<
  * 
  * 
  */
-  __pyx_t_1 = __pyx_f_4modl_14enet_proj_fast_our_rand_r(__pyx_v_random_state);
+  __pyx_t_1 = __pyx_f_4modl_6_utils_14enet_proj_fast_our_rand_r(__pyx_v_random_state);
   if (unlikely(__pyx_v_end == 0)) {
     #ifdef WITH_THREAD
     PyGILState_STATE __pyx_gilstate_save = PyGILState_Ensure();
@@ -1919,7 +1919,7 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
   __pyx_r = (__pyx_t_1 % __pyx_v_end);
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":39
+  /* "modl/_utils/enet_proj_fast.pyx":39
  * 
  * 
  * cdef inline UINT32_t randint(UINT32_t end,             # <<<<<<<<<<<<<<
@@ -1929,13 +1929,13 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
 
   /* function exit code */
   __pyx_L1_error:;
-  __Pyx_WriteUnraisable("modl.enet_proj_fast.randint", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
+  __Pyx_WriteUnraisable("modl._utils.enet_proj_fast.randint", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
   __pyx_r = 0;
   __pyx_L0:;
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":45
+/* "modl/_utils/enet_proj_fast.pyx":45
  * 
  * 
  * cdef inline double positive(double a) nogil:             # <<<<<<<<<<<<<<
@@ -1943,11 +1943,11 @@ static CYTHON_INLINE __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_f_4modl_14ene
  *         return a
  */
 
-static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx_v_a) {
+static CYTHON_INLINE double __pyx_f_4modl_6_utils_14enet_proj_fast_positive(double __pyx_v_a) {
   double __pyx_r;
   int __pyx_t_1;
 
-  /* "modl/enet_proj_fast.pyx":46
+  /* "modl/_utils/enet_proj_fast.pyx":46
  * 
  * cdef inline double positive(double a) nogil:
  *     if a > 0:             # <<<<<<<<<<<<<<
@@ -1957,7 +1957,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
   __pyx_t_1 = ((__pyx_v_a > 0.0) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":47
+    /* "modl/_utils/enet_proj_fast.pyx":47
  * cdef inline double positive(double a) nogil:
  *     if a > 0:
  *         return a             # <<<<<<<<<<<<<<
@@ -1967,7 +1967,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
     __pyx_r = __pyx_v_a;
     goto __pyx_L0;
 
-    /* "modl/enet_proj_fast.pyx":46
+    /* "modl/_utils/enet_proj_fast.pyx":46
  * 
  * cdef inline double positive(double a) nogil:
  *     if a > 0:             # <<<<<<<<<<<<<<
@@ -1976,7 +1976,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
  */
   }
 
-  /* "modl/enet_proj_fast.pyx":49
+  /* "modl/_utils/enet_proj_fast.pyx":49
  *         return a
  *     else:
  *         return 0             # <<<<<<<<<<<<<<
@@ -1988,7 +1988,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
     goto __pyx_L0;
   }
 
-  /* "modl/enet_proj_fast.pyx":45
+  /* "modl/_utils/enet_proj_fast.pyx":45
  * 
  * 
  * cdef inline double positive(double a) nogil:             # <<<<<<<<<<<<<<
@@ -2001,7 +2001,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":52
+/* "modl/_utils/enet_proj_fast.pyx":52
  * 
  * 
  * cdef inline double sign(double a) nogil:             # <<<<<<<<<<<<<<
@@ -2009,11 +2009,11 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_positive(double __pyx
  *         return 1.
  */
 
-static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a) {
+static CYTHON_INLINE double __pyx_f_4modl_6_utils_14enet_proj_fast_sign(double __pyx_v_a) {
   double __pyx_r;
   int __pyx_t_1;
 
-  /* "modl/enet_proj_fast.pyx":53
+  /* "modl/_utils/enet_proj_fast.pyx":53
  * 
  * cdef inline double sign(double a) nogil:
  *     if a >= 0.:             # <<<<<<<<<<<<<<
@@ -2023,7 +2023,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
   __pyx_t_1 = ((__pyx_v_a >= 0.) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":54
+    /* "modl/_utils/enet_proj_fast.pyx":54
  * cdef inline double sign(double a) nogil:
  *     if a >= 0.:
  *         return 1.             # <<<<<<<<<<<<<<
@@ -2033,7 +2033,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
     __pyx_r = 1.;
     goto __pyx_L0;
 
-    /* "modl/enet_proj_fast.pyx":53
+    /* "modl/_utils/enet_proj_fast.pyx":53
  * 
  * cdef inline double sign(double a) nogil:
  *     if a >= 0.:             # <<<<<<<<<<<<<<
@@ -2042,7 +2042,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
  */
   }
 
-  /* "modl/enet_proj_fast.pyx":56
+  /* "modl/_utils/enet_proj_fast.pyx":56
  *         return 1.
  *     else:
  *         return -1.             # <<<<<<<<<<<<<<
@@ -2054,7 +2054,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
     goto __pyx_L0;
   }
 
-  /* "modl/enet_proj_fast.pyx":52
+  /* "modl/_utils/enet_proj_fast.pyx":52
  * 
  * 
  * cdef inline double sign(double a) nogil:             # <<<<<<<<<<<<<<
@@ -2067,7 +2067,7 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":61
+/* "modl/_utils/enet_proj_fast.pyx":61
  * @cython.boundscheck(False)
  * @cython.wraparound(False)
  * cdef inline void swap(double[:] b, unsigned int i, unsigned int j,             # <<<<<<<<<<<<<<
@@ -2075,13 +2075,13 @@ static CYTHON_INLINE double __pyx_f_4modl_14enet_proj_fast_sign(double __pyx_v_a
  *     buf[0] = b[i]
  */
 
-static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice __pyx_v_b, unsigned int __pyx_v_i, unsigned int __pyx_v_j, double *__pyx_v_buf) {
+static CYTHON_INLINE void __pyx_f_4modl_6_utils_14enet_proj_fast_swap(__Pyx_memviewslice __pyx_v_b, unsigned int __pyx_v_i, unsigned int __pyx_v_j, double *__pyx_v_buf) {
   size_t __pyx_t_1;
   size_t __pyx_t_2;
   size_t __pyx_t_3;
   size_t __pyx_t_4;
 
-  /* "modl/enet_proj_fast.pyx":63
+  /* "modl/_utils/enet_proj_fast.pyx":63
  * cdef inline void swap(double[:] b, unsigned int i, unsigned int j,
  *                       double * buf) nogil:
  *     buf[0] = b[i]             # <<<<<<<<<<<<<<
@@ -2091,7 +2091,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_t_1 = __pyx_v_i;
   (__pyx_v_buf[0]) = (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_1 * __pyx_v_b.strides[0]) )));
 
-  /* "modl/enet_proj_fast.pyx":64
+  /* "modl/_utils/enet_proj_fast.pyx":64
  *                       double * buf) nogil:
  *     buf[0] = b[i]
  *     b[i] = b[j]             # <<<<<<<<<<<<<<
@@ -2102,7 +2102,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_t_3 = __pyx_v_i;
   *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_3 * __pyx_v_b.strides[0]) )) = (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_2 * __pyx_v_b.strides[0]) )));
 
-  /* "modl/enet_proj_fast.pyx":65
+  /* "modl/_utils/enet_proj_fast.pyx":65
  *     buf[0] = b[i]
  *     b[i] = b[j]
  *     b[j] = buf[0]             # <<<<<<<<<<<<<<
@@ -2112,7 +2112,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_t_4 = __pyx_v_j;
   *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_4 * __pyx_v_b.strides[0]) )) = (__pyx_v_buf[0]);
 
-  /* "modl/enet_proj_fast.pyx":66
+  /* "modl/_utils/enet_proj_fast.pyx":66
  *     b[i] = b[j]
  *     b[j] = buf[0]
  *     return             # <<<<<<<<<<<<<<
@@ -2121,7 +2121,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
  */
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":61
+  /* "modl/_utils/enet_proj_fast.pyx":61
  * @cython.boundscheck(False)
  * @cython.wraparound(False)
  * cdef inline void swap(double[:] b, unsigned int i, unsigned int j,             # <<<<<<<<<<<<<<
@@ -2133,7 +2133,7 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
   __pyx_L0:;
 }
 
-/* "modl/enet_proj_fast.pyx":73
+/* "modl/_utils/enet_proj_fast.pyx":73
  * @cython.initializedcheck(False)
  * @cython.nonecheck(False)
  * cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,             # <<<<<<<<<<<<<<
@@ -2141,10 +2141,10 @@ static CYTHON_INLINE void __pyx_f_4modl_14enet_proj_fast_swap(__Pyx_memviewslice
  *     cdef unsigned int m = v.shape[0]
  */
 
-static PyObject *__pyx_pw_4modl_14enet_proj_fast_1enet_projection_inplace(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memviewslice __pyx_v_v, __Pyx_memviewslice __pyx_v_b, double __pyx_v_radius, double __pyx_v_l1_ratio, CYTHON_UNUSED int __pyx_skip_dispatch) {
+static PyObject *__pyx_pw_4modl_6_utils_14enet_proj_fast_1enet_projection_inplace(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static void __pyx_f_4modl_6_utils_14enet_proj_fast_enet_projection_inplace(__Pyx_memviewslice __pyx_v_v, __Pyx_memviewslice __pyx_v_b, double __pyx_v_radius, double __pyx_v_l1_ratio, CYTHON_UNUSED int __pyx_skip_dispatch) {
   unsigned int __pyx_v_m;
-  __pyx_t_4modl_14enet_proj_fast_UINT32_t __pyx_v_random_state;
+  __pyx_t_4modl_6_utils_14enet_proj_fast_UINT32_t __pyx_v_random_state;
   unsigned int __pyx_v_i;
   unsigned int __pyx_v_j;
   unsigned int __pyx_v_size_U;
@@ -2192,7 +2192,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
 
-  /* "modl/enet_proj_fast.pyx":75
+  /* "modl/_utils/enet_proj_fast.pyx":75
  * cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,
  *                              double l1_ratio) nogil:
  *     cdef unsigned int m = v.shape[0]             # <<<<<<<<<<<<<<
@@ -2201,7 +2201,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_m = (__pyx_v_v.shape[0]);
 
-  /* "modl/enet_proj_fast.pyx":76
+  /* "modl/_utils/enet_proj_fast.pyx":76
  *                              double l1_ratio) nogil:
  *     cdef unsigned int m = v.shape[0]
  *     cdef UINT32_t random_state = 0             # <<<<<<<<<<<<<<
@@ -2210,7 +2210,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_random_state = 0;
 
-  /* "modl/enet_proj_fast.pyx":81
+  /* "modl/_utils/enet_proj_fast.pyx":81
  *     cdef unsigned int size_U
  *     cdef unsigned int start_U
  *     cdef double buf = 0             # <<<<<<<<<<<<<<
@@ -2219,7 +2219,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_buf = 0.0;
 
-  /* "modl/enet_proj_fast.pyx":92
+  /* "modl/_utils/enet_proj_fast.pyx":92
  *     cdef double c
  *     cdef double l
  *     cdef double norm = 0             # <<<<<<<<<<<<<<
@@ -2228,7 +2228,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
  */
   __pyx_v_norm = 0.0;
 
-  /* "modl/enet_proj_fast.pyx":93
+  /* "modl/_utils/enet_proj_fast.pyx":93
  *     cdef double l
  *     cdef double norm = 0
  *     if radius == 0:             # <<<<<<<<<<<<<<
@@ -2238,7 +2238,7 @@ static void __pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__Pyx_memview
   __pyx_t_1 = ((__pyx_v_radius == 0.0) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":94
+    /* "modl/_utils/enet_proj_fast.pyx":94
  *     cdef double norm = 0
  *     if radius == 0:
  *         b[:] = 0             # <<<<<<<<<<<<<<
@@ -2268,7 +2268,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     }
     __PYX_XDEC_MEMVIEW(&__pyx_t_2, 0);
 
-    /* "modl/enet_proj_fast.pyx":95
+    /* "modl/_utils/enet_proj_fast.pyx":95
  *     if radius == 0:
  *         b[:] = 0
  *         return             # <<<<<<<<<<<<<<
@@ -2277,7 +2277,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
  */
     goto __pyx_L0;
 
-    /* "modl/enet_proj_fast.pyx":93
+    /* "modl/_utils/enet_proj_fast.pyx":93
  *     cdef double l
  *     cdef double norm = 0
  *     if radius == 0:             # <<<<<<<<<<<<<<
@@ -2286,7 +2286,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
  */
   }
 
-  /* "modl/enet_proj_fast.pyx":98
+  /* "modl/_utils/enet_proj_fast.pyx":98
  * 
  *     # L2 projection
  *     if l1_ratio == 0:             # <<<<<<<<<<<<<<
@@ -2296,7 +2296,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
   __pyx_t_1 = ((__pyx_v_l1_ratio == 0.0) != 0);
   if (__pyx_t_1) {
 
-    /* "modl/enet_proj_fast.pyx":99
+    /* "modl/_utils/enet_proj_fast.pyx":99
  *     # L2 projection
  *     if l1_ratio == 0:
  *         for i in range(m):             # <<<<<<<<<<<<<<
@@ -2307,7 +2307,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
       __pyx_v_i = __pyx_t_4;
 
-      /* "modl/enet_proj_fast.pyx":100
+      /* "modl/_utils/enet_proj_fast.pyx":100
  *     if l1_ratio == 0:
  *         for i in range(m):
  *             norm += v[i] ** 2             # <<<<<<<<<<<<<<
@@ -2318,7 +2318,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       __pyx_v_norm = (__pyx_v_norm + pow((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_5 * __pyx_v_v.strides[0]) ))), 2.0));
     }
 
-    /* "modl/enet_proj_fast.pyx":101
+    /* "modl/_utils/enet_proj_fast.pyx":101
  *         for i in range(m):
  *             norm += v[i] ** 2
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2328,7 +2328,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     __pyx_t_1 = ((__pyx_v_norm <= __pyx_v_radius) != 0);
     if (__pyx_t_1) {
 
-      /* "modl/enet_proj_fast.pyx":102
+      /* "modl/_utils/enet_proj_fast.pyx":102
  *             norm += v[i] ** 2
  *         if norm <= radius:
  *             norm = 1             # <<<<<<<<<<<<<<
@@ -2337,7 +2337,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
  */
       __pyx_v_norm = 1.0;
 
-      /* "modl/enet_proj_fast.pyx":101
+      /* "modl/_utils/enet_proj_fast.pyx":101
  *         for i in range(m):
  *             norm += v[i] ** 2
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2347,7 +2347,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       goto __pyx_L7;
     }
 
-    /* "modl/enet_proj_fast.pyx":104
+    /* "modl/_utils/enet_proj_fast.pyx":104
  *             norm = 1
  *         else:
  *             norm = sqrt(norm / radius)             # <<<<<<<<<<<<<<
@@ -2369,7 +2369,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     }
     __pyx_L7:;
 
-    /* "modl/enet_proj_fast.pyx":105
+    /* "modl/_utils/enet_proj_fast.pyx":105
  *         else:
  *             norm = sqrt(norm / radius)
  *         for i in range(m):             # <<<<<<<<<<<<<<
@@ -2380,7 +2380,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
       __pyx_v_i = __pyx_t_4;
 
-      /* "modl/enet_proj_fast.pyx":106
+      /* "modl/_utils/enet_proj_fast.pyx":106
  *             norm = sqrt(norm / radius)
  *         for i in range(m):
  *             b[i] = v[i] / norm             # <<<<<<<<<<<<<<
@@ -2403,7 +2403,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_8 * __pyx_v_b.strides[0]) )) = (__pyx_t_7 / __pyx_v_norm);
     }
 
-    /* "modl/enet_proj_fast.pyx":98
+    /* "modl/_utils/enet_proj_fast.pyx":98
  * 
  *     # L2 projection
  *     if l1_ratio == 0:             # <<<<<<<<<<<<<<
@@ -2413,7 +2413,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     goto __pyx_L4;
   }
 
-  /* "modl/enet_proj_fast.pyx":109
+  /* "modl/_utils/enet_proj_fast.pyx":109
  *     else:
  *         # Scaling by 1 / l1_ratio
  *         gamma = 2 / l1_ratio - 2             # <<<<<<<<<<<<<<
@@ -2433,7 +2433,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     }
     __pyx_v_gamma = ((2.0 / __pyx_v_l1_ratio) - 2.0);
 
-    /* "modl/enet_proj_fast.pyx":110
+    /* "modl/_utils/enet_proj_fast.pyx":110
  *         # Scaling by 1 / l1_ratio
  *         gamma = 2 / l1_ratio - 2
  *         radius /= l1_ratio             # <<<<<<<<<<<<<<
@@ -2452,7 +2452,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     }
     __pyx_v_radius = (__pyx_v_radius / __pyx_v_l1_ratio);
 
-    /* "modl/enet_proj_fast.pyx":112
+    /* "modl/_utils/enet_proj_fast.pyx":112
  *         radius /= l1_ratio
  *         # Preparing data
  *         for j in range(m):             # <<<<<<<<<<<<<<
@@ -2463,7 +2463,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
       __pyx_v_j = __pyx_t_4;
 
-      /* "modl/enet_proj_fast.pyx":113
+      /* "modl/_utils/enet_proj_fast.pyx":113
  *         # Preparing data
  *         for j in range(m):
  *             b[j] = fabs(v[j])             # <<<<<<<<<<<<<<
@@ -2474,7 +2474,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       __pyx_t_10 = __pyx_v_j;
       *((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_10 * __pyx_v_b.strides[0]) )) = fabs((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_9 * __pyx_v_v.strides[0]) ))));
 
-      /* "modl/enet_proj_fast.pyx":114
+      /* "modl/_utils/enet_proj_fast.pyx":114
  *         for j in range(m):
  *             b[j] = fabs(v[j])
  *             norm += b[j] * (1 + gamma / 2 * b[j])             # <<<<<<<<<<<<<<
@@ -2486,7 +2486,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
       __pyx_v_norm = (__pyx_v_norm + ((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_11 * __pyx_v_b.strides[0]) ))) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_12 * __pyx_v_b.strides[0]) )))))));
     }
 
-    /* "modl/enet_proj_fast.pyx":115
+    /* "modl/_utils/enet_proj_fast.pyx":115
  *             b[j] = fabs(v[j])
  *             norm += b[j] * (1 + gamma / 2 * b[j])
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2496,7 +2496,7 @@ __pyx_t_2.strides[0] = __pyx_v_b.strides[0];
     __pyx_t_1 = ((__pyx_v_norm <= __pyx_v_radius) != 0);
     if (__pyx_t_1) {
 
-      /* "modl/enet_proj_fast.pyx":116
+      /* "modl/_utils/enet_proj_fast.pyx":116
  *             norm += b[j] * (1 + gamma / 2 * b[j])
  *         if norm <= radius:
  *             b[:] = v[:]             # <<<<<<<<<<<<<<
@@ -2521,7 +2521,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       __PYX_XDEC_MEMVIEW(&__pyx_t_14, 0);
       __PYX_XDEC_MEMVIEW(&__pyx_t_13, 0);
 
-      /* "modl/enet_proj_fast.pyx":115
+      /* "modl/_utils/enet_proj_fast.pyx":115
  *             b[j] = fabs(v[j])
  *             norm += b[j] * (1 + gamma / 2 * b[j])
  *         if norm <= radius:             # <<<<<<<<<<<<<<
@@ -2531,7 +2531,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       goto __pyx_L12;
     }
 
-    /* "modl/enet_proj_fast.pyx":119
+    /* "modl/_utils/enet_proj_fast.pyx":119
  *         else:
  *             # s and rho computation
  *             s = 0             # <<<<<<<<<<<<<<
@@ -2541,7 +2541,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
     /*else*/ {
       __pyx_v_s = 0.0;
 
-      /* "modl/enet_proj_fast.pyx":120
+      /* "modl/_utils/enet_proj_fast.pyx":120
  *             # s and rho computation
  *             s = 0
  *             rho = 0             # <<<<<<<<<<<<<<
@@ -2550,7 +2550,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
       __pyx_v_rho = 0;
 
-      /* "modl/enet_proj_fast.pyx":121
+      /* "modl/_utils/enet_proj_fast.pyx":121
  *             s = 0
  *             rho = 0
  *             start_U = 0             # <<<<<<<<<<<<<<
@@ -2559,7 +2559,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
       __pyx_v_start_U = 0;
 
-      /* "modl/enet_proj_fast.pyx":122
+      /* "modl/_utils/enet_proj_fast.pyx":122
  *             rho = 0
  *             start_U = 0
  *             size_U = m             # <<<<<<<<<<<<<<
@@ -2568,7 +2568,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
       __pyx_v_size_U = __pyx_v_m;
 
-      /* "modl/enet_proj_fast.pyx":123
+      /* "modl/_utils/enet_proj_fast.pyx":123
  *             start_U = 0
  *             size_U = m
  *             while size_U > 0:             # <<<<<<<<<<<<<<
@@ -2579,25 +2579,25 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         __pyx_t_1 = ((__pyx_v_size_U > 0) != 0);
         if (!__pyx_t_1) break;
 
-        /* "modl/enet_proj_fast.pyx":124
+        /* "modl/_utils/enet_proj_fast.pyx":124
  *             size_U = m
  *             while size_U > 0:
  *                 pivot = randint(size_U, &random_state) + start_U             # <<<<<<<<<<<<<<
  *                 # Putting pivot at the beginning
  *                 swap(b, pivot, start_U, &buf)
  */
-        __pyx_v_pivot = (__pyx_f_4modl_14enet_proj_fast_randint(__pyx_v_size_U, (&__pyx_v_random_state)) + __pyx_v_start_U);
+        __pyx_v_pivot = (__pyx_f_4modl_6_utils_14enet_proj_fast_randint(__pyx_v_size_U, (&__pyx_v_random_state)) + __pyx_v_start_U);
 
-        /* "modl/enet_proj_fast.pyx":126
+        /* "modl/_utils/enet_proj_fast.pyx":126
  *                 pivot = randint(size_U, &random_state) + start_U
  *                 # Putting pivot at the beginning
  *                 swap(b, pivot, start_U, &buf)             # <<<<<<<<<<<<<<
  *                 pivot = start_U
  *                 drho = 1
  */
-        __pyx_f_4modl_14enet_proj_fast_swap(__pyx_v_b, __pyx_v_pivot, __pyx_v_start_U, (&__pyx_v_buf));
+        __pyx_f_4modl_6_utils_14enet_proj_fast_swap(__pyx_v_b, __pyx_v_pivot, __pyx_v_start_U, (&__pyx_v_buf));
 
-        /* "modl/enet_proj_fast.pyx":127
+        /* "modl/_utils/enet_proj_fast.pyx":127
  *                 # Putting pivot at the beginning
  *                 swap(b, pivot, start_U, &buf)
  *                 pivot = start_U             # <<<<<<<<<<<<<<
@@ -2606,7 +2606,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_pivot = __pyx_v_start_U;
 
-        /* "modl/enet_proj_fast.pyx":128
+        /* "modl/_utils/enet_proj_fast.pyx":128
  *                 swap(b, pivot, start_U, &buf)
  *                 pivot = start_U
  *                 drho = 1             # <<<<<<<<<<<<<<
@@ -2615,7 +2615,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_drho = 1;
 
-        /* "modl/enet_proj_fast.pyx":129
+        /* "modl/_utils/enet_proj_fast.pyx":129
  *                 pivot = start_U
  *                 drho = 1
  *                 ds = b[pivot] * (1 + gamma / 2 * b[pivot])             # <<<<<<<<<<<<<<
@@ -2626,7 +2626,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         __pyx_t_16 = __pyx_v_pivot;
         __pyx_v_ds = ((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_15 * __pyx_v_b.strides[0]) ))) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_16 * __pyx_v_b.strides[0]) ))))));
 
-        /* "modl/enet_proj_fast.pyx":131
+        /* "modl/_utils/enet_proj_fast.pyx":131
  *                 ds = b[pivot] * (1 + gamma / 2 * b[pivot])
  *                 # Ordering : [pivot, >=, <], using Lobato quicksort
  *                 for i in range(start_U + 1, start_U + size_U):             # <<<<<<<<<<<<<<
@@ -2637,7 +2637,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         for (__pyx_t_4 = (__pyx_v_start_U + 1); __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
           __pyx_v_i = __pyx_t_4;
 
-          /* "modl/enet_proj_fast.pyx":132
+          /* "modl/_utils/enet_proj_fast.pyx":132
  *                 # Ordering : [pivot, >=, <], using Lobato quicksort
  *                 for i in range(start_U + 1, start_U + size_U):
  *                     if b[i] >= b[pivot]:             # <<<<<<<<<<<<<<
@@ -2649,7 +2649,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           __pyx_t_1 = (((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_17 * __pyx_v_b.strides[0]) ))) >= (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_18 * __pyx_v_b.strides[0]) )))) != 0);
           if (__pyx_t_1) {
 
-            /* "modl/enet_proj_fast.pyx":133
+            /* "modl/_utils/enet_proj_fast.pyx":133
  *                 for i in range(start_U + 1, start_U + size_U):
  *                     if b[i] >= b[pivot]:
  *                         ds += b[i] * (1 + gamma / 2 * b[i])             # <<<<<<<<<<<<<<
@@ -2660,16 +2660,16 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
             __pyx_t_20 = __pyx_v_i;
             __pyx_v_ds = (__pyx_v_ds + ((*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_19 * __pyx_v_b.strides[0]) ))) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_20 * __pyx_v_b.strides[0]) )))))));
 
-            /* "modl/enet_proj_fast.pyx":134
+            /* "modl/_utils/enet_proj_fast.pyx":134
  *                     if b[i] >= b[pivot]:
  *                         ds += b[i] * (1 + gamma / 2 * b[i])
  *                         swap(b, i, start_U + drho, &buf)             # <<<<<<<<<<<<<<
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\
  */
-            __pyx_f_4modl_14enet_proj_fast_swap(__pyx_v_b, __pyx_v_i, (__pyx_v_start_U + __pyx_v_drho), (&__pyx_v_buf));
+            __pyx_f_4modl_6_utils_14enet_proj_fast_swap(__pyx_v_b, __pyx_v_i, (__pyx_v_start_U + __pyx_v_drho), (&__pyx_v_buf));
 
-            /* "modl/enet_proj_fast.pyx":135
+            /* "modl/_utils/enet_proj_fast.pyx":135
  *                         ds += b[i] * (1 + gamma / 2 * b[i])
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1             # <<<<<<<<<<<<<<
@@ -2678,7 +2678,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
             __pyx_v_drho = (__pyx_v_drho + 1);
 
-            /* "modl/enet_proj_fast.pyx":132
+            /* "modl/_utils/enet_proj_fast.pyx":132
  *                 # Ordering : [pivot, >=, <], using Lobato quicksort
  *                 for i in range(start_U + 1, start_U + size_U):
  *                     if b[i] >= b[pivot]:             # <<<<<<<<<<<<<<
@@ -2688,7 +2688,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           }
         }
 
-        /* "modl/enet_proj_fast.pyx":136
+        /* "modl/_utils/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2697,7 +2697,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_21 = __pyx_v_pivot;
 
-        /* "modl/enet_proj_fast.pyx":137
+        /* "modl/_utils/enet_proj_fast.pyx":137
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\
  *                         * b[pivot] < radius * (1 + gamma * b[pivot]) ** 2:             # <<<<<<<<<<<<<<
@@ -2706,7 +2706,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_22 = __pyx_v_pivot;
 
-        /* "modl/enet_proj_fast.pyx":136
+        /* "modl/_utils/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2715,7 +2715,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_23 = __pyx_v_pivot;
 
-        /* "modl/enet_proj_fast.pyx":137
+        /* "modl/_utils/enet_proj_fast.pyx":137
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\
  *                         * b[pivot] < radius * (1 + gamma * b[pivot]) ** 2:             # <<<<<<<<<<<<<<
@@ -2724,7 +2724,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_1 = ((((__pyx_v_s + __pyx_v_ds) - (((__pyx_v_rho + __pyx_v_drho) * (1.0 + ((__pyx_v_gamma / 2.0) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_21 * __pyx_v_b.strides[0]) )))))) * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_22 * __pyx_v_b.strides[0]) ))))) < (__pyx_v_radius * pow((1.0 + (__pyx_v_gamma * (*((double *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_23 * __pyx_v_b.strides[0]) ))))), 2.0))) != 0);
 
-        /* "modl/enet_proj_fast.pyx":136
+        /* "modl/_utils/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2733,7 +2733,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         if (__pyx_t_1) {
 
-          /* "modl/enet_proj_fast.pyx":139
+          /* "modl/_utils/enet_proj_fast.pyx":139
  *                         * b[pivot] < radius * (1 + gamma * b[pivot]) ** 2:
  *                     # U <- L : [<]
  *                     start_U += drho             # <<<<<<<<<<<<<<
@@ -2742,7 +2742,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_start_U = (__pyx_v_start_U + __pyx_v_drho);
 
-          /* "modl/enet_proj_fast.pyx":140
+          /* "modl/_utils/enet_proj_fast.pyx":140
  *                     # U <- L : [<]
  *                     start_U += drho
  *                     size_U -= drho             # <<<<<<<<<<<<<<
@@ -2751,7 +2751,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_size_U = (__pyx_v_size_U - __pyx_v_drho);
 
-          /* "modl/enet_proj_fast.pyx":141
+          /* "modl/_utils/enet_proj_fast.pyx":141
  *                     start_U += drho
  *                     size_U -= drho
  *                     rho += drho             # <<<<<<<<<<<<<<
@@ -2760,7 +2760,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_rho = (__pyx_v_rho + __pyx_v_drho);
 
-          /* "modl/enet_proj_fast.pyx":142
+          /* "modl/_utils/enet_proj_fast.pyx":142
  *                     size_U -= drho
  *                     rho += drho
  *                     s += ds             # <<<<<<<<<<<<<<
@@ -2769,7 +2769,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
           __pyx_v_s = (__pyx_v_s + __pyx_v_ds);
 
-          /* "modl/enet_proj_fast.pyx":136
+          /* "modl/_utils/enet_proj_fast.pyx":136
  *                         swap(b, i, start_U + drho, &buf)
  *                         drho += 1
  *                 if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\             # <<<<<<<<<<<<<<
@@ -2779,7 +2779,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
           goto __pyx_L18;
         }
 
-        /* "modl/enet_proj_fast.pyx":145
+        /* "modl/_utils/enet_proj_fast.pyx":145
  *                 else:
  *                     # U <- G \ k : [>=]
  *                     start_U += 1             # <<<<<<<<<<<<<<
@@ -2789,7 +2789,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         /*else*/ {
           __pyx_v_start_U = (__pyx_v_start_U + 1);
 
-          /* "modl/enet_proj_fast.pyx":146
+          /* "modl/_utils/enet_proj_fast.pyx":146
  *                     # U <- G \ k : [>=]
  *                     start_U += 1
  *                     size_U = drho - 1             # <<<<<<<<<<<<<<
@@ -2801,7 +2801,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         __pyx_L18:;
       }
 
-      /* "modl/enet_proj_fast.pyx":149
+      /* "modl/_utils/enet_proj_fast.pyx":149
  * 
  *             # Projection
  *             if gamma != 0:             # <<<<<<<<<<<<<<
@@ -2811,7 +2811,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       __pyx_t_1 = ((__pyx_v_gamma != 0.0) != 0);
       if (__pyx_t_1) {
 
-        /* "modl/enet_proj_fast.pyx":150
+        /* "modl/_utils/enet_proj_fast.pyx":150
  *             # Projection
  *             if gamma != 0:
  *                 a = gamma ** 2 * radius + gamma * rho * 0.5             # <<<<<<<<<<<<<<
@@ -2820,7 +2820,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_a = ((pow(__pyx_v_gamma, 2.0) * __pyx_v_radius) + ((__pyx_v_gamma * __pyx_v_rho) * 0.5));
 
-        /* "modl/enet_proj_fast.pyx":151
+        /* "modl/_utils/enet_proj_fast.pyx":151
  *             if gamma != 0:
  *                 a = gamma ** 2 * radius + gamma * rho * 0.5
  *                 d = 2 * radius * gamma + rho             # <<<<<<<<<<<<<<
@@ -2829,7 +2829,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_d = (((2.0 * __pyx_v_radius) * __pyx_v_gamma) + __pyx_v_rho);
 
-        /* "modl/enet_proj_fast.pyx":152
+        /* "modl/_utils/enet_proj_fast.pyx":152
  *                 a = gamma ** 2 * radius + gamma * rho * 0.5
  *                 d = 2 * radius * gamma + rho
  *                 c = radius - s             # <<<<<<<<<<<<<<
@@ -2838,7 +2838,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_v_c = (__pyx_v_radius - __pyx_v_s);
 
-        /* "modl/enet_proj_fast.pyx":153
+        /* "modl/_utils/enet_proj_fast.pyx":153
  *                 d = 2 * radius * gamma + rho
  *                 c = radius - s
  *                 l = (-d + sqrt(d ** 2 - 4 * a * c)) / (2 * a)             # <<<<<<<<<<<<<<
@@ -2859,7 +2859,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         }
         __pyx_v_l = (__pyx_t_7 / __pyx_t_24);
 
-        /* "modl/enet_proj_fast.pyx":149
+        /* "modl/_utils/enet_proj_fast.pyx":149
  * 
  *             # Projection
  *             if gamma != 0:             # <<<<<<<<<<<<<<
@@ -2869,7 +2869,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
         goto __pyx_L19;
       }
 
-      /* "modl/enet_proj_fast.pyx":155
+      /* "modl/_utils/enet_proj_fast.pyx":155
  *                 l = (-d + sqrt(d ** 2 - 4 * a * c)) / (2 * a)
  *             else:
  *                 l = (s - radius) / rho             # <<<<<<<<<<<<<<
@@ -2892,7 +2892,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       }
       __pyx_L19:;
 
-      /* "modl/enet_proj_fast.pyx":156
+      /* "modl/_utils/enet_proj_fast.pyx":156
  *             else:
  *                 l = (s - radius) / rho
  *             for i in range(m):             # <<<<<<<<<<<<<<
@@ -2903,7 +2903,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
       for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
         __pyx_v_i = __pyx_t_4;
 
-        /* "modl/enet_proj_fast.pyx":157
+        /* "modl/_utils/enet_proj_fast.pyx":157
  *                 l = (s - radius) / rho
  *             for i in range(m):
  *                 b[i] = sign(v[i]) * positive(fabs(v[i]) - l) / (1 + l * gamma)             # <<<<<<<<<<<<<<
@@ -2912,7 +2912,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
         __pyx_t_25 = __pyx_v_i;
         __pyx_t_26 = __pyx_v_i;
-        __pyx_t_24 = (__pyx_f_4modl_14enet_proj_fast_sign((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_25 * __pyx_v_v.strides[0]) )))) * __pyx_f_4modl_14enet_proj_fast_positive((fabs((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_26 * __pyx_v_v.strides[0]) )))) - __pyx_v_l)));
+        __pyx_t_24 = (__pyx_f_4modl_6_utils_14enet_proj_fast_sign((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_25 * __pyx_v_v.strides[0]) )))) * __pyx_f_4modl_6_utils_14enet_proj_fast_positive((fabs((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_26 * __pyx_v_v.strides[0]) )))) - __pyx_v_l)));
         __pyx_t_7 = (1.0 + (__pyx_v_l * __pyx_v_gamma));
         if (unlikely(__pyx_t_7 == 0)) {
           #ifdef WITH_THREAD
@@ -2932,7 +2932,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
   }
   __pyx_L4:;
 
-  /* "modl/enet_proj_fast.pyx":158
+  /* "modl/_utils/enet_proj_fast.pyx":158
  *             for i in range(m):
  *                 b[i] = sign(v[i]) * positive(fabs(v[i]) - l) / (1 + l * gamma)
  *     return             # <<<<<<<<<<<<<<
@@ -2941,7 +2941,7 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
  */
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":73
+  /* "modl/_utils/enet_proj_fast.pyx":73
  * @cython.initializedcheck(False)
  * @cython.nonecheck(False)
  * cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,             # <<<<<<<<<<<<<<
@@ -2954,13 +2954,13 @@ if (unlikely(__pyx_memoryview_copy_contents(__pyx_t_13, __pyx_t_14, 1, 1, 0) < 0
   __PYX_XDEC_MEMVIEW(&__pyx_t_2, 0);
   __PYX_XDEC_MEMVIEW(&__pyx_t_13, 0);
   __PYX_XDEC_MEMVIEW(&__pyx_t_14, 0);
-  __Pyx_WriteUnraisable("modl.enet_proj_fast.enet_projection_inplace", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
+  __Pyx_WriteUnraisable("modl._utils.enet_proj_fast.enet_projection_inplace", __pyx_clineno, __pyx_lineno, __pyx_filename, 0, 1);
   __pyx_L0:;
 }
 
 /* Python wrapper */
-static PyObject *__pyx_pw_4modl_14enet_proj_fast_1enet_projection_inplace(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static PyObject *__pyx_pw_4modl_14enet_proj_fast_1enet_projection_inplace(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
+static PyObject *__pyx_pw_4modl_6_utils_14enet_proj_fast_1enet_projection_inplace(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static PyObject *__pyx_pw_4modl_6_utils_14enet_proj_fast_1enet_projection_inplace(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
   __Pyx_memviewslice __pyx_v_v = { 0, 0, { 0 }, { 0 }, { 0 } };
   __Pyx_memviewslice __pyx_v_b = { 0, 0, { 0 }, { 0 }, { 0 } };
   double __pyx_v_radius;
@@ -3026,18 +3026,18 @@ static PyObject *__pyx_pw_4modl_14enet_proj_fast_1enet_projection_inplace(PyObje
   __pyx_L5_argtuple_error:;
   __Pyx_RaiseArgtupleInvalid("enet_projection_inplace", 1, 4, 4, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   __pyx_L3_error:;
-  __Pyx_AddTraceback("modl.enet_proj_fast.enet_projection_inplace", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("modl._utils.enet_proj_fast.enet_projection_inplace", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(__pyx_self, __pyx_v_v, __pyx_v_b, __pyx_v_radius, __pyx_v_l1_ratio);
+  __pyx_r = __pyx_pf_4modl_6_utils_14enet_proj_fast_enet_projection_inplace(__pyx_self, __pyx_v_v, __pyx_v_b, __pyx_v_radius, __pyx_v_l1_ratio);
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, __Pyx_memviewslice __pyx_v_b, double __pyx_v_radius, double __pyx_v_l1_ratio) {
+static PyObject *__pyx_pf_4modl_6_utils_14enet_proj_fast_enet_projection_inplace(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, __Pyx_memviewslice __pyx_v_b, double __pyx_v_radius, double __pyx_v_l1_ratio) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -3046,7 +3046,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("enet_projection_inplace", 0);
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_4modl_14enet_proj_fast_enet_projection_inplace(__pyx_v_v, __pyx_v_b, __pyx_v_radius, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_4modl_6_utils_14enet_proj_fast_enet_projection_inplace(__pyx_v_v, __pyx_v_b, __pyx_v_radius, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 73; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -3055,7 +3055,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_
   /* function exit code */
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_1);
-  __Pyx_AddTraceback("modl.enet_proj_fast.enet_projection_inplace", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("modl._utils.enet_proj_fast.enet_projection_inplace", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __PYX_XDEC_MEMVIEW(&__pyx_v_v, 1);
@@ -3065,7 +3065,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_
   return __pyx_r;
 }
 
-/* "modl/enet_proj_fast.pyx":164
+/* "modl/_utils/enet_proj_fast.pyx":164
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
  * cpdef double enet_norm(double[:] v, double l1_ratio) nogil:             # <<<<<<<<<<<<<<
@@ -3073,8 +3073,8 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_enet_projection_inplace(CYTHON_
  * 
  */
 
-static PyObject *__pyx_pw_4modl_14enet_proj_fast_3enet_norm(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_v_v, double __pyx_v_l1_ratio, CYTHON_UNUSED int __pyx_skip_dispatch) {
+static PyObject *__pyx_pw_4modl_6_utils_14enet_proj_fast_3enet_norm(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static double __pyx_f_4modl_6_utils_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_v_v, double __pyx_v_l1_ratio, CYTHON_UNUSED int __pyx_skip_dispatch) {
   int __pyx_v_n;
   double __pyx_v_res;
   double __pyx_v_v_abs;
@@ -3084,7 +3084,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
   unsigned int __pyx_t_2;
   size_t __pyx_t_3;
 
-  /* "modl/enet_proj_fast.pyx":180
+  /* "modl/_utils/enet_proj_fast.pyx":180
  *         Elastic-net norm
  *     """
  *     cdef int n = v.shape[0]             # <<<<<<<<<<<<<<
@@ -3093,7 +3093,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
  */
   __pyx_v_n = (__pyx_v_v.shape[0]);
 
-  /* "modl/enet_proj_fast.pyx":181
+  /* "modl/_utils/enet_proj_fast.pyx":181
  *     """
  *     cdef int n = v.shape[0]
  *     cdef double res = 0             # <<<<<<<<<<<<<<
@@ -3102,7 +3102,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
  */
   __pyx_v_res = 0.0;
 
-  /* "modl/enet_proj_fast.pyx":184
+  /* "modl/_utils/enet_proj_fast.pyx":184
  *     cdef double v_abs
  *     cdef unsigned int i
  *     for i in range(n):             # <<<<<<<<<<<<<<
@@ -3113,7 +3113,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
   for (__pyx_t_2 = 0; __pyx_t_2 < __pyx_t_1; __pyx_t_2+=1) {
     __pyx_v_i = __pyx_t_2;
 
-    /* "modl/enet_proj_fast.pyx":185
+    /* "modl/_utils/enet_proj_fast.pyx":185
  *     cdef unsigned int i
  *     for i in range(n):
  *         v_abs = fabs(v[i])             # <<<<<<<<<<<<<<
@@ -3123,7 +3123,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
     __pyx_t_3 = __pyx_v_i;
     __pyx_v_v_abs = fabs((*((double *) ( /* dim=0 */ (__pyx_v_v.data + __pyx_t_3 * __pyx_v_v.strides[0]) ))));
 
-    /* "modl/enet_proj_fast.pyx":186
+    /* "modl/_utils/enet_proj_fast.pyx":186
  *     for i in range(n):
  *         v_abs = fabs(v[i])
  *         res += v_abs * (l1_ratio + (1 - l1_ratio) * v_abs)             # <<<<<<<<<<<<<<
@@ -3132,7 +3132,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
     __pyx_v_res = (__pyx_v_res + (__pyx_v_v_abs * (__pyx_v_l1_ratio + ((1.0 - __pyx_v_l1_ratio) * __pyx_v_v_abs))));
   }
 
-  /* "modl/enet_proj_fast.pyx":187
+  /* "modl/_utils/enet_proj_fast.pyx":187
  *         v_abs = fabs(v[i])
  *         res += v_abs * (l1_ratio + (1 - l1_ratio) * v_abs)
  *     return res             # <<<<<<<<<<<<<<
@@ -3140,7 +3140,7 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
   __pyx_r = __pyx_v_res;
   goto __pyx_L0;
 
-  /* "modl/enet_proj_fast.pyx":164
+  /* "modl/_utils/enet_proj_fast.pyx":164
  * @cython.wraparound(False)
  * @cython.initializedcheck(False)
  * cpdef double enet_norm(double[:] v, double l1_ratio) nogil:             # <<<<<<<<<<<<<<
@@ -3154,9 +3154,9 @@ static double __pyx_f_4modl_14enet_proj_fast_enet_norm(__Pyx_memviewslice __pyx_
 }
 
 /* Python wrapper */
-static PyObject *__pyx_pw_4modl_14enet_proj_fast_3enet_norm(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static char __pyx_doc_4modl_14enet_proj_fast_2enet_norm[] = "Returns the elastic net norm of a vector\n\n    Parameters\n    -----------------------------------------\n    v: double memory-view,\n        Vector\n\n    l1_gamma: float,\n        Ratio of l1 norm (between 0 and 1)\n\n    Returns\n    ------------------------------------------\n    norm: float,\n        Elastic-net norm\n    ";
-static PyObject *__pyx_pw_4modl_14enet_proj_fast_3enet_norm(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
+static PyObject *__pyx_pw_4modl_6_utils_14enet_proj_fast_3enet_norm(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static char __pyx_doc_4modl_6_utils_14enet_proj_fast_2enet_norm[] = "Returns the elastic net norm of a vector\n\n    Parameters\n    -----------------------------------------\n    v: double memory-view,\n        Vector\n\n    l1_gamma: float,\n        Ratio of l1 norm (between 0 and 1)\n\n    Returns\n    ------------------------------------------\n    norm: float,\n        Elastic-net norm\n    ";
+static PyObject *__pyx_pw_4modl_6_utils_14enet_proj_fast_3enet_norm(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
   __Pyx_memviewslice __pyx_v_v = { 0, 0, { 0 }, { 0 }, { 0 } };
   double __pyx_v_l1_ratio;
   int __pyx_lineno = 0;
@@ -3204,18 +3204,18 @@ static PyObject *__pyx_pw_4modl_14enet_proj_fast_3enet_norm(PyObject *__pyx_self
   __pyx_L5_argtuple_error:;
   __Pyx_RaiseArgtupleInvalid("enet_norm", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L3_error;}
   __pyx_L3_error:;
-  __Pyx_AddTraceback("modl.enet_proj_fast.enet_norm", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("modl._utils.enet_proj_fast.enet_norm", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_4modl_14enet_proj_fast_2enet_norm(__pyx_self, __pyx_v_v, __pyx_v_l1_ratio);
+  __pyx_r = __pyx_pf_4modl_6_utils_14enet_proj_fast_2enet_norm(__pyx_self, __pyx_v_v, __pyx_v_l1_ratio);
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_4modl_14enet_proj_fast_2enet_norm(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, double __pyx_v_l1_ratio) {
+static PyObject *__pyx_pf_4modl_6_utils_14enet_proj_fast_2enet_norm(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_v, double __pyx_v_l1_ratio) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -3224,7 +3224,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_2enet_norm(CYTHON_UNUSED PyObje
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("enet_norm", 0);
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = PyFloat_FromDouble(__pyx_f_4modl_14enet_proj_fast_enet_norm(__pyx_v_v, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  __pyx_t_1 = PyFloat_FromDouble(__pyx_f_4modl_6_utils_14enet_proj_fast_enet_norm(__pyx_v_v, __pyx_v_l1_ratio, 0)); if (unlikely(!__pyx_t_1)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 164; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -3233,7 +3233,7 @@ static PyObject *__pyx_pf_4modl_14enet_proj_fast_2enet_norm(CYTHON_UNUSED PyObje
   /* function exit code */
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_1);
-  __Pyx_AddTraceback("modl.enet_proj_fast.enet_norm", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("modl._utils.enet_proj_fast.enet_norm", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __PYX_XDEC_MEMVIEW(&__pyx_v_v, 1);
@@ -17023,7 +17023,7 @@ static PyBufferProcs __pyx_tp_as_buffer_array = {
 
 static PyTypeObject __pyx_type___pyx_array = {
   PyVarObject_HEAD_INIT(0, 0)
-  "modl.enet_proj_fast.array", /*tp_name*/
+  "modl._utils.enet_proj_fast.array", /*tp_name*/
   sizeof(struct __pyx_array_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_array, /*tp_dealloc*/
@@ -17129,7 +17129,7 @@ static PyMethodDef __pyx_methods_Enum[] = {
 
 static PyTypeObject __pyx_type___pyx_MemviewEnum = {
   PyVarObject_HEAD_INIT(0, 0)
-  "modl.enet_proj_fast.Enum", /*tp_name*/
+  "modl._utils.enet_proj_fast.Enum", /*tp_name*/
   sizeof(struct __pyx_MemviewEnum_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_Enum, /*tp_dealloc*/
@@ -17376,7 +17376,7 @@ static PyBufferProcs __pyx_tp_as_buffer_memoryview = {
 
 static PyTypeObject __pyx_type___pyx_memoryview = {
   PyVarObject_HEAD_INIT(0, 0)
-  "modl.enet_proj_fast.memoryview", /*tp_name*/
+  "modl._utils.enet_proj_fast.memoryview", /*tp_name*/
   sizeof(struct __pyx_memoryview_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_memoryview, /*tp_dealloc*/
@@ -17501,7 +17501,7 @@ static struct PyGetSetDef __pyx_getsets__memoryviewslice[] = {
 
 static PyTypeObject __pyx_type___pyx_memoryviewslice = {
   PyVarObject_HEAD_INIT(0, 0)
-  "modl.enet_proj_fast._memoryviewslice", /*tp_name*/
+  "modl._utils.enet_proj_fast._memoryviewslice", /*tp_name*/
   sizeof(struct __pyx_memoryviewslice_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc__memoryviewslice, /*tp_dealloc*/
@@ -17566,8 +17566,8 @@ static PyTypeObject __pyx_type___pyx_memoryviewslice = {
 };
 
 static PyMethodDef __pyx_methods[] = {
-  {"enet_projection_inplace", (PyCFunction)__pyx_pw_4modl_14enet_proj_fast_1enet_projection_inplace, METH_VARARGS|METH_KEYWORDS, 0},
-  {"enet_norm", (PyCFunction)__pyx_pw_4modl_14enet_proj_fast_3enet_norm, METH_VARARGS|METH_KEYWORDS, __pyx_doc_4modl_14enet_proj_fast_2enet_norm},
+  {"enet_projection_inplace", (PyCFunction)__pyx_pw_4modl_6_utils_14enet_proj_fast_1enet_projection_inplace, METH_VARARGS|METH_KEYWORDS, 0},
+  {"enet_norm", (PyCFunction)__pyx_pw_4modl_6_utils_14enet_proj_fast_3enet_norm, METH_VARARGS|METH_KEYWORDS, __pyx_doc_4modl_6_utils_14enet_proj_fast_2enet_norm},
   {0, 0, 0, 0}
 };
 
@@ -18036,14 +18036,14 @@ PyMODINIT_FUNC PyInit_enet_proj_fast(void)
   #if PY_MAJOR_VERSION < 3 && (__PYX_DEFAULT_STRING_ENCODING_IS_ASCII || __PYX_DEFAULT_STRING_ENCODING_IS_DEFAULT)
   if (__Pyx_init_sys_getdefaultencoding_params() < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   #endif
-  if (__pyx_module_is_main_modl__enet_proj_fast) {
+  if (__pyx_module_is_main_modl___utils__enet_proj_fast) {
     if (PyObject_SetAttrString(__pyx_m, "__name__", __pyx_n_s_main) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   }
   #if PY_MAJOR_VERSION >= 3
   {
     PyObject *modules = PyImport_GetModuleDict(); if (unlikely(!modules)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-    if (!PyDict_GetItemString(modules, "modl.enet_proj_fast")) {
-      if (unlikely(PyDict_SetItemString(modules, "modl.enet_proj_fast", __pyx_m) < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    if (!PyDict_GetItemString(modules, "modl._utils.enet_proj_fast")) {
+      if (unlikely(PyDict_SetItemString(modules, "modl._utils.enet_proj_fast", __pyx_m) < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     }
   }
   #endif
@@ -18059,8 +18059,8 @@ PyMODINIT_FUNC PyInit_enet_proj_fast(void)
   indirect_contiguous = Py_None; Py_INCREF(Py_None);
   /*--- Variable export code ---*/
   /*--- Function export code ---*/
-  if (__Pyx_ExportFunction("enet_norm", (void (*)(void))__pyx_f_4modl_14enet_proj_fast_enet_norm, "double (__Pyx_memviewslice, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
-  if (__Pyx_ExportFunction("enet_projection_inplace", (void (*)(void))__pyx_f_4modl_14enet_proj_fast_enet_projection_inplace, "void (__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ExportFunction("enet_norm", (void (*)(void))__pyx_f_4modl_6_utils_14enet_proj_fast_enet_norm, "double (__Pyx_memviewslice, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+  if (__Pyx_ExportFunction("enet_projection_inplace", (void (*)(void))__pyx_f_4modl_6_utils_14enet_proj_fast_enet_projection_inplace, "void (__Pyx_memviewslice, __Pyx_memviewslice, double, double, int __pyx_skip_dispatch)") < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   /*--- Type init code ---*/
   if (PyType_Ready(&__pyx_type___pyx_array) < 0) {__pyx_filename = __pyx_f[2]; __pyx_lineno = 101; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __pyx_type___pyx_array.tp_print = 0;
@@ -18109,7 +18109,7 @@ PyMODINIT_FUNC PyInit_enet_proj_fast(void)
   if (__Pyx_patch_abc() < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 1; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   #endif
 
-  /* "modl/enet_proj_fast.pyx":16
+  /* "modl/_utils/enet_proj_fast.pyx":16
  * 
  * cimport numpy as np
  * import numpy as np             # <<<<<<<<<<<<<<
@@ -18121,7 +18121,7 @@ PyMODINIT_FUNC PyInit_enet_proj_fast(void)
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_np, __pyx_t_1) < 0) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 16; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "modl/enet_proj_fast.pyx":1
+  /* "modl/_utils/enet_proj_fast.pyx":1
  * """Projection on the elastic-net ball (Cython version)             # <<<<<<<<<<<<<<
  * **References:**
  * 
@@ -18255,11 +18255,11 @@ PyMODINIT_FUNC PyInit_enet_proj_fast(void)
   __Pyx_XDECREF(__pyx_t_1);
   if (__pyx_m) {
     if (__pyx_d) {
-      __Pyx_AddTraceback("init modl.enet_proj_fast", __pyx_clineno, __pyx_lineno, __pyx_filename);
+      __Pyx_AddTraceback("init modl._utils.enet_proj_fast", __pyx_clineno, __pyx_lineno, __pyx_filename);
     }
     Py_DECREF(__pyx_m); __pyx_m = 0;
   } else if (!PyErr_Occurred()) {
-    PyErr_SetString(PyExc_ImportError, "init modl.enet_proj_fast");
+    PyErr_SetString(PyExc_ImportError, "init modl._utils.enet_proj_fast");
   }
   __pyx_L0:;
   __Pyx_RefNannyFinishContext();

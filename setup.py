@@ -26,8 +26,6 @@ def configuration(parent_package='', top_path=None):
     config = Configuration(None, parent_package, top_path)
 
     config.add_subpackage('modl')
-    config.add_subpackage('modl/externals/spira')
-    config.add_subpackage('modl/externals/spira/tests')
 
     return config
 
