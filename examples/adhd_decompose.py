@@ -4,6 +4,7 @@
 
 # Load ADDH
 import time
+from os.path import expanduser
 
 from nilearn import datasets
 
