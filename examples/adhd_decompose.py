@@ -21,7 +21,7 @@ print('First functional nifti image (4D) is at: %s' %
 n_components = 20
 
 dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
-                     memory="nilearn_cache", memory_level=2,
+                     memory=expanduser("~/nilearn_cache"), memory_level=2,
                      reduction=3,
                      verbose=4,
                      alpha=0.001,
