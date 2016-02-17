@@ -6,7 +6,6 @@
 import time
 
 from nilearn import datasets
-from nilearn.datasets import fetch_atlas_smith_2009
 
 from modl.spca_fmri import SpcaFmri
 
@@ -28,7 +27,6 @@ dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      alpha=0.001,
                      random_state=0,
                      n_epochs=1,
-                     dict_init=fetch_atlas_smith_2009().rsn20,
                      n_jobs=1,
                      )
 

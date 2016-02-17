@@ -92,4 +92,4 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
     python setup.py install
 fi
 
-pip install nilearn
+pip install nilearn==$NILEARN_VERSION

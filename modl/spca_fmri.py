@@ -92,7 +92,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
     """
 
     def __init__(self, n_components=20,
-                 n_epochs=1, dict_init=None,
+                 n_epochs=1,
                  alpha=0.,
                  random_state=None,
                  batch_size=20,
@@ -125,7 +125,6 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
 
         self.alpha = alpha
         self.n_epochs = n_epochs
-        self.dict_init = dict_init
         self.batch_size = batch_size
         self.reduction = reduction
         self.callback = callback
@@ -320,23 +319,18 @@ def mask_and_reduce(masker, imgs,
         # samples based on the reduction_ratio
         n_samples = None
 
-    if as_shelved_list:
-        func = cache(_mask_and_reduce_single, memory=memory,
-                     memory_level=memory_level,
-                     func_memory_level=0).call_and_shelve
-    else:
-        func = _mask_and_reduce_single
     data_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
-            delayed(func)(
-                    masker,
-                    img, confound,
-                    reduction_ratio=reduction_ratio,
-                    reduction_method=reduction_method,
-                    n_samples=n_samples,
-                    memory=memory,
-                    memory_level=memory_level,
-                    random_state=random_state
-            ) for img, confound in zip(imgs, confounds))
+        delayed(cached_mask_and_reduce_single)(
+            masker,
+            img, confound,
+            reduction_ratio=reduction_ratio,
+            reduction_method=reduction_method,
+            n_samples=n_samples,
+            memory=memory,
+            memory_level=memory_level,
+            random_state=random_state,
+            as_shelved_list=as_shelved_list
+        ) for img, confound in zip(imgs, confounds))
 
     if as_shelved_list:
         return data_list
@@ -357,6 +351,38 @@ def mask_and_reduce(masker, imgs,
             # the corresponding block of data
             data_list[i] = None
         return data
+
+
+def cached_mask_and_reduce_single(masker, img, confound,
+                                  reduction_ratio=1,
+                                  reduction_method=None,
+                                  n_samples=None,
+                                  memory_level=0,
+                                  memory=Memory(cachedir=None),
+                                  random_state=0,
+                                  as_shelved_list=False):
+    if as_shelved_list:
+        return cache(
+            _mask_and_reduce_single, memory=memory,
+            memory_level=memory_level,
+            func_memory_level=0).call_and_shelve(
+            masker, img,
+            confound,
+            reduction_ratio=reduction_ratio,
+            reduction_method=reduction_method,
+            n_samples=n_samples,
+            memory=memory,
+            memory_level=memory_level,
+            random_state=random_state)
+    else:
+        return _mask_and_reduce_single(
+            masker, img, confound,
+            reduction_ratio=reduction_ratio,
+            reduction_method=reduction_method,
+            n_samples=n_samples,
+            memory=memory,
+            memory_level=memory_level,
+            random_state=random_state)
 
 
 def _mask_and_reduce_single(masker,

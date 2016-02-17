@@ -1,13 +1,13 @@
 from math import sqrt
 
+import numpy as np
 import pytest
 import scipy.sparse as sp
-import numpy as np
 from numpy.testing import assert_almost_equal
 from numpy.testing import assert_array_almost_equal
-from spira.cross_validation import train_test_split
 
 from modl.dict_completion import DictCompleter, csr_center_data
+from modl.externals.spira.cross_validation import train_test_split
 
 backends = ['c', 'python']
 

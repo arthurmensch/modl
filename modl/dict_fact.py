@@ -2,12 +2,10 @@
 Author: Arthur Mensch (2016)
 Dictionary learning with masked data
 """
-import copy
 from math import pow, ceil
 
 import numpy as np
 import scipy.sparse as sp
-from numpy.testing import assert_array_almost_equal
 from scipy import linalg
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array

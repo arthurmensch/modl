@@ -12,10 +12,16 @@ matrix:
   # setting the status
   fast_finish: true
   include:
+    # Ubuntu 14.04 versions
+    - env: DISTRIB="conda" PYTHON_VERSION="2.7"
+           NUMPY_VERSION="1.9" SCIPY_VERSION="0.16"
+           SCIKIT_LEARN_VERSION="0.16" MATPLOTLIB_VERSION="1.4"
+           NILEARN_VERSION="0.2"
     # Most recent versions
     - env: DISTRIB="conda" PYTHON_VERSION="3.5"
            NUMPY_VERSION="*" SCIPY_VERSION="*"
            SCIKIT_LEARN_VERSION="*" MATPLOTLIB_VERSION="*" COVERAGE="true"
+           NILEARN_VERSION="*"
 
 install: source continuous_integration/install.sh
 

@@ -3,7 +3,6 @@ import numpy as np
 import pytest
 from nilearn._utils.testing import assert_less_equal
 from nilearn.image import iter_img
-from nilearn.input_data import NiftiMasker
 
 from modl.spca_fmri import SpcaFmri
 
@@ -70,10 +69,7 @@ def _make_test_data(rng=None, n_subjects=8, noisy=False):
 @pytest.mark.parametrize("backend", backends)
 def test_sparse_pca(backend):
     data, mask_img, components, rng = _make_test_data(n_subjects=16)
-    mask = NiftiMasker(mask_img=mask_img).fit()
-    dict_init = mask.inverse_transform(components)
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
-                          dict_init=dict_init,
                           mask=mask_img,
                           backend=backend,
                           smoothing_fwhm=0., n_epochs=1, alpha=0.05)
@@ -97,14 +93,12 @@ def test_sparse_pca(backend):
 
     # Smoke test n_epochs > 1
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
-                          dict_init=dict_init,
                           mask=mask_img,
                           smoothing_fwhm=0., n_epochs=2, alpha=1)
     sparse_pca.fit(data)
 
     # Smoke test reduction_ratio < 1
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
-                          dict_init=dict_init,
                           reduction=2,
                           mask=mask_img,
                           smoothing_fwhm=0., n_epochs=1, alpha=1)
