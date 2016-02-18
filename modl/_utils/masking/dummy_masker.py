@@ -1,4 +1,5 @@
 import json
+import os
 from os.path import join
 
 import numpy as np
@@ -32,10 +33,10 @@ class DummyMasker(MultiNiftiMasker):
 
     def transform_single_imgs(self, imgs, confounds=None,
                               copy=True, shelve=False):
-        try:
+        if imgs in self.mapping_ and os.path.exists(self.mapping_[imgs]):
             return np.load(self.mapping_[imgs], mmap_mode=self.mmap_mode)
-        except:
-            return super().transform_single_imgs(self, imgs, confounds=None,
+        else:
+            return super().transform_single_imgs(imgs, confounds=None,
                               copy=True, shelve=False)
 
     def transform_imgs(self, imgs_list, confounds=None, copy=True, n_jobs=1,
@@ -43,13 +44,14 @@ class DummyMasker(MultiNiftiMasker):
         res = []
 
         for img, confounds in zip(imgs_list, confounds):
-            try:
+            print(self.mapping_[img])
+            if img in self.mapping_ and os.path.exists(self.mapping_[img]):
                 new_res = np.load(self.mapping_[img],
                                   mmap_mode=self.mmap_mode)
-            except:
+            else:
                 new_res = super().transform_single_imgs(img,
                                                         confounds=confounds,
                                                         copy=copy,
-                                                        shelve=shelve)[0]
+                                                        shelve=shelve)
             res.append(new_res)
         return res

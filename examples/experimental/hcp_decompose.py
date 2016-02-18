@@ -11,7 +11,7 @@ from modl import datasets
 from modl._utils.masking import DummyMasker
 from modl.spca_fmri import SpcaFmri
 
-hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data', n_subjects=10)
+hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data', n_subjects=1000)
 mask = '/storage/data/HCP_mask/mask_img.nii.gz'
 
 func_filenames = hcp_dataset.func  # list of 4D nifti files for each subject
@@ -24,17 +24,18 @@ print('First functional nifti image (4D) is at: %s' %
 n_components = 70
 n_jobs = 20
 dummy = True
+init = True
 
 if dummy:
     mask = DummyMasker(data_dir='/storage/data/HCP_unmasked',
                        mask_img=mask,
-                       mmap_mode='r')
+                       mmap_mode=None)
 
 dict_fact = SpcaFmri(mask=mask,
                      smoothing_fwhm=3,
                      shelve=not dummy,
                      n_components=n_components,
-                     dict_init=fetch_atlas_smith_2009().rsn70,
+                     dict_init=fetch_atlas_smith_2009().rsn70 if init else None,
                      reduction=12,
                      alpha=0.001,
                      random_state=0,
@@ -51,7 +52,7 @@ print('[Example] Dumping results')
 # Decomposition estimator embeds their own masker
 masker = dict_fact.masker_
 components_img = masker.inverse_transform(dict_fact.components_)
-components_img.to_filename('components.nii.gz')
+components_img.to_filename('components_init_%s.nii.gz' % init)
 time = time.time() - t0
 print('[Example] Run in %.2f s' % time)
 # Show components from both methods using 4D plotting tools

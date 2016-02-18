@@ -176,7 +176,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                 data_list = self.masker_.transform(imgs, confounds,
                                                    shelve=True)
         else:
-            data_list = imgs
+            data_list = list(zip(imgs, confounds))
 
         data_list = itertools.chain(*[random_state.permutation(
             data_list) for _ in range(n_epochs)])
@@ -197,13 +197,13 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          verbose=max(0, self.verbose - 1))
 
         with num_threads(self.n_jobs):
-            for record, data in enumerate(data_list):
+            for record, (img, this_confounds) in enumerate(data_list):
                 if self.verbose:
                     print('Streaming record %s' % record)
                 if self.shelve:
                     data = data.get()
                 else:
-                    data = self.masker_.transform(imgs, confounds)[0]
+                    data = self.masker_.transform(img, confounds=this_confounds)
                 dict_mf.partial_fit(data)
 
         self.components_ = dict_mf.Q_
