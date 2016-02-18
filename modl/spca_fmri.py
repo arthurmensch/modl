@@ -19,7 +19,6 @@ from sklearn.utils import check_random_state
 
 from modl._utils.masking import DummyMasker
 from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
-from modl._utils.system.mkl import num_threads
 from modl.dict_fact import DictMF
 
 
@@ -172,9 +171,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             confounds = itertools.repeat(None)
 
         if self.shelve:
-            with num_threads(1):
-                data_list = self.masker_.transform(imgs, confounds,
-                                                   shelve=True)
+            data_list = self.masker_.transform(imgs, confounds,
+                                               shelve=True)
         else:
             data_list = list(zip(imgs, confounds))
 
@@ -196,15 +194,14 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          backend=self.backend,
                          verbose=max(0, self.verbose - 1))
 
-        with num_threads(self.n_jobs):
-            for record, (img, this_confounds) in enumerate(data_list):
-                if self.verbose:
-                    print('Streaming record %s' % record)
-                if self.shelve:
-                    data = data.get()
-                else:
-                    data = self.masker_.transform(img, confounds=this_confounds)
-                dict_mf.partial_fit(data)
+        for record, (img, this_confounds) in enumerate(data_list):
+            if self.verbose:
+                print('Streaming record %s' % record)
+            if self.shelve:
+                data = data.get()
+            else:
+                data = self.masker_.transform(img, confounds=this_confounds)
+            dict_mf.partial_fit(data)
 
         self.components_ = dict_mf.Q_
         # Post processing normalization

@@ -5,6 +5,7 @@
 import time
 from os.path import expanduser
 
+import numpy as np
 from nilearn.datasets import fetch_atlas_smith_2009
 
 from modl import datasets
@@ -12,7 +13,7 @@ from modl._utils.masking import DummyMasker
 from modl._utils.system.mkl import num_threads
 from modl.spca_fmri import SpcaFmri
 
-hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data', n_subjects=1000)
+hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data', n_subjects=1)
 mask = '/storage/data/HCP_mask/mask_img.nii.gz'
 
 func_filenames = hcp_dataset.func  # list of 4D nifti files for each subject
@@ -23,7 +24,7 @@ print('First functional nifti image (4D) is at: %s' %
 
 # Apply our decomposition estimator with reduction
 n_components = 70
-n_jobs = 5
+n_jobs = 20
 dummy = True
 init = True
 
@@ -43,25 +44,21 @@ dict_fact = SpcaFmri(mask=mask,
                      n_epochs=1,
                      memory=expanduser("~/nilearn_cache"), memory_level=2,
                      verbose=4,
-                     n_jobs=n_jobs,
+                     n_jobs=1,
                      )
 
 print('[Example] Learning maps')
-t0 = time.time()
-with num_threads(n_jobs):
-    dict_fact.fit(func_filenames)
-print('[Example] Dumping results')
-# Decomposition estimator embeds their own masker
-masker = dict_fact.masker_
-components_img = masker.inverse_transform(dict_fact.components_)
-components_img.to_filename('components_init_%s.nii.gz' % init)
-time = time.time() - t0
-print('[Example] Run in %.2f s' % time)
-# Show components from both methods using 4D plotting tools
-from nilearn.plotting import plot_prob_atlas, show
+timings = np.zeros(20)
+for n_jobs in range(1, 21):
+    with num_threads(n_jobs):
+        t0 = time.time()
+        dict_fact.fit(func_filenames)
+        timings[n_jobs - 1] = time.time() - t0
 
-print('[Example] Displaying')
+print(timings)
+import matplotlib
+matplotlib.use('pdf')
+import matplotlib.pyplot as plt
 
-plot_prob_atlas(components_img, view_type="filled_contours",
-                title="Reduced sparse PCA", colorbar=False)
-show()
+plt.plot(np.arange(1, 21), timings)
+plt.savefig('bench_hcp_blas.pdf')
