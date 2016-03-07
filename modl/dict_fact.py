@@ -20,7 +20,8 @@ class DictMFStats:
     dictionary learning with masks.
     """
 
-    def __init__(self, A, B, counter, G, T, loss,
+    def __init__(self, A, B, counter, sample_counter,
+                 G, T, loss,
                  loss_indep, subset_array, subset_start,
                  subset_stop,
                  n_iter,
@@ -33,6 +34,7 @@ class DictMFStats:
         self.T = T
         self.G = G
         self.counter = counter
+        self.sample_counter = sample_counter
         self.B = B
         self.A = A
         self.n_iter = n_iter
@@ -73,10 +75,13 @@ def _init_stats(Q,
 
     counter = np.zeros(n_cols + 1, dtype='int')
 
+
     if not impute:
+        sample_counter = np.zeros(1, dtype='int')
         G = np.zeros((1, 1), order='F')
         T = np.zeros((1, 1), order='F')
     else:
+        sample_counter = np.zeros(n_rows, dtype='int')
         G = Q.dot(Q.T).T
         T = np.zeros((n_rows, n_components), order="F")
 
@@ -87,7 +92,7 @@ def _init_stats(Q,
     loss = np.empty(max_n_iter)
     loss_indep = 0.
 
-    return DictMFStats(A, B, counter, G, T, loss, loss_indep, subset_array,
+    return DictMFStats(A, B, counter, sample_counter, G, T, loss, loss_indep, subset_array,
                        subset_start,
                        subset_stop, 0, )
 
@@ -506,7 +511,6 @@ def online_dl(X, Q,
         else:
             buffer = np.zeros(max_subset_size)
 
-        old_sub_G = np.empty((n_components, n_components), order='F')
         G_temp = np.empty((n_components, n_components), order='F')
         if sp.isspmatrix_csr(X):
             P_temp = np.empty((n_components, batch_size), order='F')
@@ -518,12 +522,16 @@ def online_dl(X, Q,
             components_range = np.arange(n_components)
         weights = np.zeros(max_subset_size + 1)
         subset_mask = np.zeros(n_cols, dtype='i1')
-        dict_subset = np.zeros(max_subset_size, dtype='i4')
+        dict_subset_temp = np.zeros(max_subset_size, dtype='i4')
         dict_subset_lim = np.zeros(1, dtype='i4')
         this_X = np.zeros((1, max_subset_size), order='F')
         P_dummy = np.zeros((1, 1), order='C')
     for batch in batches:
         row_batch = row_range[batch]
+        if 0 < max_n_iter <= stat.n_iter + len(row_batch) - 1:
+            # Stop algorithm
+            stat.n_iter = max_n_iter
+            return P, Q
         if sp.isspmatrix_csr(X):
             if backend == 'c':
                 stat.n_iter = _update_code_sparse_batch(X.data, X.indices,
@@ -540,6 +548,7 @@ def online_dl(X, Q,
                                                         stat.A,
                                                         stat.B,
                                                         stat.counter,
+                                                        stat.sample_counter,
                                                         stat.G,
                                                         stat.T,
                                                         impute,
@@ -548,7 +557,7 @@ def online_dl(X, Q,
                                                         G_temp,
                                                         this_X,
                                                         subset_mask,
-                                                        dict_subset,
+                                                        dict_subset_temp,
                                                         dict_subset_lim,
                                                         weights,
                                                         stat.n_iter,
@@ -557,13 +566,16 @@ def online_dl(X, Q,
                                                         )
                 # This is hackish, but np.where becomes a
                 # bottleneck for low batch size otherwise
-                dict_subset = dict_subset[:dict_subset_lim[0]]
+                dict_subset = dict_subset_temp[:dict_subset_lim[0]]
             else:
                 for j in row_batch:
                     if 0 < max_n_iter <= stat.n_iter:
                         return P, Q
                     subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
-                    reg = alpha * subset.shape[0] / n_cols
+                    if impute:
+                        reg = alpha
+                    else:
+                        reg = alpha * subset.shape[0] / n_cols
                     this_X = np.empty((1, subset.shape[0]), order='F')
                     this_X[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
                     this_P = _update_code_slow(this_X, subset,
@@ -581,11 +593,11 @@ def online_dl(X, Q,
                                               for j in row_batch])
                 dict_subset = np.unique(dict_subset)
         else:  # X is a dense matrix : we force masks
-            if 0 < max_n_iter <= stat.n_iter + len(row_batch) - 1:
-                stat.n_iter = max_n_iter
-                return P, Q
             subset = stat.subset_array[stat.subset_start:stat.subset_stop]
-            reg = alpha * subset.shape[0] / n_cols
+            if impute:
+                reg = alpha
+            else:
+                reg = alpha * subset.shape[0] / n_cols
             this_X = X[row_batch][:, subset]
             if backend == 'python':
                 this_P = _update_code_slow(this_X, subset, row_batch,
@@ -595,9 +607,11 @@ def online_dl(X, Q,
                                            impute,
                                            debug)
             else:
-                _update_code(this_X, subset, reg, learning_rate,
+                _update_code(this_X, subset, row_batch,
+                             reg, learning_rate,
                              offset, Q, stat.A, stat.B,
                              stat.counter,
+                             stat.sample_counter,
                              stat.G,
                              stat.T,
                              impute,
@@ -629,7 +643,6 @@ def online_dl(X, Q,
                          impute,
                          R,
                          Q_subset,
-                         old_sub_G,
                          norm,
                          buffer,
                          components_range)
@@ -703,8 +716,8 @@ def _update_code_slow(X, subset, row_batch, alpha, learning_rate,
     P: ndarray,
         Code for the mini-batch X
     """
-    batch_size, n_cols = X.shape
-    n_components = Q.shape[0]
+    batch_size, _ = X.shape
+    n_components, n_cols = Q.shape
 
     Q_subset = Q[:, subset]
 
@@ -713,15 +726,17 @@ def _update_code_slow(X, subset, row_batch, alpha, learning_rate,
 
     stat.counter[0] += batch_size
     stat.counter[subset + 1] += batch_size
-
     if impute:
         G = stat.G.copy()
     else:
-        G = np.dot(Q_subset, Q_subset.T)
-
+        G = np.dot(Q_subset, Q_subset.T).T
     Qx = np.dot(Q_subset, X.T)
+
     if impute:
-        stat.T[row_batch] = (1 - 0.9) + stat.T[row_batch] + 0.9 * Qx.T
+        stat.sample_counter[row_batch] += 1
+        impute_lr = 0.9
+        # Needs confidence there
+        stat.T[row_batch] = (1 - impute_lr[:, np.newaxis]) * stat.T[row_batch] + impute_lr[:, np.newaxis] * Qx.T * n_cols / len(subset)
         Qx = stat.T[row_batch].copy().T
 
     G.flat[::n_components + 1] += alpha
@@ -771,7 +786,7 @@ def _update_dict_slow(Q, subset,
     Q_subset = np.zeros((n_components, len_subset))
     Q_subset[:] = Q[:, subset]
 
-    if impute:
+    if impute and not full_projection:
         stat.G -= Q_subset.dot(Q_subset.T)
 
     if full_projection:
@@ -804,5 +819,8 @@ def _update_dict_slow(Q, subset,
     if not full_projection:
         Q[:, subset] = Q_subset
 
-    if impute:
+    if impute and not full_projection:
         stat.G += Q_subset.dot(Q_subset.T)
+
+    if impute and full_projection:
+        stat.G = Q.dot(Q.T).T

@@ -45,16 +45,19 @@ def plot_gallery(title, images, n_col=n_col, n_row=n_row):
 ###############################################################################
 # Plot a sample of the input data
 
-plot_gallery("First centered Olivetti faces", faces_centered[:n_components])
+# plot_gallery("First centered Olivetti faces", faces_centered[:n_components])
 
 ###############################################################################
 # Do the estimation and plot it
 
 center = True
-estimator = DictMF(n_components=n_components, batch_size=3,
-                   reduction=3, l1_ratio=0, alpha=0.001, max_n_iter=1000,
+estimator = DictMF(n_components=n_components, batch_size=10,
+                   reduction=2, l1_ratio=1, alpha=1e-2, max_n_iter=10000,
                    full_projection=True,
-                   verbose=3)
+                   impute=True,
+                   backend='c',
+                   verbose=3,
+                   random_state=0)
 # For comparison
 # estimator = MiniBatchSparsePCA(n_components=n_components, alpha=0.1,
 #                                n_iter=1000, batch_size=3,

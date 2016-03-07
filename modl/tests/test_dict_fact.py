@@ -4,10 +4,11 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 from numpy.testing import assert_array_almost_equal
+from sklearn.utils import check_random_state
 
 from modl.dict_fact import DictMF, compute_code
 
-rng_global = np.random.RandomState(0)
+rng_global = 0
 
 backends = ['c', 'python']
 
@@ -16,6 +17,7 @@ imputes = [True, False]
 
 def generate_sparse_synthetic(n_samples=200,
                               square_size=4):
+    rng = check_random_state(0)
     n_features = square_size ** 2
     half_size = square_size // 2
     Q = np.zeros((4, n_features))
@@ -25,7 +27,7 @@ def generate_sparse_synthetic(n_samples=200,
             atom[(half_size * i):(half_size * (i + 1)),
             (half_size * j): (half_size * (j + 1))] = 1
             Q[2 * i + j] = np.ravel(atom)
-    code = rng_global.randn(n_samples, 4)
+    code = rng.randn(n_samples, 4)
     X = code.dot(Q)
     return X, Q
 
@@ -33,13 +35,14 @@ def generate_sparse_synthetic(n_samples=200,
 def generate_synthetic(n_samples=200,
                        n_components=4, n_features=16,
                        dictionary_rank=None):
+    rng = check_random_state(0)
     if dictionary_rank is None:
-        Q = rng_global.randn(n_components, n_features)
+        Q = rng.randn(n_components, n_features)
     else:
-        V = rng_global.randn(dictionary_rank, n_features)
-        U = rng_global.randn(n_components, dictionary_rank)
+        V = rng.randn(dictionary_rank, n_features)
+        U = rng.randn(n_components, dictionary_rank)
         Q = U.dot(V)
-    code = rng_global.randn(n_samples, n_components)
+    code = rng.randn(n_samples, n_components)
     X = code.dot(Q)
     return X, Q
 
@@ -56,7 +59,7 @@ def test_compute_code():
 def test_dict_mf_reconstruction(backend, impute):
     X, Q = generate_synthetic()
     dict_mf = DictMF(n_components=4, alpha=1e-4,
-                     max_n_iter=200, l1_ratio=0,
+                     max_n_iter=300, l1_ratio=0,
                      backend=backend,
                      impute=impute,
                      random_state=rng_global, reduction=1)
@@ -90,7 +93,7 @@ def test_dict_mf_reconstruction_reduction_batch(backend, impute):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=5)
-    dict_mf = DictMF(n_components=4, alpha=1e-6,
+    dict_mf = DictMF(n_components=5, alpha=1e-6,
                      max_n_iter=800, l1_ratio=0,
                      backend=backend,
                      impute=impute,
@@ -110,13 +113,14 @@ def test_dict_mf_reconstruction_sparse(backend, impute):
                               n_samples=200,
                               dictionary_rank=5)
     sp_X = np.zeros((X.shape[0] * 2, X.shape[1]))
+    rng = check_random_state(0)
     # Generate a sparse simple problem
     for i in range(X.shape[0]):
-        perm = rng_global.permutation(X.shape[1])
+        perm = rng.permutation(X.shape[1])
         even_range = perm[::2]
         odd_range = perm[1::2]
         sp_X[2 * i, even_range] = X[i, even_range]
-        sp_X[2 * i, odd_range] = X[i, odd_range]
+        sp_X[2 * i + 1, odd_range] = X[i, odd_range]
     sp_X = sp.csr_matrix(sp_X)
     dict_mf = DictMF(n_components=4, alpha=1e-6,
                      max_n_iter=500, l1_ratio=0,
@@ -136,8 +140,9 @@ def test_dict_mf_reconstruction_sparse(backend, impute):
 @pytest.mark.parametrize("impute", imputes)
 def test_dict_mf_reconstruction_sparse_dict(backend, impute):
     X, Q = generate_sparse_synthetic(300, 4)
-    dict_init = Q + rng_global.randn(*Q.shape) * 0.01
-    dict_mf = DictMF(n_components=4, alpha=1e-2, max_n_iter=300, l1_ratio=1,
+    rng = check_random_state(0)
+    dict_init = Q + rng.randn(*Q.shape) * 0.01
+    dict_mf = DictMF(n_components=4, alpha=1e-2, max_n_iter=400, l1_ratio=1,
                      dict_init=dict_init,
                      backend=backend,
                      impute=impute,
