@@ -8,6 +8,7 @@ component sparsity
 from __future__ import division
 
 import itertools
+from os.path import join
 
 import numpy as np
 from nilearn._utils.cache_mixin import CacheMixin
@@ -17,7 +18,6 @@ from sklearn.externals.joblib import Memory
 from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
 
-from modl._utils.masking import DummyMasker
 from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
 from modl.dict_fact import DictMF
 
@@ -96,6 +96,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  random_state=None,
                  batch_size=20,
                  reduction=1,
+                 full_projection=False,
+                 impute=False,
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -104,6 +106,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=0,
                  n_jobs=1, backend='c', verbose=0,
+                 trace_folder=None
                  ):
         BaseDecomposition.__init__(self, n_components=n_components,
                                    random_state=random_state,
@@ -127,10 +130,13 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.reduction = reduction
+        self.full_projection = full_projection
+        self.impute = impute
         self.backend = backend
         self.shelve = shelve
+        self.trace_folder = trace_folder
 
-    def fit(self, imgs, y=None, confounds=None):
+    def fit(self, imgs, y=None, confounds=None, raw=False):
         """Compute the mask and the ICA maps across subjects
 
         Parameters
@@ -145,20 +151,14 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             related documentation for details
         """
         # Base logic for decomposition estimators
-        if not isinstance(self.mask, DummyMasker):
-            BaseDecomposition.fit(self, imgs)
+        BaseDecomposition.fit(self, imgs)
 
-            # Cast to MultiNiftiMasker with shelving
-            if self.shelve:
-                masker_params = self.masker_.get_params()
-                mask_img = self.masker_.mask_img_
-                masker_params['mask_img'] = mask_img
-                self.masker_ = MultiNiftiMasker(**masker_params).fit()
-        else:
-            if self.shelve:
-                raise NotImplementedError('Cannot shelve with a DummyMasker')
-            self.masker_ = self.mask
-            self.masker_.fit()
+        # Cast to MultiNiftiMasker with shelving
+        if self.shelve:
+            masker_params = self.masker_.get_params()
+            mask_img = self.masker_.mask_img_
+            masker_params['mask_img'] = mask_img
+            self.masker_ = MultiNiftiMasker(**masker_params).fit()
 
         random_state = check_random_state(self.random_state)
 
@@ -170,11 +170,14 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if confounds is None:
             confounds = itertools.repeat(None)
 
-        if self.shelve:
-            data_list = self.masker_.transform(imgs, confounds,
-                                               shelve=True)
+        if raw:
+            data_list = imgs
         else:
-            data_list = list(zip(imgs, confounds))
+            if self.shelve:
+                data_list = self.masker_.transform(imgs, confounds,
+                                                   shelve=True)
+            else:
+                data_list = list(zip(imgs, confounds))
 
         data_list = itertools.chain(*[random_state.permutation(
             data_list) for _ in range(n_epochs)])
@@ -187,6 +190,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         dict_mf = DictMF(n_components=self.n_components,
                          alpha=self.alpha,
                          reduction=self.reduction,
+                         full_projection=self.full_projection,
+                         impute=self.impute,
                          batch_size=self.batch_size,
                          random_state=random_state,
                          dict_init=dict_init,
@@ -194,27 +199,29 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          backend=self.backend,
                          verbose=max(0, self.verbose - 1))
 
-        for record, (img, this_confounds) in enumerate(data_list):
+        for record, this_data in enumerate(data_list):
             if self.verbose:
                 print('Streaming record %s' % record)
-            if self.shelve:
-                data = data.get()
+            if raw:
+                this_data = np.load(this_data)
             else:
-                data = self.masker_.transform(img, confounds=this_confounds)
-            dict_mf.partial_fit(data)
+                if self.shelve:
+                    this_data = this_data.get()
+                else:
+                    this_data = self.masker_.transform(this_data[0],
+                                                       confounds=this_data[1])
+            dict_mf.partial_fit(this_data)
+            if record % 4 == 0:
+                if self.trace_folder is not None:
+                    components = dict_mf.Q_.copy()
+                    _normalize_and_flip(components)
 
-        self.components_ = dict_mf.Q_
-        # Post processing normalization
-        S = np.sqrt(np.sum(self.components_ ** 2, axis=1))
-        S[S == 0] = 1
-        self.components_ /= S[:, np.newaxis]
+                    self.masker_.inverse_transform(
+                        components).to_filename(join(self.trace_folder,
+                                                           'record_%s.nii.gz' % record))
 
-        # flip signs in each composant positive part is l1 larger
-        #  than negative part
-        for component in self.components_:
-            if np.sum(component > 0) < np.sum(component < 0):
-                component *= -1
-
+        self.components_ = dict_mf.Q_.copy()
+        _normalize_and_flip(self.components_)
         return self
 
     def _raw_score(self, data, per_component=False):
@@ -226,6 +233,19 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             raise ValueError('Fit is needed to score')
         return objective_function(data, component,
                                   alpha=self.alpha)
+
+
+def _normalize_and_flip(components):
+    # Post processing normalization
+    S = np.sqrt(np.sum(components ** 2, axis=1))
+    S[S == 0] = 1
+    components /= S[:, np.newaxis]
+
+    # flip signs in each composant positive part is l1 larger
+    #  than negative part
+    for component in components:
+        if np.sum(component > 0) < np.sum(component < 0):
+            component *= -1
 
 
 def objective_function(X, components, alpha=0.):

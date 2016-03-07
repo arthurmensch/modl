@@ -4,9 +4,9 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from modl.externals.spira.datasets import load_movielens
 
 from modl._utils.cross_validation import train_test_split
+from modl.datasets.movielens import load_movielens
 from modl.dict_completion import DictCompleter
 
 def sqnorm(M):
@@ -54,6 +54,7 @@ mf = DictCompleter(n_components=30, alpha=.8, verbose=5,
                    offset=0,
                    impute=False,
                    fit_intercept=True,
+                   full_projection=True,
                    random_state=0,
                    learning_rate=0.8,
                    max_n_iter=60000,
@@ -70,8 +71,8 @@ mf.set_params(callback=cb)
 mf.fit(X_tr)
 
 plt.figure()
-plt.plot(np.arange(len(cb.rmse)), cb.rmse, label='Test')
-plt.plot(np.arange(len(cb.rmse_tr)), cb.rmse_tr, label='Train')
+plt.plot(cb.times, cb.rmse, label='Test')
+plt.plot(cb.times, cb.rmse_tr, label='Train')
 
 plt.legend()
 plt.xlabel("CPU time")

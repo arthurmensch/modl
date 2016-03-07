@@ -11,6 +11,8 @@ rng_global = np.random.RandomState(0)
 
 backends = ['c', 'python']
 
+imputes = [True, False]
+
 
 def generate_sparse_synthetic(n_samples=200,
                               square_size=4):
@@ -31,7 +33,6 @@ def generate_sparse_synthetic(n_samples=200,
 def generate_synthetic(n_samples=200,
                        n_components=4, n_features=16,
                        dictionary_rank=None):
-    Q = np.zeros((n_components, n_features))
     if dictionary_rank is None:
         Q = rng_global.randn(n_components, n_features)
     else:
@@ -51,11 +52,13 @@ def test_compute_code():
 
 
 @pytest.mark.parametrize("backend", backends)
-def test_dict_mf_reconstruction(backend):
+@pytest.mark.parametrize("impute", imputes)
+def test_dict_mf_reconstruction(backend, impute):
     X, Q = generate_synthetic()
     dict_mf = DictMF(n_components=4, alpha=1e-4,
                      max_n_iter=200, l1_ratio=0,
                      backend=backend,
+                     impute=impute,
                      random_state=rng_global, reduction=1)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
@@ -64,13 +67,15 @@ def test_dict_mf_reconstruction(backend):
 
 
 @pytest.mark.parametrize("backend", backends)
-def test_dict_mf_reconstruction_reduction(backend):
+@pytest.mark.parametrize("impute", imputes)
+def test_dict_mf_reconstruction_reduction(backend, impute):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=5)
     dict_mf = DictMF(n_components=4, alpha=1e-6,
                      max_n_iter=400, l1_ratio=0,
                      backend=backend,
+                     impute=impute,
                      random_state=rng_global, reduction=2)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
@@ -79,15 +84,16 @@ def test_dict_mf_reconstruction_reduction(backend):
     assert (rel_error < 0.03)
 
 
-
 @pytest.mark.parametrize("backend", backends)
-def test_dict_mf_reconstruction_reduction_batch(backend):
+@pytest.mark.parametrize("impute", imputes)
+def test_dict_mf_reconstruction_reduction_batch(backend, impute):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=5)
     dict_mf = DictMF(n_components=4, alpha=1e-6,
                      max_n_iter=800, l1_ratio=0,
                      backend=backend,
+                     impute=impute,
                      random_state=rng_global, batch_size=2,
                      reduction=2, )
     dict_mf.fit(X)
@@ -98,7 +104,8 @@ def test_dict_mf_reconstruction_reduction_batch(backend):
 
 
 @pytest.mark.parametrize("backend", backends)
-def test_dict_mf_reconstruction_sparse(backend):
+@pytest.mark.parametrize("impute", imputes)
+def test_dict_mf_reconstruction_sparse(backend, impute):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=200,
                               dictionary_rank=5)
@@ -114,6 +121,7 @@ def test_dict_mf_reconstruction_sparse(backend):
     dict_mf = DictMF(n_components=4, alpha=1e-6,
                      max_n_iter=500, l1_ratio=0,
                      backend=backend,
+                     impute=impute,
                      random_state=rng_global)
     dict_mf.fit(sp_X)
     P = dict_mf.transform(X)
@@ -125,12 +133,14 @@ def test_dict_mf_reconstruction_sparse(backend):
 
 
 @pytest.mark.parametrize("backend", backends)
-def test_dict_mf_reconstruction_sparse_dict(backend):
+@pytest.mark.parametrize("impute", imputes)
+def test_dict_mf_reconstruction_sparse_dict(backend, impute):
     X, Q = generate_sparse_synthetic(300, 4)
     dict_init = Q + rng_global.randn(*Q.shape) * 0.01
     dict_mf = DictMF(n_components=4, alpha=1e-2, max_n_iter=300, l1_ratio=1,
                      dict_init=dict_init,
                      backend=backend,
+                     impute=impute,
                      random_state=rng_global)
     dict_mf.fit(X)
     Q_rec = dict_mf.Q_

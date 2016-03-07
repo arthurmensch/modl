@@ -5,7 +5,7 @@
 import os
 import sys
 
-from setuptools import setup, find_packages
+from setuptools import find_packages
 
 DISTNAME = 'modl'
 DESCRIPTION = "Masked Online Dictionary Learning in Python"
@@ -16,8 +16,6 @@ URL = 'https://github.com/arthurmensch/modl'
 LICENSE = 'new BSD'
 DOWNLOAD_URL = 'https://github.com/arthurmensch/modl'
 VERSION = '0.1.1'
-
-# from numpy.distutils.core import setup
 
 
 def configuration(parent_package='', top_path=None):
@@ -31,13 +29,15 @@ def configuration(parent_package='', top_path=None):
 
     return config
 
-if __name__ == "__main__":
 
+def setup_package():
     old_path = os.getcwd()
     local_path = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     os.chdir(local_path)
     sys.path.insert(0, local_path)
+
+    from numpy.distutils.core import setup
 
     setup(configuration=configuration,
           packages=find_packages(),
@@ -72,3 +72,6 @@ if __name__ == "__main__":
           #           'spira(>=0.1)',
           #           'pytest(>=2.8.7)]
           )
+
+if __name__ == "__main__":
+    setup_package()

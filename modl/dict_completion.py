@@ -1,8 +1,8 @@
 import numpy as np
 import scipy.sparse as sp
-from .dict_fact_fast import _predict
 
 from .dict_fact import DictMF
+from .dict_fact_fast import _predict
 
 
 class DictCompleter(DictMF):
@@ -64,6 +64,7 @@ class DictCompleter(DictMF):
                  batch_size=1,
                  offset=0,
                  reduction=1,
+                 full_projection=False,
                  # Preproc parameters
                  fit_intercept=True,
                  detrend=True,
@@ -86,6 +87,7 @@ class DictCompleter(DictMF):
                         batch_size,
                         offset,
                         reduction,
+                        full_projection,
                         # Preproc parameters
                         fit_intercept,
                         # Dict parameter

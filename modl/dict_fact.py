@@ -38,7 +38,9 @@ class DictMFStats:
         self.n_iter = n_iter
 
 
-def _init_stats(Q, impute=False, reduction=1, max_n_iter=0,
+def _init_stats(Q,
+                n_rows=None,
+                impute=False, reduction=1, max_n_iter=0,
                 random_state=None):
     """
 
@@ -73,10 +75,10 @@ def _init_stats(Q, impute=False, reduction=1, max_n_iter=0,
 
     if not impute:
         G = np.zeros((1, 1), order='F')
-        T = np.zeros(1)
+        T = np.zeros((1, 1), order='F')
     else:
         G = Q.dot(Q.T).T
-        T = np.zeros((n_components, n_cols + 1), order="F")
+        T = np.zeros((n_rows, n_components), order="F")
 
     subset_array = random_state.permutation(n_cols).astype('i4')
     subset_start = 0
@@ -144,6 +146,7 @@ class DictMF(BaseEstimator):
                  batch_size=1,
                  offset=0,
                  reduction=1,
+                 full_projection=False,
                  # Preproc parameters
                  fit_intercept=False,
                  # Dict parameter
@@ -182,9 +185,11 @@ class DictMF(BaseEstimator):
 
         self.callback = callback
 
+        self.full_projection = full_projection
+
     def _init(self, X):
         """Initialize statistic and dictionary"""
-        _, n_cols = X.shape
+        n_rows, n_cols = X.shape
 
         self._random_state = check_random_state(self.random_state)
 
@@ -218,13 +223,19 @@ class DictMF(BaseEstimator):
         self.Q_ = np.asfortranarray(
             enet_scale(self.Q_, l1_ratio=self.l1_ratio, radius=1))
 
-        self._stat = _init_stats(self.Q_, impute=self.impute,
+        self._stat = _init_stats(self.Q_,
+                                 n_rows=n_rows,
+                                 impute=self.impute,
                                  max_n_iter=self.max_n_iter,
                                  reduction=self.reduction,
                                  random_state=self._random_state)
 
     def _check_init(self):
         return hasattr(self, 'Q_')
+
+    @property
+    def components_(self):
+        return self.Q_
 
     def fit(self, X, y=None):
         """Use X to learn a dictionary Q_. The algorithm cycles on X
@@ -282,6 +293,7 @@ class DictMF(BaseEstimator):
                                          self.learning_rate),
                                      offset=float(
                                          self.offset),
+                                     full_projection=self.full_projection,
                                      stat=self._stat,
                                      freeze_first_col=self.fit_intercept,
                                      batch_size=self.batch_size,
@@ -346,52 +358,45 @@ def compute_code(X, Q, alpha):
         return P
 
 
-def _get_weights(idx, counter, batch_size, learning_rate, offset):
+def _get_weights(idx, counter, batch_size, learning_rate, offset,
+                 learning_scheme='new'):
     """Utility function to get the update weights at a given iteration
     """
-    idx_len = idx.shape[0]
-    count = counter[0]
-    w_A = 1
-    for i in range(count + 1, count + 1 + batch_size):
-        w_A *= (1 - pow((1 + offset) / (offset + i), learning_rate))
-    w_A = 1 - w_A
-    w_B = np.zeros(idx_len)
-    for jj in range(idx_len):
-        j = idx[jj]
-        count = counter[j + 1]
-        w_B[jj] = 1
+    if learning_scheme == 'deprecated':
+        idx_len = idx.shape[0]
+        count = counter[0]
+        w_A = 1
         for i in range(count + 1, count + 1 + batch_size):
-            w_B[jj] *= (1 - pow((1 + offset) / (offset + i), learning_rate))
-        w_B[jj] = 1 - w_B[jj]
-    return w_A, w_B
-
-
-def _update_subset_stat(stat, random_state):
-    """Utility function to track forced masks, using a permutation array
-    with rolling limits
-
-    Parameters
-    ----------
-    stat: DictMFStats,
-        stat holding the subset array and limits
-    random_state:
-
-    """
-    n_cols = stat.subset_array.shape[0]
-    subset_size = stat.subset_stop - stat.subset_start
-    if stat.subset_stop + subset_size < n_cols:
-        stat.subset_start += subset_size
-        stat.subset_stop += subset_size
+            w_A *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+        w_A = 1 - w_A
+        w_B = np.zeros(idx_len)
+        for jj in range(idx_len):
+            j = idx[jj]
+            count = counter[j + 1]
+            w_B[jj] = 1
+            for i in range(count + 1, count + 1 + batch_size):
+                w_B[jj] *= (
+                1 - pow((1 + offset) / (offset + i), learning_rate))
+            w_B[jj] = 1 - w_B[jj]
+        return w_A, w_B
     else:
-        buffer_end = stat.subset_array[stat.subset_start:].copy()
-        buffer_start = stat.subset_array[:stat.subset_start].copy()
-        len_buffer_end = buffer_end.shape[0]
-        random_state.shuffle(buffer_start)
-        random_state.shuffle(buffer_end)
-        stat.subset_array[:len_buffer_end] = buffer_end
-        stat.subset_array[len_buffer_end:] = buffer_start
-        stat.subset_start = 0
-        stat.subset_stop = subset_size
+        idx_len = idx.shape[0]
+        full_count = counter[0]
+        w_A = 1
+        for i in range(full_count + 1, full_count + 1 + batch_size):
+            w_A *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+        w_A = 1 - w_A
+        w_B = np.zeros(idx_len)
+        for jj in range(idx_len):
+            j = idx[jj]
+            count = counter[j + 1]
+            w_B[jj] = 1
+            for i in range(1, batch_size + 1):
+                w_B[jj] *= (1 - (full_count + i) / (count + i) *
+                            pow((1 + offset) / (offset + full_count + i),
+                                learning_rate))
+            w_B[jj] = 1 - w_B[jj]
+        return w_A, w_B
 
 
 def online_dl(X, Q,
@@ -402,6 +407,7 @@ def online_dl(X, Q,
               batch_size=1,
               reduction=1,
               l1_ratio=1.,
+              full_projection=False,
               stat=None,
               impute=False,
               max_n_iter=0,
@@ -473,7 +479,8 @@ def online_dl(X, Q,
     random_state = check_random_state(random_state)
 
     if stat is None:
-        stat = _init_stats(Q, impute=impute, reduction=reduction,
+        stat = _init_stats(Q, n_rows=n_rows,
+                           impute=impute, reduction=reduction,
                            max_n_iter=max_n_iter,
                            random_state=random_state)
 
@@ -494,7 +501,11 @@ def online_dl(X, Q,
         R = np.empty((n_components, n_cols), order='F')
         Q_subset = np.empty((n_components, max_subset_size), order='F')
         norm = np.zeros(n_components)
-        buffer = np.zeros(max_subset_size)
+        if full_projection:
+            buffer = np.zeros(n_cols)
+        else:
+            buffer = np.zeros(max_subset_size)
+
         old_sub_G = np.empty((n_components, n_components), order='F')
         G_temp = np.empty((n_components, n_components), order='F')
         if sp.isspmatrix_csr(X):
@@ -556,6 +567,7 @@ def online_dl(X, Q,
                     this_X = np.empty((1, subset.shape[0]), order='F')
                     this_X[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
                     this_P = _update_code_slow(this_X, subset,
+                                               row_batch,
                                                reg, learning_rate,
                                                offset,
                                                Q, stat,
@@ -570,12 +582,14 @@ def online_dl(X, Q,
                 dict_subset = np.unique(dict_subset)
         else:  # X is a dense matrix : we force masks
             if 0 < max_n_iter <= stat.n_iter + len(row_batch) - 1:
+                stat.n_iter = max_n_iter
                 return P, Q
             subset = stat.subset_array[stat.subset_start:stat.subset_stop]
             reg = alpha * subset.shape[0] / n_cols
             this_X = X[row_batch][:, subset]
             if backend == 'python':
-                this_P = _update_code_slow(this_X, subset, reg, learning_rate,
+                this_P = _update_code_slow(this_X, subset, row_batch,
+                                           reg, learning_rate,
                                            offset,
                                            Q, stat,
                                            impute,
@@ -602,6 +616,7 @@ def online_dl(X, Q,
         if backend == 'python':
             _update_dict_slow(Q, dict_subset, freeze_first_col,
                               l1_ratio,
+                              full_projection,
                               stat,
                               impute,
                               random_state)
@@ -609,6 +624,7 @@ def online_dl(X, Q,
             random_state.shuffle(components_range)
             _update_dict(Q, dict_subset, freeze_first_col,
                          l1_ratio,
+                         full_projection,
                          stat.A, stat.B, stat.G,
                          impute,
                          R,
@@ -626,7 +642,35 @@ def online_dl(X, Q,
     return P, Q
 
 
-def _update_code_slow(X, subset, alpha, learning_rate,
+def _update_subset_stat(stat, random_state):
+    """Utility function to track forced masks, using a permutation array
+    with rolling limits
+
+    Parameters
+    ----------
+    stat: DictMFStats,
+        stat holding the subset array and limits
+    random_state:
+
+    """
+    n_cols = stat.subset_array.shape[0]
+    subset_size = stat.subset_stop - stat.subset_start
+    if stat.subset_stop + subset_size < n_cols:
+        stat.subset_start += subset_size
+        stat.subset_stop += subset_size
+    else:
+        buffer_end = stat.subset_array[stat.subset_start:].copy()
+        buffer_start = stat.subset_array[:stat.subset_start].copy()
+        len_buffer_end = buffer_end.shape[0]
+        random_state.shuffle(buffer_start)
+        random_state.shuffle(buffer_end)
+        stat.subset_array[:len_buffer_end] = buffer_end
+        stat.subset_array[len_buffer_end:] = buffer_start
+        stat.subset_start = 0
+        stat.subset_stop = subset_size
+
+
+def _update_code_slow(X, subset, row_batch, alpha, learning_rate,
                       offset,
                       Q, stat,
                       impute, debug):
@@ -671,16 +715,16 @@ def _update_code_slow(X, subset, alpha, learning_rate,
     stat.counter[subset + 1] += batch_size
 
     if impute:
-        stat.T[:, 0] -= stat.T[:, subset + 1].sum(axis=1)
-        Qx = stat.T[:, 0][:, np.newaxis]
-        Qx += Q_subset.dot(X.T)
-        stat.T[:, subset + 1] = Q_subset * X.mean(axis=0)
-        stat.T[:, 0] += stat.T[:, subset + 1].sum(axis=1)
-        stat.G.flat[::n_components + 1] += alpha
+        G = stat.G.copy()
     else:
-        Qx = np.dot(Q_subset, X.T)
         G = np.dot(Q_subset, Q_subset.T)
-        G.flat[::n_components + 1] += alpha
+
+    Qx = np.dot(Q_subset, X.T)
+    if impute:
+        stat.T[row_batch] = (1 - 0.9) + stat.T[row_batch] + 0.9 * Qx.T
+        Qx = stat.T[row_batch].copy().T
+
+    G.flat[::n_components + 1] += alpha
     P = linalg.solve(G, Qx, sym_pos=True, overwrite_a=True, check_finite=False)
 
     if debug:
@@ -701,6 +745,7 @@ def _update_code_slow(X, subset, alpha, learning_rate,
 def _update_dict_slow(Q, subset,
                       freeze_first_col,
                       l1_ratio,
+                      full_projection,
                       stat,
                       impute,
                       random_state):
@@ -725,9 +770,14 @@ def _update_dict_slow(Q, subset,
     len_subset = subset.shape[0]
     Q_subset = np.zeros((n_components, len_subset))
     Q_subset[:] = Q[:, subset]
-    norm = enet_norm(Q_subset, l1_ratio)
+
     if impute:
         stat.G -= Q_subset.dot(Q_subset.T)
+
+    if full_projection:
+        norm = enet_norm(Q, l1_ratio)
+    else:
+        norm = enet_norm(Q_subset, l1_ratio)
 
     ger, = linalg.get_blas_funcs(('ger',), (stat.A, Q_subset))
     # Intercept on first column
@@ -739,13 +789,20 @@ def _update_dict_slow(Q, subset,
     R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
     for j in components_range:
         ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
-        # R += np.dot(stat.A[:, j].reshape(n_components, 1), Q_subset[j].reshape(len_subset, 1).T)
+        # R += np.dot(stat.A[:, j].reshape(n_components, 1),
+        #  Q_subset[j].reshape(len_subset, 1).T)
         Q_subset[j] = R[j] / stat.A[j, j]
-        Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)
+        if full_projection:
+            Q[j][subset] = Q_subset[j]
+            Q[j] = enet_projection(Q[j], norm[j], l1_ratio)
+            Q_subset[j] = Q[j][subset]
+        else:
+            Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)
         ger(-1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
-        # R -= np.dot(stat.A[:, j].reshape(n_components, 1), Q_subset[j].reshape(len_subset, 1).T)
-
-    Q[:, subset] = Q_subset
+        # R -= np.dot(stat.A[:, j].reshape(n_components, 1),
+        #  Q_subset[j].reshape(len_subset, 1).T)
+    if not full_projection:
+        Q[:, subset] = Q_subset
 
     if impute:
         stat.G += Q_subset.dot(Q_subset.T)

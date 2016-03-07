@@ -4,6 +4,7 @@
 # cython: wraparound=False
 
 from scipy.linalg.cython_lapack cimport dposv
+from scipy.linalg.cython_blas cimport dgemm, dger
 
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
@@ -51,18 +52,20 @@ cdef void _shuffle(long[:] arr, UINT32_t* random_state):
 cdef _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
     cdef int len_subset = subset.shape[0]
-    cdef int count = counter[0]
+    cdef int full_count = counter[0]
+    cdef int count
     cdef int i, jj, j
     w[0] = 1
-    for i in range(count + 1, count + 1 + batch_size):
+    for i in range(full_count + 1, full_count + 1 + batch_size):
         w[0] *= (1 - pow((1 + offset) / (offset + i), learning_rate))
     w[0] = 1 - w[0]
     for jj in range(len_subset):
         j = subset[jj]
         count = counter[j + 1]
         w[jj + 1] = 1
-        for i in range(count + 1, count + 1 + batch_size):
-            w[jj + 1] *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+        for i in range(1, 1 + batch_size):
+            w[jj + 1] *= (1 - (full_count + i) / (count + i) * pow(
+                (1 + offset) / (offset + full_count + i), learning_rate))
         w[jj + 1] = 1 - w[jj + 1]
 
 
@@ -81,7 +84,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double[::1, :] B,
                                      long[:] counter,
                                      double[::1, :] G,
-                                     double[:] T,
+                                     double[::1, :] T,
                                      bint impute,
                                      double[::1, :] Q_subset,
                                      double[::1, :] P_temp,
@@ -176,7 +179,7 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
                    double[::1, :] B,
                    long[:] counter,
                    double[::1, :] G,
-                   double[:] T,
+                   double[::1, :] T,
                    bint impute,
                    double[::1, :] Q_subset,
                    double[::1, :] P_temp,
@@ -238,27 +241,24 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
         j = subset[jj]
         counter[j + 1] += batch_size
 
-    if impute:
-        raise NotImplementedError
-    else:
-        # G = Q.T.dot(Q)
-        dgemm(&NTRANS, &TRANS,
-              &n_components, &n_components, &len_subset,
-              &oned,
-              Q_subset_ptr, &n_components,
-              Q_subset_ptr, &n_components,
-              &zerod,
-              G_temp_ptr, &n_components
-              )
-        # Qx = Q_subset.dot(x)
-        dgemm(&NTRANS, &TRANS,
-              &n_components, &batch_size, &len_subset,
-              &oned,
-              Q_subset_ptr, &n_components,
-              X_ptr, &batch_size,
-              &zerod,
-              P_temp_ptr, &n_components
-              )
+    # G = Q.T.dot(Q)
+    dgemm(&NTRANS, &TRANS,
+          &n_components, &n_components, &len_subset,
+          &oned,
+          Q_subset_ptr, &n_components,
+          Q_subset_ptr, &n_components,
+          &zerod,
+          G_temp_ptr, &n_components
+          )
+    # Qx = Q_subset.dot(x)
+    dgemm(&NTRANS, &TRANS,
+          &n_components, &batch_size, &len_subset,
+          &oned,
+          Q_subset_ptr, &n_components,
+          X_ptr, &batch_size,
+          &zerod,
+          P_temp_ptr, &n_components
+          )
 
     # C.flat[::n_components + 1] += 2 * alpha * nnz / n_cols
     for p in range(n_components):
@@ -309,6 +309,7 @@ cpdef _update_dict(double[::1, :] Q,
                   int[:] subset,
                   bint freeze_first_col,
                   double l1_ratio,
+                  bint full_projection,
                   double[::1, :] A, double[::1, :] B,
                   double[::1, :] G,
                   bint impute,
@@ -319,6 +320,7 @@ cpdef _update_dict(double[::1, :] Q,
                   double[:] buffer,
                   long[:] components_range):
     cdef int n_components = Q.shape[0]
+    cdef int n_features = Q.shape[1]
     cdef int len_subset = subset.shape[0]
     cdef unsigned int components_range_len = components_range.shape[0]
     cdef double* Q_ptr = &Q[0, 0]
@@ -338,8 +340,10 @@ cpdef _update_dict(double[::1, :] Q,
 
     for kk in range(components_range_len):
         k = components_range[kk]
-        norm[k] = enet_norm(Q_subset[k,:len_subset], l1_ratio)
-
+        if full_projection:
+            norm[k] = enet_norm(Q[k], l1_ratio)
+        else:
+            norm[k] = enet_norm(Q_subset[k, :len_subset], l1_ratio)
     if impute:
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
@@ -366,19 +370,33 @@ cpdef _update_dict(double[::1, :] Q,
              &one, Q_subset_ptr + k, &n_components, R_ptr, &n_components)
         for jj in range(len_subset):
             Q_subset[k, jj] = R[k, jj] / A[k, k]
-        enet_projection_inplace(Q_subset[k, :len_subset], buffer[:len_subset],
-                                norm[k], l1_ratio)
-        for jj in range(len_subset):
-            Q_subset[k, jj] = buffer[jj]
+        if full_projection:
+            for jj in range(len_subset):
+                j = subset[jj]
+                Q[k, j] = Q_subset[k, jj]
+            enet_projection_inplace(Q[k], buffer,
+                                    norm[k], l1_ratio)
+            for jj in range(n_features):
+                Q[k, jj] = buffer[jj]
+            for jj in range(len_subset):
+                j = subset[jj]
+                Q_subset[k, jj] = Q[k, j]
+        else:
+            enet_projection_inplace(Q_subset[k, :len_subset],
+                                    buffer[:len_subset],
+                                    norm[k], l1_ratio)
+            for jj in range(len_subset):
+                Q_subset[k, jj] = buffer[jj]
         # R -= A[:, k] Q[:, k].T
         dger(&n_components, &len_subset, &moned,
              A_ptr + k  * n_components,
              &one, Q_subset_ptr + k, &n_components, R_ptr, &n_components)
 
-    for kk in range(n_components):
-        for jj in range(len_subset):
-            j = subset[jj]
-            Q[kk, j] = Q_subset[kk, jj]
+    if not full_projection:
+        for kk in range(n_components):
+            for jj in range(len_subset):
+                j = subset[jj]
+                Q[kk, j] = Q_subset[kk, jj]
 
     if impute:
         dgemm(&NTRANS, &TRANS,

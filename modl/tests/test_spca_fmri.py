@@ -7,6 +7,7 @@ from nilearn.image import iter_img
 from modl.spca_fmri import SpcaFmri
 
 backends = ['c', 'python']
+imputes = [True, False]
 
 
 # Utils function are copied from nilearn.decomposition.tests.test_canica
@@ -67,11 +68,13 @@ def _make_test_data(rng=None, n_subjects=8, noisy=False):
 
 
 @pytest.mark.parametrize("backend", backends)
-def test_sparse_pca(backend):
+@pytest.mark.parametrize("impute", imputes)
+def test_sparse_pca(backend, impute):
     data, mask_img, components, rng = _make_test_data(n_subjects=16)
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           mask=mask_img,
                           backend=backend,
+                          impute=impute,
                           smoothing_fwhm=0., n_epochs=1, alpha=0.05)
     sparse_pca.fit(data)
     maps = sparse_pca.masker_. \
@@ -94,6 +97,7 @@ def test_sparse_pca(backend):
     # Smoke test n_epochs > 1
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           mask=mask_img,
+                          impute=impute,
                           smoothing_fwhm=0., n_epochs=2, alpha=1)
     sparse_pca.fit(data)
 
@@ -101,6 +105,7 @@ def test_sparse_pca(backend):
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           reduction=2,
                           mask=mask_img,
+                          impute=impute,
                           smoothing_fwhm=0., n_epochs=1, alpha=1)
     sparse_pca.fit(data)
 
