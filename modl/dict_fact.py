@@ -661,7 +661,7 @@ def online_dl(X, Q,
                          l1_ratio,
                          full_projection,
                          stat.A,
-                         stat.B * np.sqrt(stat.counter[0] / stat.counter[1:])[:, np.newaxis],
+                         stat.B,
                          stat.G,
                          impute,
                          R,
@@ -752,15 +752,9 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
     stat.counter[subset + 1] += batch_size
     if impute:
         G = stat.G.copy()
-        # scale = stat.counter[1:]
-        # scale[scale == 0] = 1
-        # scale = stat.counter[0] / scale
-        # scale = scale[np.newaxis, :]
-        # G = np.dot(Q * scale, Q.T).T
     else:
         G = np.dot(Q_subset, Q_subset.T).T
-    # Qx = np.dot(Q_subset, X.T)
-    Qx = np.dot(Q_subset * np.sqrt(stat.counter[subset + 1] / stat.counter[0])[np.newaxis, :], X.T)
+    Qx = np.dot(Q_subset * np.sqrt(stat.counter[0] / stat.counter[subset + 1])[np.newaxis, :], X.T)
 
     if impute:
         stat.sample_counter[sample_idx] += 1
@@ -772,8 +766,8 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
         else:
             impute_lr = 1. / stat.sample_counter[sample_idx]
             stat.T[sample_idx] *= (1 - impute_lr[:, np.newaxis])
-            # stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T * (1. * n_cols) / len(subset)
-            stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T
+            stat.T[sample_idx] += impute_lr[:, np.newaxis]  * Qx.T # * (1. * n_cols) / len(subset)
+            # stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T
             Qx = stat.T[sample_idx].copy().T
 
         if Qx.ndim == 1:
@@ -791,8 +785,8 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
 
     stat.A *= 1 - w_A
     stat.A += P.dot(P.T) * w_A / batch_size
-    stat.B[:, subset] *= 1 - w_A
-    stat.B[:, subset] += P.dot(X) * w_A / batch_size
+    stat.B[:, subset] *= 1 - w_B
+    stat.B[:, subset] += P.dot(X) * w_B / batch_size
 
     return P.T
 
@@ -841,7 +835,10 @@ def _update_dict_slow(Q, subset,
     else:
         components_range = np.arange(n_components)
     random_state.shuffle(components_range)
-    R = np.sqrt(stat.counter[0] / stat.counter[subset + 1])[np.newaxis, :] * stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
+    F = stat.counter[1:]
+    F[F == 0] = 1
+    F = np.sqrt(stat.counter[0] / F)
+    R = F[np.newaxis, subset] * stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
     # R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
 
     for j in components_range:
@@ -851,7 +848,7 @@ def _update_dict_slow(Q, subset,
         Q_subset[j] = R[j] / stat.A[j, j]
         if full_projection:
             Q[j][subset] = Q_subset[j]
-            Q[j] = enet_projection(Q[j], norm[j], l1_ratio)
+            Q[j] = enet_projection(F * Q[j], norm[j], l1_ratio) / F
             Q_subset[j] = Q[j][subset]
         else:
             Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)
