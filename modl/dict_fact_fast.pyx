@@ -284,7 +284,7 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
                 impute_lr = 1. / sample_counter[j]
             for k in range(n_components):
                 T[j, k] *= (1 - impute_lr)
-                T[j, k] += impute_lr * P_temp[k, jj] # * (1. * n_cols) / len_subset
+                T[j, k] += impute_lr * P_temp[k, jj] * (1. * n_cols) / len_subset
                 if const_impute_lr:
                     P_temp[k, jj] = T[j, k] / impute_lr
                 else:

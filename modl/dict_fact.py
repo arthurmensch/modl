@@ -158,6 +158,7 @@ class DictMF(BaseEstimator):
                  l1_ratio=0,
                  impute=False,
                  impute_lr=-1,
+                 scaled_D=False,
                  n_samples=None,
                  max_n_iter=0,
                  # Generic parameters
@@ -182,6 +183,7 @@ class DictMF(BaseEstimator):
 
         self.impute = impute
         self.impute_lr = impute_lr
+        self.scaled_D =  scaled_D
         self.n_samples = n_samples
         self.max_n_iter = max_n_iter
 
@@ -313,6 +315,7 @@ class DictMF(BaseEstimator):
                                      verbose=self.verbose,
                                      impute=self.impute,
                                      impute_lr=self.impute_lr,
+                                     scaled_D=self.scaled_D,
                                      max_n_iter=self.max_n_iter,
                                      reduction=self.reduction,
                                      debug=self.debug,
@@ -425,6 +428,7 @@ def online_dl(X, Q,
               stat=None,
               impute=False,
               impute_lr=1,
+              scaled_D=False,
               max_n_iter=0,
               freeze_first_col=False,
               random_state=None,
@@ -600,6 +604,7 @@ def online_dl(X, Q,
                                                Q, stat,
                                                impute,
                                                impute_lr,
+                                               scaled_D,
                                                debug)
                     if P is not None:
                         P[j] = this_P
@@ -624,6 +629,7 @@ def online_dl(X, Q,
                                            Q, stat,
                                            impute,
                                            impute_lr,
+                                           scaled_D,
                                            debug)
             else:
                 # Bug with impute !
@@ -654,6 +660,7 @@ def online_dl(X, Q,
                               full_projection,
                               stat,
                               impute,
+                              scaled_D,
                               random_state)
         else:
             random_state.shuffle(components_range)
@@ -708,7 +715,7 @@ def _update_subset_stat(stat, random_state):
 def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
                       offset,
                       Q, stat,
-                      impute, impute_lr, debug):
+                      impute, impute_lr, scaled_D, debug):
     """Compute code for a mini-batch and update algorithm statistics accordingly
 
     Parameters
@@ -754,7 +761,10 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
         G = stat.G.copy()
     else:
         G = np.dot(Q_subset, Q_subset.T).T
-    Qx = np.dot(Q_subset * np.sqrt(stat.counter[0] / stat.counter[subset + 1])[np.newaxis, :], X.T)
+    if scaled_D:
+        Qx = np.dot(Q_subset * np.sqrt(stat.counter[0] / stat.counter[subset + 1])[np.newaxis, :], X.T)
+    else:
+        Qx = np.dot(Q_subset, X.T)
 
     if impute:
         stat.sample_counter[sample_idx] += 1
@@ -766,8 +776,10 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
         else:
             impute_lr = 1. / stat.sample_counter[sample_idx]
             stat.T[sample_idx] *= (1 - impute_lr[:, np.newaxis])
-            stat.T[sample_idx] += impute_lr[:, np.newaxis]  * Qx.T # * (1. * n_cols) / len(subset)
-            # stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T
+            if scaled_D:
+                stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T
+            else:
+                stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T * (1. * n_cols) / len(subset)
             Qx = stat.T[sample_idx].copy().T
 
         if Qx.ndim == 1:
@@ -785,8 +797,12 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
 
     stat.A *= 1 - w_A
     stat.A += P.dot(P.T) * w_A / batch_size
-    stat.B[:, subset] *= 1 - w_B
-    stat.B[:, subset] += P.dot(X) * w_B / batch_size
+    if scaled_D:
+        stat.B[:, subset] *= 1 - w_A
+        stat.B[:, subset] += P.dot(X) * w_A / batch_size
+    else:
+        stat.B[:, subset] *= 1 - w_B
+        stat.B[:, subset] += P.dot(X) * w_B / batch_size
 
     return P.T
 
@@ -797,6 +813,7 @@ def _update_dict_slow(Q, subset,
                       full_projection,
                       stat,
                       impute,
+                      scaled_D,
                       random_state):
     """Update dictionary from statistic
     Parameters
@@ -819,12 +836,19 @@ def _update_dict_slow(Q, subset,
     len_subset = subset.shape[0]
     Q_subset = np.zeros((n_components, len_subset))
     Q_subset[:] = Q[:, subset]
+    if scaled_D:
+        F = stat.counter[1:]
+        F[F == 0] = 1
+        F = np.sqrt(stat.counter[0] / F)
 
     if impute and not full_projection:
         stat.G -= Q_subset.dot(Q_subset.T)
 
     if full_projection:
-        norm = enet_norm(Q, l1_ratio)
+        if scaled_D:
+            norm = enet_norm(Q * F, l1_ratio)
+        else:
+            norm = enet_norm(Q, l1_ratio)
     else:
         norm = enet_norm(Q_subset, l1_ratio)
 
@@ -835,11 +859,10 @@ def _update_dict_slow(Q, subset,
     else:
         components_range = np.arange(n_components)
     random_state.shuffle(components_range)
-    F = stat.counter[1:]
-    F[F == 0] = 1
-    F = np.sqrt(stat.counter[0] / F)
-    R = F[np.newaxis, subset] * stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
-    # R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
+    if scaled_D:
+        R = F[np.newaxis, subset] * stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
+    else:
+        R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
 
     for j in components_range:
         ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
@@ -848,7 +871,10 @@ def _update_dict_slow(Q, subset,
         Q_subset[j] = R[j] / stat.A[j, j]
         if full_projection:
             Q[j][subset] = Q_subset[j]
-            Q[j] = enet_projection(F * Q[j], norm[j], l1_ratio) / F
+            if scaled_D:
+                Q[j] = enet_projection(F * Q[j], norm[j], l1_ratio) / F
+            else:
+                Q[j] = enet_projection(Q[j], norm[j], l1_ratio)
             Q_subset[j] = Q[j][subset]
         else:
             Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)

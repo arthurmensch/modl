@@ -49,7 +49,7 @@ class Callback(object):
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=0.001, verbose=5,
+mf = DictCompleter(n_components=30, alpha=30, verbose=5,
                    batch_size=60, detrend=True,
                    offset=0,
                    impute=True,
@@ -58,7 +58,7 @@ mf = DictCompleter(n_components=30, alpha=0.001, verbose=5,
                    full_projection=True,
                    random_state=0,
                    learning_rate=1,
-                   max_n_iter=10000,
+                   max_n_iter=40000,
                    backend='python')
 
 # Need to download from spira
