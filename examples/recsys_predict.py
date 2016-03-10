@@ -49,16 +49,17 @@ class Callback(object):
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=.8, verbose=5,
+mf = DictCompleter(n_components=30, alpha=1, verbose=5,
                    batch_size=60, detrend=True,
                    offset=0,
-                   impute=False,
+                   impute=True,
+                   impute_lr=-1,
                    fit_intercept=True,
                    full_projection=True,
                    random_state=0,
-                   learning_rate=0.8,
-                   max_n_iter=60000,
-                   backend='c')
+                   learning_rate=1,
+                   max_n_iter=20000,
+                   backend='python')
 
 # Need to download from spira
 X = load_movielens('1m')

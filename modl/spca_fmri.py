@@ -11,6 +11,7 @@ import itertools
 from os.path import join
 
 import numpy as np
+from nilearn._utils import check_niimg
 from nilearn._utils.cache_mixin import CacheMixin
 from nilearn.decomposition.base import BaseDecomposition
 from sklearn.base import TransformerMixin
@@ -98,6 +99,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  reduction=1,
                  full_projection=False,
                  impute=False,
+                 impute_lr=-1,
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -132,6 +134,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.reduction = reduction
         self.full_projection = full_projection
         self.impute = impute
+        self.impute_lr = impute_lr
         self.backend = backend
         self.shelve = shelve
         self.trace_folder = trace_folder
@@ -159,7 +162,6 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             mask_img = self.masker_.mask_img_
             masker_params['mask_img'] = mask_img
             self.masker_ = MultiNiftiMasker(**masker_params).fit()
-
         random_state = check_random_state(self.random_state)
 
         n_epochs = int(self.n_epochs)
@@ -179,8 +181,12 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             else:
                 data_list = list(zip(imgs, confounds))
 
-        data_list = itertools.chain(*[random_state.permutation(
-            data_list) for _ in range(n_epochs)])
+
+        if self.impute:
+            record_samples = [check_niimg(img).shape[3] for img in imgs]
+            offset_list = np.zeros(len(imgs) + 1, dtype='int')
+            offset_list[1:] = np.cumsum(record_samples)
+
 
         if self.dict_init is not None:
             dict_init = self.masker_.transform(self.dict_init)
@@ -192,6 +198,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          reduction=self.reduction,
                          full_projection=self.full_projection,
                          impute=self.impute,
+                         impute_lr=self.impute_lr,
+                         n_samples=offset_list[-1] + 1 if self.impute else None,
                          batch_size=self.batch_size,
                          random_state=random_state,
                          dict_init=dict_init,
@@ -199,7 +207,14 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          backend=self.backend,
                          verbose=max(0, self.verbose - 1))
 
-        for record, this_data in enumerate(data_list):
+        # Epoch logic
+        data_idx = itertools.chain(*[random_state.permutation(
+            len(imgs)) for _ in range(n_epochs)])
+
+        for record, this_data_idx in enumerate(data_idx):
+            this_data = data_list[this_data_idx]
+            if self.impute:
+                offset = offset_list[this_data_idx]
             if self.verbose:
                 print('Streaming record %s' % record)
             if raw:
@@ -210,7 +225,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                 else:
                     this_data = self.masker_.transform(this_data[0],
                                                        confounds=this_data[1])
-            dict_mf.partial_fit(this_data)
+            if self.impute:
+                dict_mf.partial_fit(this_data, sample_idx=offset + np.arange(this_data.shape[0]))
+            else:
+                dict_mf.partial_fit(this_data)
             if record % 4 == 0:
                 if self.trace_folder is not None:
                     components = dict_mf.Q_.copy()

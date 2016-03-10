@@ -1,12 +1,14 @@
-from time import time
+import time
+from math import sqrt
 
 import matplotlib.pyplot as plt
+import numpy as np
 from numpy.random import RandomState
 from sklearn.datasets import fetch_olivetti_faces
 
 from modl.dict_fact import DictMF
 
-n_row, n_col = 3, 4
+n_row, n_col = 3, 6
 n_components = n_row * n_col
 image_shape = (64, 64)
 rng = RandomState(0)
@@ -27,7 +29,35 @@ faces_centered -= faces_centered.mean(axis=1).reshape(n_samples, -1)
 print("Dataset consists of %d faces" % n_samples)
 
 
-###############################################################################
+def sqnorm(X):
+    return sqrt(np.sum(X ** 2))
+
+
+class Callback(object):
+    """Utility class for plotting RMSE"""
+    def __init__(self, X_tr):
+        self.X_tr = X_tr
+        # self.X_te = X_te
+        self.obj = []
+        self.rmse = []
+        self.rmse_tr = []
+        self.times = []
+        self.q = []
+        self.start_time = time.clock()
+        self.test_time = 0
+
+    def __call__(self, mf):
+        test_time = time.clock()
+        P = mf.transform(self.X_tr)
+        loss = sqnorm(data - mf.transform(self.X_tr).T.dot(mf.components_)) / 2
+        regul = mf.alpha * sqnorm(P)
+        self.obj.append(loss + regul)
+
+        self.q.append(mf.Q_[1, np.linspace(0, 4095, 50, dtype='int')].copy())
+        self.test_time += time.clock() - test_time
+        self.times.append(time.clock() - self.start_time - self.test_time)
+
+
 def plot_gallery(title, images, n_col=n_col, n_row=n_row):
     plt.figure(figsize=(2. * n_col, 2.26 * n_row))
     plt.suptitle(title, size=16)
@@ -43,44 +73,37 @@ def plot_gallery(title, images, n_col=n_col, n_row=n_row):
 
 
 ###############################################################################
-# Plot a sample of the input data
-
-# plot_gallery("First centered Olivetti faces", faces_centered[:n_components])
-
-###############################################################################
 # Do the estimation and plot it
 
-center = True
+name = 'MODL'
+print("Extracting the top %d %s..." % (n_components, name))
+t0 = time.time()
+data = faces_centered
+cb = Callback(data)
+
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=2, l1_ratio=1, alpha=1e-2, max_n_iter=10000,
+                   reduction=3, l1_ratio=1, alpha=1e-3, max_n_iter=10000,
                    full_projection=True,
                    impute=True,
+                   impute_lr=-1,
                    backend='c',
                    verbose=3,
-                   random_state=0)
-# For comparison
-# estimator = MiniBatchSparsePCA(n_components=n_components, alpha=0.1,
-#                                n_iter=1000, batch_size=3,
-#                                random_state=rng)
-name = 'MODL'
+                   random_state=0,
+                   callback=cb)
 
-print("Extracting the top %d %s..." % (n_components, name))
-t0 = time()
-data = faces
-if center:
-    data = faces_centered
 estimator.fit(data)
-train_time = (time() - t0)
+train_time = (time.time() - t0)
 print("done in %0.3fs" % train_time)
-if hasattr(estimator, 'cluster_centers_'):
-    components_ = estimator.cluster_centers_
-else:
-    components_ = estimator.components_
-if hasattr(estimator, 'noise_variance_'):
-    plot_gallery("Pixelwise variance",
-                 estimator.noise_variance_.reshape(1, -1), n_col=1,
-                 n_row=1)
+components_ = estimator.components_
 plot_gallery('%s - Train time %.1fs' % (name, train_time),
-             components_[:n_components])
+         components_[:n_components])
+
+fig = plt.figure()
+plt.plot(cb.times, cb.obj, label='Function value')
+plt.legend()
+
+fig = plt.figure()
+plt.plot(cb.times, cb.q)
+plt.legend()
 
 plt.show()

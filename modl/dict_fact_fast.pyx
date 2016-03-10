@@ -5,7 +5,6 @@
 
 from scipy.linalg.cython_lapack cimport dposv
 from scipy.linalg.cython_blas cimport dgemm, dger
-
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 import numpy as np
@@ -75,6 +74,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      int n_rows,
                                      int n_cols,
                                      long[:] row_batch,
+                                     long[:] sample_idx,
                                      double alpha,
                                      double learning_rate,
                                      double offset,
@@ -87,6 +87,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double[::1, :] G,
                                      double[::1, :] T,
                                      bint impute,
+                                     double impute_lr,
                                      double[::1, :] Q_subset,
                                      double[::1, :] P_temp,
                                      double[::1, :] G_temp,
@@ -153,7 +154,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                 dict_subset[l] = j
                 l += 1
 
-        _update_code(this_X, subset, row_batch,
+        _update_code(this_X[:1], subset, sample_idx[i:i + 1],
                      reg, learning_rate,
                      offset, Q, A, B,
                      counter,
@@ -161,6 +162,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                      G,
                      T,
                      impute,
+                     impute_lr,
                      Q_subset,
                      P_temp,
                      G_temp,
@@ -174,8 +176,8 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
     dict_subset_lim[0] = l
     return n_iter
 
-cpdef _update_code(double[::1, :] X, int[:] subset,
-                   long[:] row_batch,
+cpdef void _update_code(double[::1, :] X, int[:] subset,
+                   long[:] sample_idx,
                    double alpha,
                    double learning_rate,
                    double offset,
@@ -187,11 +189,12 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
                    double[::1, :] G,
                    double[::1, :] T,
                    bint impute,
+                   double impute_lr,
                    double[::1, :] Q_subset,
                    double[::1, :] P_temp,
                    double[::1, :] G_temp,
                    char[:] subset_mask,
-                   double[:] weights):
+                   double[:] weights) except *:
     """
     Compute code for a mini-batch and update algorithm statistics accordingly
 
@@ -234,6 +237,7 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
     cdef double reg, v
     cdef int last = 0
     cdef double one_m_w_A, w_A
+    cdef int const_impute_lr = impute_lr >= 0
 
     for k in range(n_components):
         for jj in range(len_subset):
@@ -274,13 +278,17 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
 
     if impute:
         for jj in range(batch_size):
-            j = row_batch[jj]
+            j = sample_idx[jj]
             sample_counter[j] += 1
-            impute_lr = 0.9
+            if not const_impute_lr:
+                impute_lr = 1. / sample_counter[j]
             for k in range(n_components):
                 T[j, k] *= (1 - impute_lr)
                 T[j, k] += impute_lr * P_temp[k, jj] * (1. * n_cols) / len_subset
-                P_temp[k, jj] = T[j, k]
+                if const_impute_lr:
+                    P_temp[k, jj] = T[j, k] / impute_lr
+                else:
+                    P_temp[k, jj] = T[j, k]
 
 
     # C.flat[::n_components + 1] += alpha
@@ -292,6 +300,7 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
           P_temp_ptr, &n_components,
           &info)
     if info != 0:
+        print('error')
         raise ValueError
 
     # A *= 1 - w_A * len_batch
@@ -312,6 +321,9 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
         subset_mask[j] = 1
         # Reuse Q_subset as B_subset
         for k in range(n_components):
+            # if impute:
+            #     Q_subset[k, jj] = B[k, j] * one_m_w_A
+            # else:
             Q_subset[k, jj] = B[k, j] * (1 - weights[jj + 1])
         for ii in range(batch_size):
             X[ii, jj] *= weights[jj + 1] / batch_size
@@ -327,8 +339,7 @@ cpdef _update_code(double[::1, :] X, int[:] subset,
         for k in range(n_components):
             B[k, j] = Q_subset[k, jj]
 
-
-cpdef _update_dict(double[::1, :] Q,
+cpdef void _update_dict(double[::1, :] Q,
                   int[:] subset,
                   bint freeze_first_col,
                   double l1_ratio,
@@ -365,6 +376,7 @@ cpdef _update_dict(double[::1, :] Q,
             norm[k] = enet_norm(Q[k], l1_ratio)
         else:
             norm[k] = enet_norm(Q_subset[k, :len_subset], l1_ratio)
+
     if impute and not full_projection:
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
@@ -391,10 +403,10 @@ cpdef _update_dict(double[::1, :] Q,
              &one, Q_subset_ptr + k, &n_components, R_ptr, &n_components)
         for jj in range(len_subset):
             Q_subset[k, jj] = R[k, jj] / A[k, k]
-        if full_projection:
-            for jj in range(len_subset):
+            if full_projection:
                 j = subset[jj]
                 Q[k, j] = Q_subset[k, jj]
+        if full_projection:
             enet_projection_inplace(Q[k], buffer,
                                     norm[k], l1_ratio)
             for jj in range(n_features):

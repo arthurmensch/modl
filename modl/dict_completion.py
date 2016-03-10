@@ -73,6 +73,8 @@ class DictCompleter(DictMF):
                  dict_init=None,
                  l1_ratio=0,
                  impute=False,
+                 impute_lr=-1,
+                 n_samples=None,
                  max_n_iter=10000,
                  # Generic parameters
                  random_state=None,
@@ -94,6 +96,8 @@ class DictCompleter(DictMF):
                         dict_init,
                         l1_ratio,
                         impute,
+                        impute_lr,
+                        n_samples,
                         max_n_iter,
                         # Generic parameters
                         random_state,
