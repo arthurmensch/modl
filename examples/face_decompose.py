@@ -83,7 +83,7 @@ cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
                    reduction=3, l1_ratio=1, alpha=1e-3, max_n_iter=10000,
-                   full_projection=True,
+                   full_projection=False,
                    impute=True,
                    impute_lr=-1,
                    backend='c',

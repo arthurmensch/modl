@@ -49,13 +49,14 @@ class Callback(object):
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=30, verbose=5,
+mf = DictCompleter(n_components=30, alpha=1, verbose=5,
                    batch_size=60, detrend=True,
                    offset=0,
                    impute=True,
                    impute_lr=-1,
+                   scaled_D=False,
                    fit_intercept=True,
-                   full_projection=True,
+                   full_projection=False,
                    random_state=0,
                    learning_rate=1,
                    max_n_iter=40000,
