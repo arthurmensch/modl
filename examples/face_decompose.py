@@ -6,7 +6,6 @@ import numpy as np
 from numpy.random import RandomState
 from sklearn.datasets import fetch_olivetti_faces
 
-from modl.dict_fact import DictMF
 from modl.dict_fact_remake import DictMFRemake
 
 n_row, n_col = 3, 6
@@ -45,20 +44,25 @@ class Callback(object):
         self.rmse = []
         self.rmse_tr = []
         self.times = []
+        self.iter = []
         self.q = []
+        self.e = []
         self.start_time = time.clock()
         self.test_time = 0
 
     def __call__(self, mf):
         test_time = time.clock()
         P = mf.transform(self.X_tr)
-        loss = sqnorm(data - mf.transform(self.X_tr).T.dot(mf.components_)) / 2
-        regul = mf.alpha * sqnorm(P)
+        loss = np.sum((data - mf.transform(self.X_tr).T.dot(mf.components_)) ** 2)
+        regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
 
-        self.q.append(mf.Q_[1, np.linspace(0, 4095, 50, dtype='int')].copy())
+        self.q.append(mf.Q_[1, np.linspace(0, 4095, 3, dtype='int')].copy())
+        self.e.append(mf._stat.E[1, np.linspace(0, 4095, 3, dtype='int')].copy())
+
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
+        self.iter.append(mf._stat.n_iter)
 
 
 def plot_gallery(title, images, n_col=n_col, n_row=n_row):
@@ -85,12 +89,12 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMFRemake(n_components=n_components, batch_size=10,
-                         reduction=2, l1_ratio=1, alpha=1e-5, max_n_iter=1600,
-                         full_projection=False,
+                         reduction=3, l1_ratio=1, alpha=1, max_n_iter=3000,
+                         full_projection=True,
                          impute=True,
                          backend='python',
                          verbose=3,
-                         learning_rate=0.5,
+                         learning_rate=0.75,
                          offset=1000,
                          random_state=0,
                          callback=cb)
@@ -103,11 +107,12 @@ plot_gallery('%s - Train time %.1fs' % (name, train_time),
              components_[:n_components])
 
 fig = plt.figure()
-plt.plot(cb.times, cb.obj, label='Function value')
+plt.plot(cb.iter, cb.obj, label='Function value')
 plt.legend()
 
 fig = plt.figure()
-plt.plot(cb.times, cb.q)
+plt.plot(cb.iter, cb.q, label='q')
+plt.plot(cb.iter, cb.e, label='e')
 plt.legend()
 
 plt.show()

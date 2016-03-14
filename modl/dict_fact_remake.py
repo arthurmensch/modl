@@ -21,7 +21,7 @@ class DictMFStats:
     """
 
     def __init__(self, A, B, counter, sample_counter,
-                 G, T, E, reg, weights, P, loss,
+                 G, T, E, F, reg, weights, P, loss,
                  loss_indep, subset_array, subset_start,
                  subset_stop,
                  n_iter,
@@ -38,6 +38,7 @@ class DictMFStats:
         self.B = B
         self.A = A
         self.E = E
+        self.F = F
         self.P = P
         self.reg = reg
         self.weights = weights
@@ -98,9 +99,11 @@ def _init_stats(Q,
     weights = np.zeros(n_rows)
     reg = np.zeros(n_rows)
     E = np.zeros((n_components, n_cols))
-    P = np.zeros((n_rows, n_components))
+    F = np.zeros((n_components, n_components))
+    P = np.ones((n_rows, n_components)) / n_components
 
-    return DictMFStats(A, B, counter, sample_counter, G, T, E, reg, weights, P,
+    return DictMFStats(A, B, counter, sample_counter, G, T, E, F, reg, weights,
+                       P,
                        loss, loss_indep, subset_array,
                        subset_start,
                        subset_stop, 0, )
@@ -399,7 +402,7 @@ def _get_weights(idx, counter, batch_size, learning_rate, offset,
             w_B[jj] = 1
             for i in range(count + 1, count + 1 + batch_size):
                 w_B[jj] *= (
-                1 - pow((1 + offset) / (offset + i), learning_rate))
+                    1 - pow((1 + offset) / (offset + i), learning_rate))
             w_B[jj] = 1 - w_B[jj]
         return w_A, w_B
     else:
@@ -604,7 +607,7 @@ def online_dl(X, Q,
                     this_X = np.empty((1, subset.shape[0]), order='F')
                     this_X[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
                     this_P = _update_code_slow(this_X, subset,
-                                               sample_idx[j:(j+1)],
+                                               sample_idx[j:(j + 1)],
                                                reg, learning_rate,
                                                offset,
                                                Q, stat,
@@ -686,6 +689,7 @@ def online_dl(X, Q,
                 callback()
     return P, Q
 
+
 def _update_subset_stat(stat, random_state):
     """Utility function to track forced masks, using a permutation array
     with rolling limits
@@ -713,6 +717,7 @@ def _update_subset_stat(stat, random_state):
     #     stat.subset_start = 0
     #     stat.subset_stop = subset_size
     random_state.shuffle(stat.subset_array)
+
 
 def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
                       offset,
@@ -754,47 +759,68 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
 
     w_A, w_B = _get_weights(subset, stat.counter, batch_size,
                             learning_rate, offset)
+
     stat.counter[0] += batch_size
     stat.counter[subset + 1] += batch_size
 
     X /= stat.counter[subset + 1] / stat.counter[0]
-
+    # X *= 3
     Qx = np.dot(Q_subset, X.T)
 
+    w_A = pow((1. + offset) / (offset + stat.counter[0]),
+              learning_rate)
     if impute:
         G = stat.G.copy()
     else:
         G = np.dot(Q_subset, Q_subset.T).T
 
     if impute:
+        if stat.n_iter > 400:
+            multiplier = np.sum(stat.P[sample_idx] ** 2, axis=1)
+            inv_multiplier = 1 / multiplier
+        else:
+            multiplier = 0
+            inv_multiplier = 0
         stat.sample_counter[sample_idx] += 1
+        # stat.E = Q
+        stat.E *= 1 - w_A
+        stat.E += w_A * Q * np.mean(multiplier)
+
+        stat.F *= 1 - w_A
+        stat.F.flat[::n_components + 1] += w_A * np.mean(multiplier)
+
         # Make it lazy
         stat.reg *= 1 - w_A
-        stat.reg[sample_idx] += w_A * np.sum(X ** 2, axis=1) / 2
+        stat.reg[sample_idx] += w_A * (alpha + .5 * np.sum(X ** 2, axis=1) * inv_multiplier)
 
         stat.weights *= 1 - w_A
         stat.weights[sample_idx] += w_A
 
         stat.T *= 1 - w_A
-        stat.T[sample_idx] += w_A * (Qx.T + np.sum(X ** 2, axis=1)[:, np.newaxis] * stat.P[sample_idx])
-
+        stat.T[sample_idx] += w_A * Qx.T
+        stat.T[sample_idx] += w_A * stat.P[sample_idx] * (np.sum(X ** 2, axis=1) * inv_multiplier)[:, np.newaxis]
         Qx = stat.T[sample_idx].copy().T
-        Qx /= stat.weights[np.newaxis, sample_idx]
 
         if Qx.ndim == 1:
             Qx = Qx[:, np.newaxis]
-    reg = np.mean((alpha + stat.reg[sample_idx]) / stat.weights[sample_idx])
-    G.flat[::n_components + 1] += reg
 
-    P = linalg.solve(G, Qx, sym_pos=True, overwrite_a=True, check_finite=False)
+    for ii, i in enumerate(sample_idx):
+        reg = stat.reg[i] / stat.weights[i]
+        print(reg)
+        G.flat[::n_components + 1] += reg
+        P = linalg.solve(G, Qx[:, ii], sym_pos=True, overwrite_a=True,
+                         check_finite=False)
+        G.flat[::n_components + 1] -= reg
 
-    stat.P[sample_idx] = P.T
+        P /= stat.weights[i]
+        stat.P[i] = P.T
 
+    P = stat.P[sample_idx].T
     if debug:
         dict_loss = .5 * np.sum(Q.dot(Q.T) * stat.A) - np.sum(Q * stat.B)
         stat.loss_indep *= (1 - w_A)
         stat.loss_indep += (.5 * np.sum(X ** 2) +
-                            alpha * np.sum(P ** 2)) * w_A / batch_size
+                            alpha * np.sum(P ** 2)) * w_A
         stat.loss[stat.n_iter] = stat.loss_indep + dict_loss
 
     stat.A *= 1 - w_A
@@ -802,9 +828,6 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
     # Make it lazy
     stat.B *= 1 - w_A
     stat.B[:, subset] += P.dot(X) * w_A / batch_size
-
-    stat.E[:, subset] *= 1 - w_A
-    stat.E[:, subset] += w_A * Q_subset
 
     return P.T
 
@@ -855,7 +878,7 @@ def _update_dict_slow(Q, subset,
         components_range = np.arange(n_components)
     random_state.shuffle(components_range)
 
-    stat.A += np.eye(n_components)
+    stat.A += stat.F
     R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
     for j in components_range:
         ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
@@ -872,7 +895,7 @@ def _update_dict_slow(Q, subset,
         ger(-1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R -= np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
-    stat.A -= np.eye(n_components)
+    stat.A -= np.eye(n_components) * stat.F
     if not full_projection:
         Q[:, subset] = Q_subset
 
