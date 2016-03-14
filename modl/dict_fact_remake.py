@@ -777,6 +777,7 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
     if impute:
         if stat.n_iter > 400:
             multiplier = np.sum(stat.P[sample_idx] ** 2, axis=1)
+            # multiplier = np.sum(X ** 2, axis=1) / alpha
             inv_multiplier = 1 / multiplier
         else:
             multiplier = 0
@@ -784,10 +785,10 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
         stat.sample_counter[sample_idx] += 1
         # stat.E = Q
         stat.E *= 1 - w_A
-        stat.E += w_A * Q * np.mean(multiplier)
+        stat.E += w_A * Q * np.sum(multiplier) / batch_size
 
         stat.F *= 1 - w_A
-        stat.F.flat[::n_components + 1] += w_A * np.mean(multiplier)
+        stat.F.flat[::n_components + 1] += w_A * np.sum(multiplier) / batch_size
 
         # Make it lazy
         stat.reg *= 1 - w_A
