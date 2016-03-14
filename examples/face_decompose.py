@@ -7,6 +7,7 @@ from numpy.random import RandomState
 from sklearn.datasets import fetch_olivetti_faces
 
 from modl.dict_fact import DictMF
+from modl.dict_fact_remake import DictMFRemake
 
 n_row, n_col = 3, 6
 n_components = n_row * n_col
@@ -25,6 +26,7 @@ faces_centered = faces - faces.mean(axis=0)
 
 # local centering
 faces_centered -= faces_centered.mean(axis=1).reshape(n_samples, -1)
+faces_centered /= np.sqrt(np.sum(faces_centered ** 2, axis=1))[:, np.newaxis]
 
 print("Dataset consists of %d faces" % n_samples)
 
@@ -35,6 +37,7 @@ def sqnorm(X):
 
 class Callback(object):
     """Utility class for plotting RMSE"""
+
     def __init__(self, X_tr):
         self.X_tr = X_tr
         # self.X_te = X_te
@@ -81,22 +84,23 @@ t0 = time.time()
 data = faces_centered
 cb = Callback(data)
 
-estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=3, l1_ratio=1, alpha=1e-3, max_n_iter=10000,
-                   full_projection=False,
-                   impute=True,
-                   impute_lr=-1,
-                   backend='c',
-                   verbose=3,
-                   random_state=0,
-                   callback=cb)
+estimator = DictMFRemake(n_components=n_components, batch_size=10,
+                         reduction=2, l1_ratio=1, alpha=1e-5, max_n_iter=1600,
+                         full_projection=False,
+                         impute=True,
+                         backend='python',
+                         verbose=3,
+                         learning_rate=0.5,
+                         offset=1000,
+                         random_state=0,
+                         callback=cb)
 
 estimator.fit(data)
 train_time = (time.time() - t0)
 print("done in %0.3fs" % train_time)
 components_ = estimator.components_
 plot_gallery('%s - Train time %.1fs' % (name, train_time),
-         components_[:n_components])
+             components_[:n_components])
 
 fig = plt.figure()
 plt.plot(cb.times, cb.obj, label='Function value')

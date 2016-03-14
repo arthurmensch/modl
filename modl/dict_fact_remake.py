@@ -21,7 +21,7 @@ class DictMFStats:
     """
 
     def __init__(self, A, B, counter, sample_counter,
-                 G, T, loss,
+                 G, T, E, reg, weights, P, loss,
                  loss_indep, subset_array, subset_start,
                  subset_stop,
                  n_iter,
@@ -37,6 +37,10 @@ class DictMFStats:
         self.sample_counter = sample_counter
         self.B = B
         self.A = A
+        self.E = E
+        self.P = P
+        self.reg = reg
+        self.weights = weights
         self.n_iter = n_iter
 
 
@@ -91,12 +95,18 @@ def _init_stats(Q,
     loss = np.empty(max_n_iter)
     loss_indep = 0.
 
-    return DictMFStats(A, B, counter, sample_counter, G, T, loss, loss_indep, subset_array,
+    weights = np.zeros(n_rows)
+    reg = np.zeros(n_rows)
+    E = np.zeros((n_components, n_cols))
+    P = np.zeros((n_rows, n_components))
+
+    return DictMFStats(A, B, counter, sample_counter, G, T, E, reg, weights, P,
+                       loss, loss_indep, subset_array,
                        subset_start,
                        subset_stop, 0, )
 
 
-class DictMF(BaseEstimator):
+class DictMFRemake(BaseEstimator):
     """Matrix factorization estimator based on masked online dictionary
      learning.
 
@@ -626,7 +636,6 @@ def online_dl(X, Q,
                                            impute_lr,
                                            debug)
             else:
-                # Bug with impute !
                 _update_code(this_X, subset, sample_idx[row_batch],
                              reg, learning_rate,
                              offset, Q, stat.A, stat.B,
@@ -738,8 +747,6 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
     P: ndarray,
         Code for the mini-batch X
     """
-    const_impute_lr = impute_lr >= 0
-
     batch_size, _ = X.shape
     n_components, n_cols = Q.shape
 
@@ -747,32 +754,41 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
 
     w_A, w_B = _get_weights(subset, stat.counter, batch_size,
                             learning_rate, offset)
-
     stat.counter[0] += batch_size
     stat.counter[subset + 1] += batch_size
+
+    X /= stat.counter[subset + 1] / stat.counter[0]
+
+    Qx = np.dot(Q_subset, X.T)
+
     if impute:
         G = stat.G.copy()
     else:
         G = np.dot(Q_subset, Q_subset.T).T
-    Qx = np.dot(Q_subset, X.T)
 
     if impute:
         stat.sample_counter[sample_idx] += 1
-        if const_impute_lr:
-            stat.T[sample_idx] *= (1 - impute_lr)
-            stat.T[sample_idx] += impute_lr * Qx.T * (1. * n_cols) / len(subset)
-            Qx = stat.T[sample_idx].copy().T / impute_lr
-        else:
-            impute_lr = 1. / stat.sample_counter[sample_idx]
-            stat.T[sample_idx] *= (1 - impute_lr[:, np.newaxis])
-            stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T * (1. * n_cols) / len(subset)
-            Qx = stat.T[sample_idx].copy().T
+        # Make it lazy
+        stat.reg *= 1 - w_A
+        stat.reg[sample_idx] += w_A * np.sum(X ** 2, axis=1) / 2
+
+        stat.weights *= 1 - w_A
+        stat.weights[sample_idx] += w_A
+
+        stat.T *= 1 - w_A
+        stat.T[sample_idx] += w_A * (Qx.T + np.sum(X ** 2, axis=1)[:, np.newaxis] * stat.P[sample_idx])
+
+        Qx = stat.T[sample_idx].copy().T
+        Qx /= stat.weights[np.newaxis, sample_idx]
 
         if Qx.ndim == 1:
             Qx = Qx[:, np.newaxis]
+    reg = np.mean((alpha + stat.reg[sample_idx]) / stat.weights[sample_idx])
+    G.flat[::n_components + 1] += reg
 
-    G.flat[::n_components + 1] += alpha
     P = linalg.solve(G, Qx, sym_pos=True, overwrite_a=True, check_finite=False)
+
+    stat.P[sample_idx] = P.T
 
     if debug:
         dict_loss = .5 * np.sum(Q.dot(Q.T) * stat.A) - np.sum(Q * stat.B)
@@ -783,8 +799,12 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
 
     stat.A *= 1 - w_A
     stat.A += P.dot(P.T) * w_A / batch_size
-    stat.B[:, subset] *= 1 - w_B
-    stat.B[:, subset] += P.dot(X) * w_B / batch_size
+    # Make it lazy
+    stat.B *= 1 - w_A
+    stat.B[:, subset] += P.dot(X) * w_A / batch_size
+
+    stat.E[:, subset] *= 1 - w_A
+    stat.E[:, subset] += w_A * Q_subset
 
     return P.T
 
@@ -817,6 +837,7 @@ def _update_dict_slow(Q, subset,
     len_subset = subset.shape[0]
     Q_subset = np.zeros((n_components, len_subset))
     Q_subset[:] = Q[:, subset]
+    E_subset = stat.E[:, subset]
 
     if impute and not full_projection:
         stat.G -= Q_subset.dot(Q_subset.T)
@@ -833,13 +854,15 @@ def _update_dict_slow(Q, subset,
     else:
         components_range = np.arange(n_components)
     random_state.shuffle(components_range)
-    R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
 
+    stat.A += np.eye(n_components)
+    R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
     for j in components_range:
         ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R += np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
-        Q_subset[j] = R[j] / stat.A[j, j]
+        Q_subset[j] = R[j] + E_subset[j]
+        Q_subset[j] /= stat.A[j, j]
         if full_projection:
             Q[j][subset] = Q_subset[j]
             Q[j] = enet_projection(Q[j], norm[j], l1_ratio)
@@ -849,11 +872,12 @@ def _update_dict_slow(Q, subset,
         ger(-1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R -= np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
+    stat.A -= np.eye(n_components)
     if not full_projection:
         Q[:, subset] = Q_subset
 
-    if impute and not full_projection:
-        stat.G += Q_subset.dot(Q_subset.T)
-
-    if impute and full_projection:
-        stat.G = Q.dot(Q.T).T
+    if impute:
+        if not full_projection:
+            stat.G += Q_subset.dot(Q_subset.T)
+        else:
+            stat.G = Q.dot(Q.T).T
