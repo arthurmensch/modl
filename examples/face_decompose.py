@@ -6,7 +6,7 @@ import numpy as np
 from numpy.random import RandomState
 from sklearn.datasets import fetch_olivetti_faces
 
-from modl.dict_fact_remake import DictMFRemake
+from modl.dict_fact import DictMF
 
 n_row, n_col = 3, 6
 n_components = n_row * n_col
@@ -46,7 +46,6 @@ class Callback(object):
         self.times = []
         self.iter = []
         self.q = []
-        self.e = []
         self.start_time = time.clock()
         self.test_time = 0
 
@@ -58,7 +57,6 @@ class Callback(object):
         self.obj.append(loss + regul)
 
         self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
-        self.e.append(mf._stat.E[1, np.linspace(0, 4095, 20, dtype='int')].copy())
 
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
@@ -88,16 +86,17 @@ t0 = time.time()
 data = faces_centered
 cb = Callback(data)
 
-estimator = DictMFRemake(n_components=n_components, batch_size=10,
-                         reduction=3, l1_ratio=1, alpha=0.01, max_n_iter=20000,
-                         full_projection=True,
-                         impute=True,
-                         backend='python',
-                         verbose=3,
-                         learning_rate=0.75,
-                         offset=1000,
-                         random_state=0,
-                         callback=cb)
+estimator = DictMF(n_components=n_components, batch_size=10,
+                   reduction=3, l1_ratio=1, alpha=0.01, max_n_iter=2000,
+                   full_projection=False,
+                   impute=False,
+                   persist_P=True,
+                   backend='python',
+                   verbose=3,
+                   learning_rate=0.75,
+                   offset=0,
+                   random_state=0,
+                   callback=cb)
 
 estimator.fit(data)
 train_time = (time.time() - t0)
@@ -112,7 +111,6 @@ plt.legend()
 
 fig = plt.figure()
 plt.plot(cb.iter, cb.q, label='q')
-# plt.plot(cb.iter, cb.e, label='e')
 plt.legend()
 
 plt.show()

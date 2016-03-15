@@ -96,7 +96,7 @@ class DictCompleter(DictMF):
                         dict_init,
                         l1_ratio,
                         impute,
-                        impute_lr,
+                        True,
                         n_samples,
                         max_n_iter,
                         # Generic parameters
@@ -122,10 +122,6 @@ class DictCompleter(DictMF):
         if self.detrend:
             X, self.row_mean_, self.col_mean_ = csr_center_data(X,
                                                                 inplace=False)
-        n_rows = X.shape[0]
-        self.P_ = np.zeros((n_rows, self.n_components), order='C',
-                           dtype='float')
-
         DictMF.fit(self, X)
 
     def predict(self, X):

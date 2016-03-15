@@ -19,8 +19,8 @@ from sklearn.externals.joblib import Memory
 from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
 
-from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
-from modl.dict_fact_remake import DictMFRemake
+from ._utils.masking.multi_nifti_masker import MultiNiftiMasker
+from .dict_fact import DictMF
 
 
 class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
@@ -99,7 +99,6 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  reduction=1,
                  full_projection=False,
                  impute=False,
-                 impute_lr=-1,
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -134,7 +133,6 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.reduction = reduction
         self.full_projection = full_projection
         self.impute = impute
-        self.impute_lr = impute_lr
         self.backend = backend
         self.shelve = shelve
         self.trace_folder = trace_folder
@@ -193,12 +191,11 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         else:
             dict_init = None
 
-        dict_mf = DictMFRemake(n_components=self.n_components,
+        dict_mf = DictMF(n_components=self.n_components,
                          alpha=self.alpha,
                          reduction=self.reduction,
                          full_projection=self.full_projection,
                          impute=self.impute,
-                         impute_lr=self.impute_lr,
                          n_samples=offset_list[-1] + 1 if self.impute else None,
                          batch_size=self.batch_size,
                          random_state=random_state,

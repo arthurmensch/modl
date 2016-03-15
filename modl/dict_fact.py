@@ -20,8 +20,8 @@ class DictMFStats:
     dictionary learning with masks.
     """
 
-    def __init__(self, A, B, counter, sample_counter,
-                 G, T, loss,
+    def __init__(self, A, B, counter,
+                 G, beta, E, E_mult, F, reg, weights, P, multiplier, loss,
                  loss_indep, subset_array, subset_start,
                  subset_stop,
                  n_iter,
@@ -31,17 +31,29 @@ class DictMFStats:
         self.subset_stop = subset_stop
         self.subset_start = subset_start
         self.subset_array = subset_array
-        self.T = T
+        self.beta = beta
         self.G = G
         self.counter = counter
-        self.sample_counter = sample_counter
         self.B = B
         self.A = A
+        self.E = E
+        self.E_mult = E_mult
+        self.F = F
+        self.P = P
+        self.multiplier = multiplier
+        self.reg = reg
+        self.weights = weights
         self.n_iter = n_iter
+
+    def reset(self):
+        for elem in ['A', 'B', 'beta', 'E', 'E_mult', 'F', 'reg', 'weights']:
+            setattr(self, elem, getattr(self, elem) * self.multiplier)
+        self.multiplier = 1
 
 
 def _init_stats(Q,
                 n_rows=None,
+                persist_P=False,
                 impute=False, reduction=1, max_n_iter=0,
                 random_state=None):
     """
@@ -76,13 +88,24 @@ def _init_stats(Q,
     counter = np.zeros(n_cols + 1, dtype='int')
 
     if not impute:
-        sample_counter = np.zeros(1, dtype='int')
         G = np.zeros((1, 1), order='F')
-        T = np.zeros((1, 1), order='F')
+        beta = np.zeros((1, 1), order='F')
+        weights = np.zeros(1)
+        reg = np.zeros(1)
+        E = np.zeros((1, 1), order='F')
+        F = np.zeros(1)
     else:
-        sample_counter = np.zeros(n_rows, dtype='int')
         G = Q.dot(Q.T).T
-        T = np.zeros((n_rows, n_components), order="F")
+        beta = np.zeros((n_rows, n_components), order="F")
+        weights = np.zeros(n_rows)
+        reg = np.zeros(n_rows)
+        E = np.zeros((n_components, n_cols), order='F')
+        F = np.zeros(n_components)
+
+    if persist_P or impute:
+        P = np.zeros((n_rows, n_components), order='C')
+    else:
+        P = np.zeros((1, 1), order='C')
 
     subset_array = random_state.permutation(n_cols).astype('i4')
     subset_start = 0
@@ -91,9 +114,12 @@ def _init_stats(Q,
     loss = np.empty(max_n_iter)
     loss_indep = 0.
 
-    return DictMFStats(A, B, counter, sample_counter, G, T, loss, loss_indep, subset_array,
-                       subset_start,
-                       subset_stop, 0, )
+    return DictMFStats(A, B, counter,
+                       G, beta, E, 0, F, reg, weights, P, 1, loss,
+                       loss_indep, subset_array, subset_start,
+                       subset_stop,
+                       0,
+                       )
 
 
 class DictMF(BaseEstimator):
@@ -157,7 +183,7 @@ class DictMF(BaseEstimator):
                  dict_init=None,
                  l1_ratio=0,
                  impute=False,
-                 impute_lr=-1,
+                 persist_P=False,
                  n_samples=None,
                  max_n_iter=0,
                  # Generic parameters
@@ -181,9 +207,10 @@ class DictMF(BaseEstimator):
         self.n_components = n_components
 
         self.impute = impute
-        self.impute_lr = impute_lr
         self.n_samples = n_samples
         self.max_n_iter = max_n_iter
+
+        self.persist_P = persist_P
 
         self.random_state = random_state
         self.verbose = verbose
@@ -237,6 +264,7 @@ class DictMF(BaseEstimator):
         self._stat = _init_stats(self.Q_,
                                  n_rows=n_rows,
                                  impute=self.impute,
+                                 persist_P=self.persist_P,
                                  max_n_iter=self.max_n_iter,
                                  reduction=self.reduction,
                                  random_state=self._random_state)
@@ -296,8 +324,8 @@ class DictMF(BaseEstimator):
         if not self._check_init():
             self._init(X)
         self.P_, self.Q_ = online_dl(X, self.Q_,
+                                     return_P=self.persist_P,
                                      sample_idx=sample_idx,
-                                     P=getattr(self, 'P_', None),
                                      alpha=float(
                                          self.alpha),
                                      l1_ratio=self.l1_ratio,
@@ -312,7 +340,6 @@ class DictMF(BaseEstimator):
                                      random_state=self._random_state,
                                      verbose=self.verbose,
                                      impute=self.impute,
-                                     impute_lr=self.impute_lr,
                                      max_n_iter=self.max_n_iter,
                                      reduction=self.reduction,
                                      debug=self.debug,
@@ -371,50 +398,31 @@ def compute_code(X, Q, alpha):
         return P
 
 
-def _get_weights(idx, counter, batch_size, learning_rate, offset,
-                 learning_scheme='new'):
+def _get_weights(idx, counter, batch_size, learning_rate, offset):
     """Utility function to get the update weights at a given iteration
     """
-    if learning_scheme == 'deprecated':
-        idx_len = idx.shape[0]
-        count = counter[0]
-        w_A = 1
-        for i in range(count + 1, count + 1 + batch_size):
-            w_A *= (1 - pow((1 + offset) / (offset + i), learning_rate))
-        w_A = 1 - w_A
-        w_B = np.zeros(idx_len)
-        for jj in range(idx_len):
-            j = idx[jj]
-            count = counter[j + 1]
-            w_B[jj] = 1
-            for i in range(count + 1, count + 1 + batch_size):
-                w_B[jj] *= (
-                1 - pow((1 + offset) / (offset + i), learning_rate))
-            w_B[jj] = 1 - w_B[jj]
-        return w_A, w_B
-    else:
-        idx_len = idx.shape[0]
-        full_count = counter[0]
-        w_A = 1
-        for i in range(full_count + 1, full_count + 1 + batch_size):
-            w_A *= (1 - pow((1 + offset) / (offset + i), learning_rate))
-        w_A = 1 - w_A
-        w_B = np.zeros(idx_len)
-        for jj in range(idx_len):
-            j = idx[jj]
-            count = counter[j + 1]
-            w_B[jj] = 1
-            for i in range(1, batch_size + 1):
-                w_B[jj] *= (1 - (full_count + i) / (count + i) *
-                            pow((1 + offset) / (offset + full_count + i),
-                                learning_rate))
-            w_B[jj] = 1 - w_B[jj]
-        return w_A, w_B
+    idx_len = idx.shape[0]
+    full_count = counter[0]
+    w_A = 1
+    for i in range(full_count + 1, full_count + 1 + batch_size):
+        w_A *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+    w_A = 1 - w_A
+    w_B = np.zeros(idx_len)
+    for jj in range(idx_len):
+        j = idx[jj]
+        count = counter[j + 1]
+        w_B[jj] = 1
+        for i in range(1, batch_size + 1):
+            w_B[jj] *= (1 - (full_count + i) / (count + i) *
+                        pow((1 + offset) / (offset + full_count + i),
+                            learning_rate))
+        w_B[jj] = 1 - w_B[jj]
+    return w_A, w_B
 
 
 def online_dl(X, Q,
               sample_idx=None,
-              P=None,
+              return_P=False,
               alpha=1.,
               learning_rate=1.,
               offset=0.,
@@ -424,7 +432,6 @@ def online_dl(X, Q,
               full_projection=False,
               stat=None,
               impute=False,
-              impute_lr=1,
               max_n_iter=0,
               freeze_first_col=False,
               random_state=None,
@@ -476,7 +483,8 @@ def online_dl(X, Q,
     n_rows, n_cols = X.shape
     n_components = Q.shape[0]
     X = check_array(X, accept_sparse='csr', dtype='float', order='F')
-
+    if backend not in ['python', 'c']:
+        raise ValueError("Invalid backend %s" % backend)
     if sample_idx is None:
         sample_idx = np.arange(n_rows)
 
@@ -484,11 +492,6 @@ def online_dl(X, Q,
         Q = check_array(Q, order='F', dtype='float')
         raise ValueError('X and Q shape mismatch: %r != %r' % (n_cols,
                                                                Q.shape[1]))
-    if P is not None:
-        P = check_array(P, order='C', dtype='float')
-        if P.shape != (n_rows, Q.shape[0]):
-            raise ValueError('Bad P shape: expected %r, got %r' %
-                             ((n_rows, Q.shape[0]), P.shape))
 
     if debug and backend == 'c':
         raise NotImplementedError("Recording objective loss is only available"
@@ -498,6 +501,7 @@ def online_dl(X, Q,
     if stat is None:
         stat = _init_stats(Q, n_rows=n_rows,
                            impute=impute, reduction=reduction,
+                           persist_P=return_P,
                            max_n_iter=max_n_iter,
                            random_state=random_state)
 
@@ -537,14 +541,13 @@ def online_dl(X, Q,
         dict_subset_temp = np.zeros(max_subset_size, dtype='i4')
         dict_subset_lim = np.zeros(1, dtype='i4')
         this_X = np.zeros((1, max_subset_size), order='F')
-        P_dummy = np.zeros((1, 1), order='C')
 
     for batch in batches:
         row_batch = row_range[batch]
         if 0 < max_n_iter <= stat.n_iter + len(row_batch) - 1:
             # Stop algorithm
             stat.n_iter = max_n_iter
-            return P, Q
+            return stat.P, Q
         if sp.isspmatrix_csr(X):
             if backend == 'c':
                 stat.n_iter = _update_code_sparse_batch(X.data, X.indices,
@@ -557,16 +560,13 @@ def online_dl(X, Q,
                                                         learning_rate,
                                                         offset,
                                                         Q,
-                                                        P if P is not None else
-                                                        P_dummy,
+                                                        stat.P,
                                                         stat.A,
                                                         stat.B,
                                                         stat.counter,
-                                                        stat.sample_counter,
                                                         stat.G,
-                                                        stat.T,
+                                                        stat.beta,
                                                         impute,
-                                                        impute_lr,
                                                         Q_subset,
                                                         P_temp,
                                                         G_temp,
@@ -577,7 +577,7 @@ def online_dl(X, Q,
                                                         weights,
                                                         stat.n_iter,
                                                         max_n_iter,
-                                                        P is not None
+                                                        return_P or impute
                                                         )
                 # This is hackish, but np.where becomes a
                 # bottleneck for low batch size otherwise
@@ -585,7 +585,7 @@ def online_dl(X, Q,
             else:
                 for j in row_batch:
                     if 0 < max_n_iter <= stat.n_iter:
-                        return P, Q
+                        return stat.P, Q
                     subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
                     if impute:
                         reg = alpha
@@ -594,15 +594,15 @@ def online_dl(X, Q,
                     this_X = np.empty((1, subset.shape[0]), order='F')
                     this_X[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
                     this_P = _update_code_slow(this_X, subset,
-                                               sample_idx[j:(j+1)],
+                                               sample_idx[j:(j + 1)],
                                                reg, learning_rate,
                                                offset,
                                                Q, stat,
                                                impute,
-                                               impute_lr,
+                                               full_projection,
                                                debug)
-                    if P is not None:
-                        P[j] = this_P
+                    if return_P:
+                        stat.P[j] = this_P
                     stat.n_iter += 1
                 dict_subset = np.concatenate([X.indices[
                                               X.indptr[j]:X.indptr[j + 1]]
@@ -623,19 +623,16 @@ def online_dl(X, Q,
                                            offset,
                                            Q, stat,
                                            impute,
-                                           impute_lr,
+                                           full_projection,
                                            debug)
             else:
-                # Bug with impute !
                 _update_code(this_X, subset, sample_idx[row_batch],
                              reg, learning_rate,
                              offset, Q, stat.A, stat.B,
                              stat.counter,
-                             stat.sample_counter,
                              stat.G,
-                             stat.T,
+                             stat.beta,
                              impute,
-                             impute_lr,
                              Q_subset,
                              P_temp,
                              G_temp,
@@ -643,10 +640,13 @@ def online_dl(X, Q,
                              weights)
                 this_P = P_temp.T
             dict_subset = subset
-            if P is not None:
-                P[row_batch] = this_P[:len(row_batch)]
+            if impute or return_P:
+                stat.P[row_batch] = this_P[:len(row_batch)]
             stat.n_iter += len(row_batch)
             _update_subset_stat(stat, random_state)
+
+        if impute and stat.multiplier < 1e-50:
+            stat.reset()
         # Dictionary update
         if backend == 'python':
             _update_dict_slow(Q, dict_subset, freeze_first_col,
@@ -675,7 +675,8 @@ def online_dl(X, Q,
             n_verbose_call += 1
             if callback is not None:
                 callback()
-    return P, Q
+    return stat.P, Q
+
 
 def _update_subset_stat(stat, random_state):
     """Utility function to track forced masks, using a permutation array
@@ -688,27 +689,13 @@ def _update_subset_stat(stat, random_state):
     random_state:
 
     """
-    # n_cols = stat.subset_array.shape[0]
-    # subset_size = stat.subset_stop - stat.subset_start
-    # if stat.subset_stop + subset_size < n_cols:
-    #     stat.subset_start += subset_size
-    #     stat.subset_stop += subset_size
-    # else:
-    #     buffer_end = stat.subset_array[stat.subset_start:].copy()
-    #     buffer_start = stat.subset_array[:stat.subset_start].copy()
-    #     len_buffer_end = buffer_end.shape[0]
-    #     random_state.shuffle(buffer_start)
-    #     random_state.shuffle(buffer_end)
-    #     stat.subset_array[:len_buffer_end] = buffer_end
-    #     stat.subset_array[len_buffer_end:] = buffer_start
-    #     stat.subset_start = 0
-    #     stat.subset_stop = subset_size
     random_state.shuffle(stat.subset_array)
+
 
 def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
                       offset,
                       Q, stat,
-                      impute, impute_lr, debug):
+                      impute, full_projection, debug):
     """Compute code for a mini-batch and update algorithm statistics accordingly
 
     Parameters
@@ -738,53 +725,76 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
     P: ndarray,
         Code for the mini-batch X
     """
-    const_impute_lr = impute_lr >= 0
-
     batch_size, _ = X.shape
     n_components, n_cols = Q.shape
 
     Q_subset = Q[:, subset]
 
-    w_A, w_B = _get_weights(subset, stat.counter, batch_size,
-                            learning_rate, offset)
+    if not impute:
+        w_A, w_B = _get_weights(subset, stat.counter, batch_size,
+                                learning_rate, offset)
 
     stat.counter[0] += batch_size
     stat.counter[subset + 1] += batch_size
+
     if impute:
-        G = stat.G.copy()
-    else:
-        G = np.dot(Q_subset, Q_subset.T).T
+        X /= stat.counter[subset + 1] / stat.counter[0]
+
     Qx = np.dot(Q_subset, X.T)
 
     if impute:
-        stat.sample_counter[sample_idx] += 1
-        if const_impute_lr:
-            stat.T[sample_idx] *= (1 - impute_lr)
-            stat.T[sample_idx] += impute_lr * Qx.T * (1. * n_cols) / len(subset)
-            Qx = stat.T[sample_idx].copy().T / impute_lr
+        w = pow((1. + offset) / (offset + stat.counter[0]),
+                learning_rate)
+        G = stat.G.copy()
+        if w != 1:
+            stat.multiplier *= 1 - w
+        w_norm = w / stat.multiplier
+        reg_strength = np.sum(stat.P[sample_idx] ** 2, axis=1)
+        inv_reg_strength = np.where(reg_strength, 1. / reg_strength, 0)
+
+        if full_projection:
+            stat.E += w_norm / batch_size * Q * np.sum(reg_strength)
         else:
-            impute_lr = 1. / stat.sample_counter[sample_idx]
-            stat.T[sample_idx] *= (1 - impute_lr[:, np.newaxis])
-            stat.T[sample_idx] += impute_lr[:, np.newaxis] * Qx.T * (1. * n_cols) / len(subset)
-            Qx = stat.T[sample_idx].copy().T
+            stat.E_mult += w_norm / batch_size * np.sum(reg_strength)
 
-        if Qx.ndim == 1:
-            Qx = Qx[:, np.newaxis]
+        stat.F += w_norm / batch_size * np.sum(reg_strength)
 
-    G.flat[::n_components + 1] += alpha
-    P = linalg.solve(G, Qx, sym_pos=True, overwrite_a=True, check_finite=False)
+        stat.reg[sample_idx] += w_norm * (
+            alpha + .5 * np.sum(X ** 2, axis=1) * inv_reg_strength)
+        stat.weights[sample_idx] += w_norm
+
+        stat.beta[sample_idx] += w_norm * (Qx.T + stat.P[sample_idx] * (np.sum(
+            X ** 2, axis=1) * inv_reg_strength)[:, np.newaxis])
+        this_beta = stat.beta[sample_idx].copy()
+
+        for ii, i in enumerate(sample_idx):
+            reg = stat.reg[i] / stat.weights[i]
+            G.flat[::n_components + 1] += reg
+            P = linalg.solve(G, this_beta[ii] * stat.multiplier, sym_pos=True,
+                             overwrite_a=True,
+                             check_finite=False)
+            G.flat[::n_components + 1] -= reg
+            P /= stat.weights[i] * stat.multiplier
+            stat.P[i] = P.T
+        P = stat.P[sample_idx].T
+        stat.A += P.dot(P.T) * w_norm / batch_size
+        stat.B[:, subset] += P.dot(X) * w_norm / batch_size
+    else:
+        G = np.dot(Q_subset, Q_subset.T).T
+        G.flat[::n_components + 1] += alpha
+        P = linalg.solve(G, Qx, sym_pos=True, overwrite_a=True,
+                         check_finite=False)
+        stat.A *= 1 - w_A
+        stat.A += P.dot(P.T) * w_A / batch_size
+        stat.B[:, subset] *= 1 - w_B
+        stat.B[:, subset] += P.dot(X) * w_B / batch_size
 
     if debug:
         dict_loss = .5 * np.sum(Q.dot(Q.T) * stat.A) - np.sum(Q * stat.B)
-        stat.loss_indep *= (1 - w_A)
+        stat.loss_indep *= (1 - w)
         stat.loss_indep += (.5 * np.sum(X ** 2) +
-                            alpha * np.sum(P ** 2)) * w_A / batch_size
+                            alpha * np.sum(P ** 2)) * w
         stat.loss[stat.n_iter] = stat.loss_indep + dict_loss
-
-    stat.A *= 1 - w_A
-    stat.A += P.dot(P.T) * w_A / batch_size
-    stat.B[:, subset] *= 1 - w_B
-    stat.B[:, subset] += P.dot(X) * w_B / batch_size
 
     return P.T
 
@@ -814,9 +824,7 @@ def _update_dict_slow(Q, subset,
 
     """
     n_components = Q.shape[0]
-    len_subset = subset.shape[0]
-    Q_subset = np.zeros((n_components, len_subset))
-    Q_subset[:] = Q[:, subset]
+    Q_subset = Q[:, subset]
 
     if impute and not full_projection:
         stat.G -= Q_subset.dot(Q_subset.T)
@@ -833,7 +841,16 @@ def _update_dict_slow(Q, subset,
     else:
         components_range = np.arange(n_components)
     random_state.shuffle(components_range)
-    R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
+
+    if impute:
+        stat.A.flat[::(n_components + 1)] += stat.F
+        if full_projection:
+            R = stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T,
+                                                               stat.A).T
+        else:
+            R = stat.B[:, subset] + stat.E_mult * Q_subset - np.dot(Q_subset.T, stat.A).T
+    else:
+        R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
 
     for j in components_range:
         ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
@@ -852,8 +869,9 @@ def _update_dict_slow(Q, subset,
     if not full_projection:
         Q[:, subset] = Q_subset
 
-    if impute and not full_projection:
-        stat.G += Q_subset.dot(Q_subset.T)
-
-    if impute and full_projection:
-        stat.G = Q.dot(Q.T).T
+    if impute:
+        stat.A.flat[::(n_components + 1)] -= stat.F
+        if not full_projection:
+            stat.G += Q_subset.dot(Q_subset.T)
+        else:
+            stat.G = Q.dot(Q.T).T

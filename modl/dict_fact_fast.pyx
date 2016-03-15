@@ -83,11 +83,9 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double[::1, :] A,
                                      double[::1, :] B,
                                      long[:] counter,
-                                     long[:] sample_counter,
                                      double[::1, :] G,
                                      double[::1, :] T,
                                      bint impute,
-                                     double impute_lr,
                                      double[::1, :] Q_subset,
                                      double[::1, :] P_temp,
                                      double[::1, :] G_temp,
@@ -158,11 +156,9 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                      reg, learning_rate,
                      offset, Q, A, B,
                      counter,
-                     sample_counter,
                      G,
                      T,
                      impute,
-                     impute_lr,
                      Q_subset,
                      P_temp,
                      G_temp,
@@ -185,11 +181,9 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
                    double[::1, :] A,
                    double[::1, :] B,
                    long[:] counter,
-                   long[:] sample_counter,
                    double[::1, :] G,
                    double[::1, :] T,
                    bint impute,
-                   double impute_lr,
                    double[::1, :] Q_subset,
                    double[::1, :] P_temp,
                    double[::1, :] G_temp,
@@ -237,7 +231,6 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
     cdef double reg, v
     cdef int last = 0
     cdef double one_m_w_A, w_A
-    cdef int const_impute_lr = impute_lr >= 0
 
     for k in range(n_components):
         for jj in range(len_subset):
@@ -277,18 +270,13 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
           )
 
     if impute:
+        impute_lr = 1
         for jj in range(batch_size):
             j = sample_idx[jj]
-            sample_counter[j] += 1
-            if not const_impute_lr:
-                impute_lr = 1. / sample_counter[j]
             for k in range(n_components):
                 T[j, k] *= (1 - impute_lr)
                 T[j, k] += impute_lr * P_temp[k, jj] * (1. * n_cols) / len_subset
-                if const_impute_lr:
-                    P_temp[k, jj] = T[j, k] / impute_lr
-                else:
-                    P_temp[k, jj] = T[j, k]
+                P_temp[k, jj] = T[j, k] / impute_lr
 
 
     # C.flat[::n_components + 1] += alpha

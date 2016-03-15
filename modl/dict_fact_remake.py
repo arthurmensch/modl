@@ -871,6 +871,7 @@ def _update_dict_slow(Q, subset,
     if full_projection:
         R = stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T, stat.A).T
     else:
+        print(stat.E_mult)
         R = stat.B[:, subset] + stat.E_mult * Q[:, subset] - np.dot(Q_subset.T, stat.A).T
     for j in components_range:
         ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
