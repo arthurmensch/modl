@@ -31,7 +31,7 @@ class DictMFStats:
         self.subset_stop = subset_stop
         self.subset_start = subset_start
         self.subset_array = subset_array
-        self.T = T
+        self.beta = T
         self.G = G
         self.counter = counter
         self.sample_counter = sample_counter
@@ -577,7 +577,7 @@ def online_dl(X, Q,
                                                         stat.counter,
                                                         stat.sample_counter,
                                                         stat.G,
-                                                        stat.T,
+                                                        stat.beta,
                                                         impute,
                                                         impute_lr,
                                                         Q_subset,
@@ -645,7 +645,7 @@ def online_dl(X, Q,
                              stat.counter,
                              stat.sample_counter,
                              stat.G,
-                             stat.T,
+                             stat.beta,
                              impute,
                              impute_lr,
                              Q_subset,
@@ -785,29 +785,29 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
         stat.sample_counter[sample_idx] += 1
         # stat.E = Q
         stat.E *= 1 - w_A
-        stat.E += w_A * Q * np.sum(multiplier) / batch_size
+        stat.E += w_A / batch_size * Q * np.sum(multiplier)
 
         stat.F *= 1 - w_A
-        stat.F.flat[::n_components + 1] += w_A * np.sum(multiplier) / batch_size
+        stat.F.flat[::n_components + 1] += w_A / batch_size * np.sum(multiplier)
 
         # Make it lazy
         stat.reg *= 1 - w_A
         stat.reg[sample_idx] += w_A * (alpha + .5 * np.sum(X ** 2, axis=1) * inv_multiplier)
 
         stat.weights *= 1 - w_A
-        stat.weights[sample_idx] += w_A
+        stat.weights[sample_idx] += w_A / (1 - w_A)
 
-        stat.T *= 1 - w_A
-        stat.T[sample_idx] += w_A * Qx.T
-        stat.T[sample_idx] += w_A * stat.P[sample_idx] * (np.sum(X ** 2, axis=1) * inv_multiplier)[:, np.newaxis]
-        Qx = stat.T[sample_idx].copy().T
-
+        stat.beta *= 1 - w_A
+        stat.beta[sample_idx] += w_A / (1 - w_A) * (Qx.T +
+                                                    stat.P[sample_idx] * (np.sum(X ** 2, axis=1) * inv_multiplier)[:, np.newaxis])
+        Qx = stat.beta[sample_idx].T
         if Qx.ndim == 1:
             Qx = Qx[:, np.newaxis]
 
+        Qx = Qx.copy()
+
     for ii, i in enumerate(sample_idx):
         reg = stat.reg[i] / stat.weights[i]
-        print(reg)
         G.flat[::n_components + 1] += reg
         P = linalg.solve(G, Qx[:, ii], sym_pos=True, overwrite_a=True,
                          check_finite=False)
@@ -861,7 +861,6 @@ def _update_dict_slow(Q, subset,
     len_subset = subset.shape[0]
     Q_subset = np.zeros((n_components, len_subset))
     Q_subset[:] = Q[:, subset]
-    E_subset = stat.E[:, subset]
 
     if impute and not full_projection:
         stat.G -= Q_subset.dot(Q_subset.T)
@@ -880,13 +879,12 @@ def _update_dict_slow(Q, subset,
     random_state.shuffle(components_range)
 
     stat.A += stat.F
-    R = stat.B[:, subset] - np.dot(Q_subset.T, stat.A).T
+    R = stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T, stat.A).T
     for j in components_range:
         ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R += np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
-        Q_subset[j] = R[j] + E_subset[j]
-        Q_subset[j] /= stat.A[j, j]
+        Q_subset[j] = R[j] / stat.A[j, j]
         if full_projection:
             Q[j][subset] = Q_subset[j]
             Q[j] = enet_projection(Q[j], norm[j], l1_ratio)
