@@ -89,8 +89,8 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMFRemake(n_components=n_components, batch_size=10,
-                         reduction=3, l1_ratio=1, alpha=0.01, max_n_iter=4000,
-                         full_projection=False,
+                         reduction=3, l1_ratio=1, alpha=0.01, max_n_iter=20000,
+                         full_projection=True,
                          impute=True,
                          backend='python',
                          verbose=3,

@@ -47,7 +47,7 @@ class DictMFStats:
         self.n_iter = n_iter
 
     def reset(self):
-        for elem in ['A', 'B', 'beta', 'E', 'F', 'reg', 'weights']:
+        for elem in ['A', 'B', 'beta', 'E', 'E_mult', 'F', 'reg', 'weights']:
             setattr(self, elem, getattr(self, elem) * self.multiplier)
         self.multiplier = 1
 
@@ -105,7 +105,7 @@ def _init_stats(Q,
     weights = np.zeros(n_rows)
     reg = np.zeros(n_rows)
     E = np.zeros((n_components, n_cols))
-    E_mult = np.ones(n_cols)
+    E_mult = 0
     F = np.zeros(n_components)
     P = np.zeros((n_rows, n_components))
 
@@ -788,8 +788,8 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
         if full_projection:
             stat.E += w_norm / batch_size * Q * np.sum(reg_strength)
         else:
-            stat.E[:, subset] += w_norm / batch_size * Q_subset * np.sum(reg_strength)
-            stat.E[:, ~subset] += w / (1 - w) / batch_size * stat.E[:, ~subset] * np.sum(reg_strength)
+            stat.E_mult += w_norm / batch_size * np.sum(reg_strength)
+
         stat.F += w_norm / batch_size * np.sum(reg_strength)
 
         stat.reg[sample_idx] += w_norm * (alpha + .5 * np.sum(X ** 2, axis=1) * inv_reg_strength)
@@ -868,19 +868,22 @@ def _update_dict_slow(Q, subset,
     random_state.shuffle(components_range)
 
     stat.A.flat[::(n_components + 1)] += stat.F
-    R = stat.multiplier * (stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T, stat.A).T)
+    if full_projection:
+        R = stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T, stat.A).T
+    else:
+        R = stat.B[:, subset] + stat.E_mult * Q[:, subset] - np.dot(Q_subset.T, stat.A).T
     for j in components_range:
-        ger(1.0, stat.multiplier * stat.A[j], Q_subset[j], a=R, overwrite_a=True)
+        ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R += np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
-        Q_subset[j] = R[j] / (stat.multiplier * stat.A[j, j])
+        Q_subset[j] = R[j] / stat.A[j, j]
         if full_projection:
             Q[j][subset] = Q_subset[j]
             Q[j] = enet_projection(Q[j], norm[j], l1_ratio)
             Q_subset[j] = Q[j][subset]
         else:
             Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)
-        ger(-1.0, stat.multiplier * stat.A[j], Q_subset[j], a=R, overwrite_a=True)
+        ger(-1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R -= np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
     stat.A -= np.eye(n_components) * stat.F

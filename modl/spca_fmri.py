@@ -20,7 +20,7 @@ from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
 
 from modl._utils.masking.multi_nifti_masker import MultiNiftiMasker
-from modl.dict_fact import DictMF
+from modl.dict_fact_remake import DictMFRemake
 
 
 class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
@@ -193,7 +193,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         else:
             dict_init = None
 
-        dict_mf = DictMF(n_components=self.n_components,
+        dict_mf = DictMFRemake(n_components=self.n_components,
                          alpha=self.alpha,
                          reduction=self.reduction,
                          full_projection=self.full_projection,
