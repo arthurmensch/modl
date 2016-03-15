@@ -53,12 +53,12 @@ class Callback(object):
     def __call__(self, mf):
         test_time = time.clock()
         P = mf.transform(self.X_tr)
-        loss = np.sum((data - mf.transform(self.X_tr).T.dot(mf.components_)) ** 2)
+        loss = np.sum((data - mf._stat.P.dot(mf.components_)) ** 2)
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
 
-        self.q.append(mf.Q_[1, np.linspace(0, 4095, 3, dtype='int')].copy())
-        self.e.append(mf._stat.E[1, np.linspace(0, 4095, 3, dtype='int')].copy())
+        self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
+        self.e.append(mf._stat.E[1, np.linspace(0, 4095, 20, dtype='int')].copy())
 
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
@@ -89,7 +89,7 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMFRemake(n_components=n_components, batch_size=10,
-                         reduction=2, l1_ratio=1, alpha=0.01, max_n_iter=5000,
+                         reduction=3, l1_ratio=1, alpha=0.01, max_n_iter=4000,
                          full_projection=False,
                          impute=True,
                          backend='python',
@@ -112,7 +112,7 @@ plt.legend()
 
 fig = plt.figure()
 plt.plot(cb.iter, cb.q, label='q')
-plt.plot(cb.iter, cb.e, label='e')
+# plt.plot(cb.iter, cb.e, label='e')
 plt.legend()
 
 plt.show()

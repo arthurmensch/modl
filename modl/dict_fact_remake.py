@@ -21,7 +21,7 @@ class DictMFStats:
     """
 
     def __init__(self, A, B, counter, sample_counter,
-                 G, T, E, F, reg, weights, P, loss,
+                 G, beta, E, E_mult, F, reg, weights, P, multiplier, loss,
                  loss_indep, subset_array, subset_start,
                  subset_stop,
                  n_iter,
@@ -31,19 +31,25 @@ class DictMFStats:
         self.subset_stop = subset_stop
         self.subset_start = subset_start
         self.subset_array = subset_array
-        self.beta = T
+        self.beta = beta
         self.G = G
         self.counter = counter
         self.sample_counter = sample_counter
         self.B = B
         self.A = A
         self.E = E
+        self.E_mult = E_mult
         self.F = F
         self.P = P
+        self.multiplier = multiplier
         self.reg = reg
         self.weights = weights
         self.n_iter = n_iter
 
+    def reset(self):
+        for elem in ['A', 'B', 'beta', 'E', 'F', 'reg', 'weights']:
+            setattr(self, elem, getattr(self, elem) * self.multiplier)
+        self.multiplier = 1
 
 def _init_stats(Q,
                 n_rows=None,
@@ -99,11 +105,12 @@ def _init_stats(Q,
     weights = np.zeros(n_rows)
     reg = np.zeros(n_rows)
     E = np.zeros((n_components, n_cols))
-    F = np.zeros((n_components, n_components))
-    P = np.ones((n_rows, n_components)) / n_components
+    E_mult = np.ones(n_cols)
+    F = np.zeros(n_components)
+    P = np.zeros((n_rows, n_components))
 
-    return DictMFStats(A, B, counter, sample_counter, G, T, E, F, reg, weights,
-                       P,
+    return DictMFStats(A, B, counter, sample_counter, G, T, E, E_mult, F, reg, weights,
+                       P, 1,
                        loss, loss_indep, subset_array,
                        subset_start,
                        subset_stop, 0, )
@@ -612,7 +619,7 @@ def online_dl(X, Q,
                                                offset,
                                                Q, stat,
                                                impute,
-                                               impute_lr,
+                                               full_projection,
                                                debug)
                     if P is not None:
                         P[j] = this_P
@@ -636,7 +643,7 @@ def online_dl(X, Q,
                                            offset,
                                            Q, stat,
                                            impute,
-                                           impute_lr,
+                                           full_projection,
                                            debug)
             else:
                 _update_code(this_X, subset, sample_idx[row_batch],
@@ -659,6 +666,8 @@ def online_dl(X, Q,
                 P[row_batch] = this_P[:len(row_batch)]
             stat.n_iter += len(row_batch)
             _update_subset_stat(stat, random_state)
+        if stat.multiplier < 1e-50:
+            stat.reset()
         # Dictionary update
         if backend == 'python':
             _update_dict_slow(Q, dict_subset, freeze_first_col,
@@ -722,7 +731,7 @@ def _update_subset_stat(stat, random_state):
 def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
                       offset,
                       Q, stat,
-                      impute, impute_lr, debug):
+                      impute, full_projection, debug):
     """Compute code for a mini-batch and update algorithm statistics accordingly
 
     Parameters
@@ -757,78 +766,58 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
 
     Q_subset = Q[:, subset]
 
-    w_A, w_B = _get_weights(subset, stat.counter, batch_size,
-                            learning_rate, offset)
-
     stat.counter[0] += batch_size
     stat.counter[subset + 1] += batch_size
 
     X /= stat.counter[subset + 1] / stat.counter[0]
-    # X *= 3
+
     Qx = np.dot(Q_subset, X.T)
 
-    w_A = pow((1. + offset) / (offset + stat.counter[0]),
+    w = pow((1. + offset) / (offset + stat.counter[0]),
               learning_rate)
+
     if impute:
         G = stat.G.copy()
     else:
         G = np.dot(Q_subset, Q_subset.T).T
-
     if impute:
-        if stat.n_iter > 400:
-            multiplier = np.sum(stat.P[sample_idx] ** 2, axis=1)
-            # multiplier = np.sum(X ** 2, axis=1) / alpha
-            inv_multiplier = 1 / multiplier
+        stat.multiplier *= 1 - w
+        w_norm = w / stat.multiplier
+        reg_strength = np.sum(stat.P[sample_idx] ** 2, axis=1)
+        inv_reg_strength = np.where(reg_strength, 1. / reg_strength, 0)
+        if full_projection:
+            stat.E += w_norm / batch_size * Q * np.sum(reg_strength)
         else:
-            multiplier = 0
-            inv_multiplier = 0
-        stat.sample_counter[sample_idx] += 1
-        # stat.E = Q
-        stat.E *= 1 - w_A
-        stat.E += w_A / batch_size * Q * np.sum(multiplier)
+            stat.E[:, subset] += w_norm / batch_size * Q_subset * np.sum(reg_strength)
+            stat.E[:, ~subset] += w / (1 - w) / batch_size * stat.E[:, ~subset] * np.sum(reg_strength)
+        stat.F += w_norm / batch_size * np.sum(reg_strength)
 
-        stat.F *= 1 - w_A
-        stat.F.flat[::n_components + 1] += w_A / batch_size * np.sum(multiplier)
+        stat.reg[sample_idx] += w_norm * (alpha + .5 * np.sum(X ** 2, axis=1) * inv_reg_strength)
+        stat.weights[sample_idx] += w_norm
 
-        # Make it lazy
-        stat.reg *= 1 - w_A
-        stat.reg[sample_idx] += w_A * (alpha + .5 * np.sum(X ** 2, axis=1) * inv_multiplier)
-
-        stat.weights *= 1 - w_A
-        stat.weights[sample_idx] += w_A / (1 - w_A)
-
-        stat.beta *= 1 - w_A
-        stat.beta[sample_idx] += w_A / (1 - w_A) * (Qx.T +
-                                                    stat.P[sample_idx] * (np.sum(X ** 2, axis=1) * inv_multiplier)[:, np.newaxis])
-        Qx = stat.beta[sample_idx].T
-        if Qx.ndim == 1:
-            Qx = Qx[:, np.newaxis]
-
-        Qx = Qx.copy()
+        stat.beta[sample_idx] += w_norm * (Qx.T + stat.P[sample_idx] * (np.sum(X ** 2, axis=1) * inv_reg_strength)[:, np.newaxis])
+        this_beta = stat.beta[sample_idx].copy()
 
     for ii, i in enumerate(sample_idx):
         reg = stat.reg[i] / stat.weights[i]
         G.flat[::n_components + 1] += reg
-        P = linalg.solve(G, Qx[:, ii], sym_pos=True, overwrite_a=True,
+        P = linalg.solve(G, this_beta[ii] * stat.multiplier, sym_pos=True, overwrite_a=True,
                          check_finite=False)
         G.flat[::n_components + 1] -= reg
-
-        P /= stat.weights[i]
+        P /= stat.weights[i] * stat.multiplier
         stat.P[i] = P.T
 
-    P = stat.P[sample_idx].T
+    this_P = stat.P[sample_idx].T
+
+    stat.A += this_P.dot(this_P.T) * w_norm / batch_size
+    stat.B[:, subset] += this_P.dot(X) * w_norm / batch_size
+
     if debug:
         dict_loss = .5 * np.sum(Q.dot(Q.T) * stat.A) - np.sum(Q * stat.B)
-        stat.loss_indep *= (1 - w_A)
+        stat.loss_indep *= (1 - w)
         stat.loss_indep += (.5 * np.sum(X ** 2) +
-                            alpha * np.sum(P ** 2)) * w_A
+                            alpha * np.sum(P ** 2)) * w
         stat.loss[stat.n_iter] = stat.loss_indep + dict_loss
-
-    stat.A *= 1 - w_A
-    stat.A += P.dot(P.T) * w_A / batch_size
-    # Make it lazy
-    stat.B *= 1 - w_A
-    stat.B[:, subset] += P.dot(X) * w_A / batch_size
 
     return P.T
 
@@ -878,20 +867,20 @@ def _update_dict_slow(Q, subset,
         components_range = np.arange(n_components)
     random_state.shuffle(components_range)
 
-    stat.A += stat.F
-    R = stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T, stat.A).T
+    stat.A.flat[::(n_components + 1)] += stat.F
+    R = stat.multiplier * (stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T, stat.A).T)
     for j in components_range:
-        ger(1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
+        ger(1.0, stat.multiplier * stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R += np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
-        Q_subset[j] = R[j] / stat.A[j, j]
+        Q_subset[j] = R[j] / (stat.multiplier * stat.A[j, j])
         if full_projection:
             Q[j][subset] = Q_subset[j]
             Q[j] = enet_projection(Q[j], norm[j], l1_ratio)
             Q_subset[j] = Q[j][subset]
         else:
             Q_subset[j] = enet_projection(Q_subset[j], norm[j], l1_ratio)
-        ger(-1.0, stat.A[j], Q_subset[j], a=R, overwrite_a=True)
+        ger(-1.0, stat.multiplier * stat.A[j], Q_subset[j], a=R, overwrite_a=True)
         # R -= np.dot(stat.A[:, j].reshape(n_components, 1),
         #  Q_subset[j].reshape(len_subset, 1).T)
     stat.A -= np.eye(n_components) * stat.F
