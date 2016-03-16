@@ -53,7 +53,7 @@ class Callback(object):
     def __call__(self, mf):
         test_time = time.clock()
         P = mf.transform(self.X_tr)
-        loss = np.sum((data - mf._stat.P.dot(mf.components_)) ** 2)
+        loss = np.sum((data - mf.P_.dot(mf.components_)) ** 2)
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
 
@@ -61,7 +61,7 @@ class Callback(object):
         self.sparsity.append(np.sum(mf.Q_ != 0) / mf.Q_.size)
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
-        self.iter.append(mf._stat.n_iter)
+        self.iter.append(mf.n_iter_)
 
 
 def plot_gallery(title, images, n_col=n_col, n_row=n_row):
@@ -88,8 +88,8 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=3, l1_ratio=1, alpha=0.1, max_n_iter=60000,
-                   full_projection=False,
+                   reduction=3, l1_ratio=1, alpha=0.1, max_n_iter=10000,
+                   full_projection=True,
                    impute=True,
                    persist_P=True,
                    backend='python',

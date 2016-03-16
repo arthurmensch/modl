@@ -223,7 +223,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                     this_data = self.masker_.transform(this_data[0],
                                                        confounds=this_data[1])
             if self.impute:
-                dict_mf.partial_fit(this_data, sample_idx=offset + np.arange(this_data.shape[0]))
+                dict_mf.partial_fit(this_data, sample_subset=offset + np.arange(this_data.shape[0]))
             else:
                 dict_mf.partial_fit(this_data)
             if record % 4 == 0:
