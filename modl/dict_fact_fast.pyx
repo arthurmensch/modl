@@ -83,8 +83,13 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double[::1, :] A,
                                      double[::1, :] B,
                                      long[:] counter,
+                                     double[::1, 1] E,
+                                     double[:] F,
+                                     double[:] reg,
+                                     double[:] weights,
                                      double[::1, :] G,
-                                     double[::1, :] T,
+                                     double[::1, :] beta,
+                                     double[:] impute_mult,  # [E_norm, multiplier]
                                      bint impute,
                                      double[::1, :] Q_subset,
                                      double[::1, :] P_temp,
@@ -114,7 +119,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
     B: Algorithm variable
     counter: Algorithm variable
     G: Algorithm variable
-    T: Algorithm variable
+    beta: Algorithm variable
     impute: Online update of Gram matrix
     Q_subset : Temporary array. Holds the subdictionary
     P_temp: Temporary array. Holds the codes for the mini batch
@@ -157,7 +162,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                      offset, Q, A, B,
                      counter,
                      G,
-                     T,
+                     beta,
                      impute,
                      Q_subset,
                      P_temp,
@@ -181,8 +186,13 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
                    double[::1, :] A,
                    double[::1, :] B,
                    long[:] counter,
+                   double[::1, 1] E,
+                   double[:] F,
+                   double[:] reg,
+                   double[:] weights,
                    double[::1, :] G,
-                   double[::1, :] T,
+                   double[::1, :] beta,
+                   double[:] impute_mult,  # [E_norm, multiplier]
                    bint impute,
                    double[::1, :] Q_subset,
                    double[::1, :] P_temp,
@@ -269,16 +279,6 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
           P_temp_ptr, &n_components
           )
 
-    if impute:
-        impute_lr = 1
-        for jj in range(batch_size):
-            j = sample_idx[jj]
-            for k in range(n_components):
-                T[j, k] *= (1 - impute_lr)
-                T[j, k] += impute_lr * P_temp[k, jj] * (1. * n_cols) / len_subset
-                P_temp[k, jj] = T[j, k] / impute_lr
-
-
     # C.flat[::n_components + 1] += alpha
     for p in range(n_components):
         G_temp[p, p] += alpha
@@ -288,7 +288,6 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
           P_temp_ptr, &n_components,
           &info)
     if info != 0:
-        print('error')
         raise ValueError
 
     # A *= 1 - w_A * len_batch
@@ -332,9 +331,14 @@ cpdef void _update_dict(double[::1, :] Q,
                   bint freeze_first_col,
                   double l1_ratio,
                   bint full_projection,
-                  double[::1, :] A, double[::1, :] B,
+                  double[::1, :] A,
+                  double[::1, :] B,
+                  double[::1, :] E,
+                  double[:] F,
                   double[::1, :] G,
+                  double E_mult,
                   bint impute,
+                  bint exact_E,
                   double[::1, :] R,
                   double[::1, :] Q_subset,
                   double[:] norm,

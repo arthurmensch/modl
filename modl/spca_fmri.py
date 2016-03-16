@@ -98,6 +98,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  batch_size=20,
                  reduction=1,
                  full_projection=False,
+                 exact_E=None,
+                 learning_rate=1,
+                 offset=0,
                  impute=False,
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
@@ -136,6 +139,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.backend = backend
         self.shelve = shelve
         self.trace_folder = trace_folder
+
+        self.exact_E = exact_E
+        self.learning_rate = learning_rate
+        self.offset = offset
 
     def fit(self, imgs, y=None, confounds=None, raw=False):
         """Compute the mask and the ICA maps across subjects
@@ -195,6 +202,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          alpha=self.alpha,
                          reduction=self.reduction,
                          full_projection=self.full_projection,
+                         exact_E=self.exact_E,
+                         learning_rate=self.learning_rate,
+                         offset=self.offset,
                          impute=self.impute,
                          n_samples=offset_list[-1] + 1 if self.impute else None,
                          batch_size=self.batch_size,

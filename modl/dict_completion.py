@@ -72,8 +72,6 @@ class DictCompleter(DictMF):
                  # Dict parameter
                  dict_init=None,
                  l1_ratio=0,
-                 impute=False,
-                 impute_lr=-1,
                  n_samples=None,
                  max_n_iter=10000,
                  # Generic parameters
@@ -95,8 +93,8 @@ class DictCompleter(DictMF):
                         # Dict parameter
                         dict_init,
                         l1_ratio,
-                        impute,
-                        True,
+                        False,  # Impute do not work !
+                        True,  # persist_P
                         n_samples,
                         max_n_iter,
                         # Generic parameters

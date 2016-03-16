@@ -10,12 +10,10 @@ from modl._utils.cross_validation import train_test_split
 from modl.dict_completion import DictCompleter, csr_center_data
 
 backends = ['c', 'python']
-imputes = [True, False]
 
 
 @pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("impute", imputes)
-def test_dict_completion(backend, impute):
+def test_dict_completion(backend):
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(50, 3)
@@ -24,7 +22,6 @@ def test_dict_completion(backend, impute):
 
     mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
                        random_state=0,
-                       impute=impute,
                        detrend=False,
                        backend=backend,
                        verbose=0, )
@@ -43,8 +40,7 @@ def test_dict_completion(backend, impute):
 
 
 @pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("impute", imputes)
-def test_dict_completion_normalise(backend, impute):
+def test_dict_completion_normalise(backend):
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(50, 3)
@@ -53,7 +49,6 @@ def test_dict_completion_normalise(backend, impute):
 
     mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
                        random_state=0,
-                       impute=impute,
                        backend=backend,
                        verbose=0, detrend=True)
 
@@ -73,8 +68,7 @@ def test_dict_completion_normalise(backend, impute):
 
 
 @pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("impute", imputes)
-def test_dict_completion_missing(backend, impute):
+def test_dict_completion_missing(backend):
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(100, 4)
@@ -87,7 +81,6 @@ def test_dict_completion_missing(backend, impute):
 
     mf = DictCompleter(n_components=4, max_n_iter=400, alpha=1,
                        random_state=0,
-                       impute=impute,
                        backend=backend,
                        detrend=True,
                        verbose=0, )

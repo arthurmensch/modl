@@ -70,6 +70,7 @@ class DictMF(BaseEstimator):
                  offset=0,
                  reduction=1,
                  full_projection=False,
+                 exact_E=False,
                  # Preproc parameters
                  fit_intercept=False,
                  # Dict parameter
@@ -114,6 +115,7 @@ class DictMF(BaseEstimator):
         self.callback = callback
 
         self.full_projection = full_projection
+        self.exact_E = exact_E
 
     def _reset_stat(self):
         for elem in ['A_', 'B_', 'beta_', 'E_', 'E_mult_',
@@ -178,9 +180,21 @@ class DictMF(BaseEstimator):
             self.F_ = np.zeros(self.n_components)
             self.multiplier_ = 1
             self.E_mult_ = 0
+        else:
+            # Init dummy matrices
+            self.G_ = np.zeros((0, 0), order='F')
+            self.beta_ = np.zeros((0, 0), order="F")
+            self.weights_ = np.zeros(0)
+            self.reg_ = np.zeros(0)
+            self.E_ = np.zeros((0, 0), order='F')
+            self.F_ = np.zeros(0)
+            self.multiplier_ = 0
+            self.E_mult_ = 0
 
         if self.persist_P or self.impute:
             self.P_ = np.zeros((n_rows, self.n_components), order='C')
+        else:
+            self.P_ = np.zeros((0, 0), order='C')
 
         if self.debug:
             self.loss_ = np.empty(self.max_n_iter)
@@ -326,7 +340,7 @@ class DictMF(BaseEstimator):
 
         for batch in batches:
             row_batch = row_range[batch]
-            if self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
+            if 0 < self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
                 return
             if sp.isspmatrix_csr(X):
                 if self.backend == 'c':
@@ -365,16 +379,13 @@ class DictMF(BaseEstimator):
                         if 0 < self.max_n_iter <= self.n_iter_:
                             return
                         subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
-                        if self.impute:
-                            reg = self.alpha
-                        else:
-                            reg = self.alpha * subset.shape[0] / n_cols
+
                         X_temp = np.empty((1, subset.shape[0]), order='F')
                         X_temp[:] = X.data[X.indptr[j]:X.indptr[j + 1]]
                         self._update_code_slow(X_temp, subset,
                                                sample_subset[
                                                j:(j + 1)],
-                                               reg)
+                                               )
                         self.n_iter_ += 1
                     dict_subset = np.concatenate([X.indices[
                                                   X.indptr[j]:X.indptr[j + 1]]
@@ -416,8 +427,12 @@ class DictMF(BaseEstimator):
                              self.full_projection,
                              self.A_,
                              self.B_,
+                             self.E_,
+                             self.F_,
                              self.G_,
+                             self.E_mult_,
                              self.impute,
+                             self.full_projection if self.exact_E is None else self.exact_E,
                              R,
                              Q_subset,
                              norm,
@@ -478,7 +493,6 @@ class DictMF(BaseEstimator):
         Qx = np.dot(Q_subset, this_X.T)
 
         if self.impute:
-            E_approx = self.full_projection
             w = pow((1. + self.offset) / (self.offset + self.counter_[0]),
                     self.learning_rate)
             this_G = self.G_.copy()
@@ -488,7 +502,7 @@ class DictMF(BaseEstimator):
             reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1)
             inv_reg_strength = np.where(reg_strength, 1. / reg_strength, 0)
 
-            if E_approx:
+            if self.exact_E or (self.exact_E is None and self.full_projection):
                 self.E_ += w_norm / batch_size * self.Q_ * np.sum(reg_strength)
             else:
                 self.E_mult_ += w_norm / batch_size * np.sum(reg_strength)
@@ -519,10 +533,10 @@ class DictMF(BaseEstimator):
             self.A_ += this_P.dot(this_P.T) * w_norm / batch_size
             self.B_[:, this_subset] += this_P.dot(this_X) * w_norm / batch_size
         else:
-            w_A = pow((1 + self.offset) / (1 + self.counter_[0]),
+            w_A = pow((1 + self.offset) / (self.offset + self.counter_[0]),
                       self.learning_rate)
             w_B = np.power(
-                (1 + self.offset) / (1 + self.counter_[this_subset + 1]),
+                (1 + self.offset) / (self.offset + self.counter_[this_subset + 1]),
                 self.learning_rate)
 
             this_G = np.dot(Q_subset, Q_subset.T).T
@@ -584,7 +598,7 @@ class DictMF(BaseEstimator):
 
         if self.impute:
             self.A_.flat[::(n_components + 1)] += self.F_
-            if E_approx:
+            if self.exact_E or (self.exact_E is None and self.full_projection):
                 R = self.B_[:, subset] + self.E_[:, subset] - np.dot(
                     Q_subset.T,
                     self.A_).T
