@@ -91,17 +91,20 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double[::1, :] beta,
                                      double[:] impute_mult,  # [E_norm, multiplier]
                                      bint impute,
+                                     bint exact_E,
+                                     bint persist_P,
                                      double[::1, :] Q_subset,
                                      double[::1, :] P_temp,
                                      double[::1, :] G_temp,
                                      double[::1, :] this_X,
+                                     double[:] reg_strength,
+                                     double[:] inv_reg_strength,
                                      char[:] subset_mask,
                                      int[:] dict_subset,
                                      int[:] dict_subset_lim,
                                      double[:] weights,
                                      long n_iter,
                                      long max_n_iter,
-                                     bint update_P,
                                      ) except *:
     """
     Parameters
@@ -159,30 +162,36 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
 
         _update_code(this_X[:1], subset, sample_idx[i:i + 1],
                      reg, learning_rate,
-                     offset, Q, A, B,
+                     offset, Q, P,
+                     A, B,
                      counter,
+                     E,
+                     F,
+                     reg,
+                     weights,
                      G,
                      beta,
+                     impute_mult,
                      impute,
+                     exact_E,
+                     persist_P,
                      Q_subset,
                      P_temp,
                      G_temp,
                      subset_mask,
                      weights,
                      )
-        if update_P:
-            for k in range(n_components):
-                P[i, k] = P_temp[k, 0]
         n_iter += 1
     dict_subset_lim[0] = l
     return n_iter
 
-cpdef void _update_code(double[::1, :] X, int[:] subset,
-                   long[:] sample_idx,
+cpdef void _update_code(double[::1, :] this_X, int[:] this_subset,
+                   long[:] sample_subset,
                    double alpha,
                    double learning_rate,
                    double offset,
                    double[::1, :] Q,
+                   double[:, ::1] P,
                    double[::1, :] A,
                    double[::1, :] B,
                    long[:] counter,
@@ -194,18 +203,21 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
                    double[::1, :] beta,
                    double[:] impute_mult,  # [E_norm, multiplier]
                    bint impute,
+                   bint exact_E,
+                   bint persist_P,
                    double[::1, :] Q_subset,
-                   double[::1, :] P_temp,
-                   double[::1, :] G_temp,
-                   char[:] subset_mask,
-                   double[:] weights) except *:
+                   double[::1, :] this_P,
+                   double[::1, :] this_G,
+                   double[:] reg_strength,
+                   double[:] inv_reg_strength,
+                   char[:] subset_mask) except *:
     """
     Compute code for a mini-batch and update algorithm statistics accordingly
 
     Parameters
     ----------
     X: masked data matrix
-    subset: indices (loci) of masked data
+    this_subset: indices (loci) of masked data
     alpha: regularization parameter
     learning_rate: decrease rate in the learning sequence (in [.5, 1])
     offset: offset in the learning sequence
@@ -217,49 +229,129 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
     T: algorithm variable
     impute: Online update of Gram matrix
     Q_subset : Temporary array. Holds the subdictionary
-    P_temp: Temporary array. Holds the codes for the mini batch
-    G_temp: emporary array. Holds the Gram matrix.
+    this_P: Temporary array. Holds the codes for the mini batch
+    this_G: emporary array. Holds the Gram matrix.
     subset_mask: Holds the binary mask for visited features
     weights: Temporary array. Holds the update weights
 
     """
-    cdef int batch_size = X.shape[0]
-    cdef int len_subset = subset.shape[0]
+    cdef int batch_size = this_X.shape[0]
+    cdef int len_subset = this_subset.shape[0]
     cdef int n_components = Q.shape[0]
     cdef int n_cols = Q.shape[1]
     cdef double* Q_subset_ptr = &Q_subset[0, 0]
-    cdef double* P_temp_ptr = &P_temp[0, 0]
+    cdef double* this_P_ptr = &this_P[0, 0]
     cdef double* Q_ptr = &Q[0, 0]
     cdef double* A_ptr = &A[0, 0]
     cdef double* B_ptr = &B[0, 0]
     cdef double* G_ptr = &G[0, 0]
-    cdef double* G_temp_ptr = &G_temp[0, 0]
-    cdef double* X_ptr = &X[0, 0]
+    cdef double* this_G_ptr = &this_G[0, 0]
+    cdef double* this_X_ptr = &this_X[0, 0]
     cdef int info = 0
     cdef int ii, jj, i, j, k, m
     cdef int nnz
-    cdef double reg, v
+    cdef double reg, v, this_alpha
     cdef int last = 0
-    cdef double one_m_w_A, w_A
+    cdef double one_m_w_A, w_A, sum_reg_strength
 
     for k in range(n_components):
         for jj in range(len_subset):
-            Q_subset[k, jj] = Q[k, subset[jj]]
-
-    _get_weights(weights, subset, counter, batch_size,
-               learning_rate, offset)
+            Q_subset[k, jj] = Q[k, this_subset[jj]]
 
     counter[0] += batch_size
 
     for jj in range(len_subset):
-        j = subset[jj]
+        j = this_subset[jj]
         counter[j + 1] += batch_size
 
-    # G = Q.T.dot(Q)
     if impute:
+        this_alpha = alpha
+        for ii in range(batch_size):
+            for jj in range(len_subset):
+                j = this_subset[jj]
+                this_X[ii, jj] /= counter[j + 1] / counter[0]
+    else:
+        this_alpha = alpha * len_subset/ n_cols
+
+    # Qx = Q_subset.dot(x)
+    dgemm(&NTRANS, &TRANS,
+          &n_components, &batch_size, &len_subset,
+          &oned,
+          Q_subset_ptr, &n_components,
+          this_X_ptr, &batch_size,
+          &zerod,
+          this_P_ptr, &n_components
+          )
+    w = pow((1. + offset) / (offset + counter[0]), learning_rate)
+    one_m_w = 1 - w
+
+    if impute:
+        # G = Q.T.dot(Q)
         for j in range(n_components):
             for k in range(n_components):
-                G_temp[j, k] = G[j, k]
+                this_G[j, k] = G[j, k]
+        if w != 1:
+            impute_mult[1] *= 1 - w
+        w_norm = w / impute_mult[1]
+        for ii in range(batch_size):
+            i = sample_subset[ii]
+            reg_strength[ii] = 0
+            for jj in range(n_components):
+                reg_strength[ii] += P[i, jj] ** 2
+            sum_reg_strength += reg_strength[ii]
+            if reg_strength[ii] != 0:
+                inv_reg_strength[ii] = 1 / reg_strength[ii]
+            else:
+                inv_reg_strength[ii] = 0
+        # inv_reg_strength = np.where(reg_strength, 1. / reg_strength, 0)
+
+
+        sum_reg_strength = 0
+        for ii in range(batch_size):
+            i = sample_subset[ii]
+            reg_strength = 0
+            for jj in range(n_components):
+                reg_strength += P[i, jj] ** 2
+            if reg_strength != 0:
+                inv_reg_strength = 1 / reg_strength
+            else:
+                inv_reg_strength = 0
+            sum_reg_strength += reg_strength
+            sum_X = 0
+            for jj in range(n_cols):
+                sum_X += this_X[ii, jj] ** 2
+            reg[i] += w_norm * (
+                this_alpha + .5 * sum_X * inv_reg_strength)
+            weights[i] += w_norm
+
+            for jj in range(n_components):
+                beta[i, jj] += w_norm * (
+                    this_P.T + P[i, jj] * sum_X * inv_reg_strength)
+                this_P[jj, ii] = beta[i, jj]
+
+            i = sample_subset[ii]
+            this_sample_reg = reg[i] / weights[i]
+            for jj in range(n_components):
+                this_G[jj, jj] += this_sample_reg
+            dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
+                  this_P_ptr + ii * n_components, &n_components,
+                  &info)
+            for jj in range(n_components):
+                this_G[jj, jj] -= this_sample_reg
+                this_P[jj, ii] /= weights[i] * impute_mult[1]
+            P[i, :] = this_P[:, ii]
+
+        if exact_E:
+            for ii in range(n_components):
+                for jj in range(n_cols):
+                    E[ii, jj] += w_norm / batch_size * Q[ii, jj] * sum_reg_strength
+        else:
+            impute_mult[0] += w_norm / batch_size * sum_reg_strength
+        for ii in range(n_components):
+            F[ii] += w_norm / batch_size * sum_reg_strength
+
+
+
     else:
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
@@ -267,64 +359,65 @@ cpdef void _update_code(double[::1, :] X, int[:] subset,
               Q_subset_ptr, &n_components,
               Q_subset_ptr, &n_components,
               &zerod,
-              G_temp_ptr, &n_components
+              this_G_ptr, &n_components
               )
-    # Qx = Q_subset.dot(x)
-    dgemm(&NTRANS, &TRANS,
-          &n_components, &batch_size, &len_subset,
-          &oned,
-          Q_subset_ptr, &n_components,
-          X_ptr, &batch_size,
-          &zerod,
-          P_temp_ptr, &n_components
-          )
+        # C.flat[::n_components + 1] += this_alpha
+        for p in range(n_components):
+            this_G[p, p] += this_alpha
+        # P[j] = linalg.solve(G_temp, Qx, sym_pos=True,
+        #                     overwrite_a=True, check_finite=False)
+        dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
+              this_P_ptr, &n_components,
+              &info)
+        if persist_P:
+            for ii in range(batch_size):
+                i = sample_subset[ii]
+                for k in range(n_components):
+                    P[i, k] = this_P[k, ii]
+        if info != 0:
+            raise ValueError
 
-    # C.flat[::n_components + 1] += alpha
-    for p in range(n_components):
-        G_temp[p, p] += alpha
-    # P[j] = linalg.solve(G_temp, Qx, sym_pos=True,
-    #                     overwrite_a=True, check_finite=False)
-    dposv(&UP, &n_components, &batch_size, G_temp_ptr, &n_components,
-          P_temp_ptr, &n_components,
-          &info)
-    if info != 0:
-        raise ValueError
-
-    # A *= 1 - w_A * len_batch
-    # A += P[row_batch].T.dot(P[row_batch]) * w_A
-    one_m_w_A = 1 - weights[0]
-    w_A = weights[0] / batch_size
+    # A += P[row_batch].T.dot(P[row_batch]) * w
     dgemm(&NTRANS, &TRANS,
           &n_components, &n_components, &batch_size,
-          &w_A,
-          P_temp_ptr, &n_components,
-          P_temp_ptr, &n_components,
-          &one_m_w_A,
+          &w,
+          this_P_ptr, &n_components,
+          this_P_ptr, &n_components,
+          &oned,
           A_ptr, &n_components
           )
-    # B[:, idx] *= 1 - w_B
-    for jj in range(len_subset):
-        j = subset[jj]
-        subset_mask[j] = 1
-        # Reuse Q_subset as B_subset
-        for k in range(n_components):
-            # if impute:
-            #     Q_subset[k, jj] = B[k, j] * one_m_w_A
-            # else:
-            Q_subset[k, jj] = B[k, j] * (1 - weights[jj + 1])
-        for ii in range(batch_size):
-            X[ii, jj] *= weights[jj + 1] / batch_size
-    dgemm(&NTRANS, &NTRANS,
-          &n_components, &len_subset, &batch_size,
-          &oned,
-          P_temp_ptr, &n_components,
-          X_ptr, &batch_size,
-          &oned,
-          Q_subset_ptr, &n_components)
-    for jj in range(len_subset):
-        j = subset[jj]
-        for k in range(n_components):
-            B[k, j] = Q_subset[k, jj]
+    # B += this_X.T.dot(P[row_batch]) * w_B
+    if impute:
+        dgemm(&NTRANS, &NTRANS,
+                      &n_components, &len_subset, &batch_size,
+                      &oned,
+                      this_P_ptr, &n_components,
+                      this_X_ptr, &batch_size,
+                      &oned,
+                      B_ptr, &n_components)
+    else:
+        for jj in range(len_subset):
+            j = this_subset[jj]
+            subset_mask[j] = 1
+            # Reuse Q_subset as B_subset
+            w_B = pow((1. + offset) / (offset + counter[j + 1]), learning_rate)
+            for k in range(n_components):
+                Q_subset[k, jj] = B[k, j]
+            for ii in range(batch_size):
+                this_X[ii, jj] *= w_B / batch_size
+        dgemm(&NTRANS, &NTRANS,
+              &n_components, &len_subset, &batch_size,
+              &oned,
+              this_P_ptr, &n_components,
+              this_X_ptr, &batch_size,
+              &oned,
+              Q_subset_ptr, &n_components)
+        for jj in range(len_subset):
+            j = this_subset[jj]
+            for k in range(n_components):
+                B[k, j] = Q_subset[k, jj]
+
+
 
 cpdef void _update_dict(double[::1, :] Q,
                   int[:] subset,

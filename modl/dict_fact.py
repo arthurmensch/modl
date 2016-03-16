@@ -393,7 +393,7 @@ class DictMF(BaseEstimator):
                     dict_subset = np.unique(dict_subset)
             else:  # X is a dense matrix : we force masks
                 subset = self.random_state_.permutation(n_cols)[:subset_size]
-                X_temp = X[row_batch][:, subset]
+                X_temp = X[row_batch][:, subset]  # Trigger copy
                 if self.backend == 'python':
                     self._update_code_slow(X_temp,
                                            subset,
