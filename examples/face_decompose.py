@@ -58,7 +58,7 @@ class Callback(object):
         self.obj.append(loss + regul)
 
         self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
-
+        self.sparsity.append(np.sum(mf.Q_ != 0) / mf.Q_.size)
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
         self.iter.append(mf._stat.n_iter)
@@ -88,14 +88,14 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=3, l1_ratio=1, alpha=0.01, max_n_iter=30000,
-                   full_projection=True,
+                   reduction=3, l1_ratio=1, alpha=0.1, max_n_iter=60000,
+                   full_projection=False,
                    impute=True,
                    persist_P=True,
                    backend='python',
                    verbose=3,
                    learning_rate=0.75,
-                   offset=0,
+                   offset=1000,
                    random_state=0,
                    callback=cb)
 
@@ -106,8 +106,9 @@ components_ = estimator.components_
 plot_gallery('%s - Train time %.1fs' % (name, train_time),
              components_[:n_components])
 
-fig = plt.figure()
-plt.plot(cb.iter, cb.obj, label='Function value')
+fig, axes = plt.subplots(2, 1, sharex=True)
+axes[0].plot(cb.iter, cb.obj, label='Function value')
+axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
 plt.legend()
 
 fig = plt.figure()

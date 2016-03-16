@@ -401,24 +401,9 @@ def compute_code(X, Q, alpha):
 def _get_weights(idx, counter, batch_size, learning_rate, offset):
     """Utility function to get the update weights at a given iteration
     """
-    idx_len = idx.shape[0]
-    full_count = counter[0]
-    w_A = 1
-    for i in range(full_count + 1, full_count + 1 + batch_size):
-        w_A *= (1 - pow((1 + offset) / (offset + i), learning_rate))
-    w_A = 1 - w_A
-    w_B = np.zeros(idx_len)
-    for jj in range(idx_len):
-        j = idx[jj]
-        count = counter[j + 1]
-        w_B[jj] = 1
-        for i in range(1, batch_size + 1):
-            w_B[jj] *= (1 - (full_count + i) / (count + i) *
-                        pow((1 + offset) / (offset + full_count + i),
-                            learning_rate))
-        w_B[jj] = 1 - w_B[jj]
+    w_A = pow((1 + offset) / (1 + counter[0]), learning_rate)
+    w_B = np.power((1 + offset) / (1 + counter[idx + 1]), learning_rate)
     return w_A, w_B
-
 
 def online_dl(X, Q,
               sample_idx=None,
@@ -743,6 +728,7 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
     Qx = np.dot(Q_subset, X.T)
 
     if impute:
+        E_approx = full_projection
         w = pow((1. + offset) / (offset + stat.counter[0]),
                 learning_rate)
         G = stat.G.copy()
@@ -752,7 +738,7 @@ def _update_code_slow(X, subset, sample_idx, alpha, learning_rate,
         reg_strength = np.sum(stat.P[sample_idx] ** 2, axis=1)
         inv_reg_strength = np.where(reg_strength, 1. / reg_strength, 0)
 
-        if full_projection:
+        if E_approx:
             stat.E += w_norm / batch_size * Q * np.sum(reg_strength)
         else:
             stat.E_mult += w_norm / batch_size * np.sum(reg_strength)
@@ -825,7 +811,7 @@ def _update_dict_slow(Q, subset,
     """
     n_components = Q.shape[0]
     Q_subset = Q[:, subset]
-
+    E_approx = full_projection
     if impute and not full_projection:
         stat.G -= Q_subset.dot(Q_subset.T)
 
@@ -844,7 +830,7 @@ def _update_dict_slow(Q, subset,
 
     if impute:
         stat.A.flat[::(n_components + 1)] += stat.F
-        if full_projection:
+        if E_approx:
             R = stat.B[:, subset] + stat.E[:, subset] - np.dot(Q_subset.T,
                                                                stat.A).T
         else:
