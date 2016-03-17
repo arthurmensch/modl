@@ -71,6 +71,7 @@ class DictMF(BaseEstimator):
                  reduction=1,
                  full_projection=True,
                  exact_E=None,
+                 damping_factor=1,
                  # Preproc parameters
                  fit_intercept=False,
                  # Dict parameter
@@ -112,6 +113,7 @@ class DictMF(BaseEstimator):
         self.backend = backend
         self.debug = debug
 
+        self.damping_factor = damping_factor
         self.callback = callback
 
         self.full_projection = full_projection
@@ -518,7 +520,7 @@ class DictMF(BaseEstimator):
 
             norm_X = np.sum(this_X ** 2, axis=1)
 
-            reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1)
+            reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1) / self.damping_factor
             # reg_strength = np.ones(batch_size)
             inv_reg_strength = np.zeros(batch_size)
             nonzero_indices = reg_strength != 0

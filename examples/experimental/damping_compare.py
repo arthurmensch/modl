@@ -86,17 +86,19 @@ def main():
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    res = Parallel(n_jobs=40, verbose=10)(
+    res = Parallel(n_jobs=3, verbose=10)(
         delayed(single_run)(n_components, impute, full_projection, offset,
                             learning_rate, reduction,
                             alpha,
+                            damping_factor,
                             data)
-        for impute in [True, False]
-        for full_projection in [True, False]
-        for offset in [0, 100, 1000, 10000]
-        for learning_rate in [0.75, 1]  # 1]
-        for reduction in [1, 2, 5]
-        for alpha in [0.1, 0.01])
+        for impute in [True]
+        for full_projection in [False]
+        for damping_factor in [0.01, 0.1, 1, 10, 100]
+        for offset in [1000]
+        for learning_rate in [0.75]  # 1]
+        for reduction in [3]
+        for alpha in [0.1])
 
     full_res_dict = []
     for cb, estimator in res:
@@ -105,6 +107,7 @@ def main():
                     'learning_rate': estimator.learning_rate,
                     'offset': estimator.offset,
                     'reduction': estimator.reduction, 'alpha': estimator.alpha,
+                    'damping_factor': estimator.damping_factor,
                     'iter': cb.iter, 'times': cb.times,
                     'sparsity': cb.sparsity, 'q': cb.q}
         full_res_dict.append(res_dict)
@@ -114,9 +117,7 @@ def main():
     fig.subplots_adjust(left=0.15, right=0.7)
     for cb, estimator in res:
         axes[0].plot(cb.iter, cb.obj,
-                     label='impute : %s\n full proj % s\n lr %.2f\n offset %.2f' % (
-                     estimator.impute, estimator.full_projection,
-                     estimator.learning_rate, estimator.offset))
+                     label='damping %.3f' % estimator.damping_factor)
         axes[1].plot(cb.iter, cb.sparsity)
         axes[2].plot(cb.iter, np.array(cb.q)[:, 2])
 
@@ -127,20 +128,23 @@ def main():
     axes[2].set_xlabel('# iter')
     # axes[2].legend()
     axes[2].set_ylabel('Dictionary value')
-    plt.savefig('face_compare.pdf')
+    plt.savefig('damping.pdf')
 
 
 def single_run(n_components, impute, full_projection, offset, learning_rate,
                reduction,
                alpha,
+               damping_factor,
                data):
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
-                       reduction=reduction, l1_ratio=1, alpha=alpha, max_n_iter=100000,
+                       reduction=reduction, l1_ratio=1, alpha=alpha,
+                       max_n_iter=40000,
                        full_projection=full_projection,
                        persist_P=True,
                        impute=impute,
-                       backend='c',
+                       backend='python',
+                       damping_factor=damping_factor,
                        verbose=3,
                        learning_rate=learning_rate,
                        offset=offset,
