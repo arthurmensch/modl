@@ -17,14 +17,15 @@ def sqnorm(X):
 
 class Callback(object):
     """Utility class for plotting RMSE"""
+
     def __init__(self, X_tr):
         self.X_tr = X_tr
-        # self.X_te = X_te
         self.obj = []
         self.rmse = []
         self.rmse_tr = []
         self.times = []
-        self.n_iter = []
+        self.sparsity = []
+        self.iter = []
         self.q = []
         self.start_time = time.clock()
         self.test_time = 0
@@ -32,14 +33,15 @@ class Callback(object):
     def __call__(self, mf):
         test_time = time.clock()
         P = mf.transform(self.X_tr)
-        loss = sqnorm(self.X_tr - mf.transform(self.X_tr).T.dot(mf.components_)) / 2
-        regul = mf.alpha * sqnorm(P)
+        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2)
+        regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
 
-        self.q.append(mf.Q_[1, np.linspace(0, 4095, 50, dtype='int')].copy())
+        self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
+        self.sparsity.append(np.sum(mf.Q_ != 0) / mf.Q_.size)
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
-        self.n_iter.append(mf._stat.n_iter)
+        self.iter.append(mf.n_iter_)
 
 
 def plot_gallery(title, images, n_col, n_row, image_shape):
@@ -74,40 +76,52 @@ def main():
 
     # local centering
     faces_centered -= faces_centered.mean(axis=1).reshape(n_samples, -1)
+    faces_centered /= np.sqrt(np.sum(faces_centered ** 2, axis=1))[:, np.newaxis]
 
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    lrs = np.empty(6)
-    lrs[0] = -1
-    lrs[1:] = np.linspace(0.1, 1, 5)
+    res = Parallel(n_jobs=2)(
+        delayed(single_run)(n_components, impute, full_projection, data)
+        for impute in [True, False]
+        for full_projection in [True, False])
 
-    cbs = Parallel(n_jobs=3)(delayed(single_run)(n_components, impute_lr, data)
-                       for impute_lr in lrs)
+    fig, axes = plt.subplots(3, 1, sharex=True)
+    fig.subplots_adjust(left=0.15, right=0.7)
+    for cb, estimator in res:
+        axes[0].plot(cb.iter, cb.obj,
+                     label='impute : %s\n full proj % s' % (estimator.impute, estimator.full_projection))
+        axes[1].plot(cb.iter, cb.sparsity,
+                     label='impute : %s\n  full proj % s' % (estimator.impute, estimator.full_projection))
+        axes[2].plot(cb.iter, np.array(cb.q)[:, 2],
+                     label='impute : %s\n  full proj % s' % (estimator.impute, estimator.full_projection))
 
-    fig, axes = plt.subplots(2, 1)
-    for impute_lr, this_cb in zip(lrs, cbs):
-        axes[0].plot(this_cb.n_iter, this_cb.obj, label='Function value %.2f' % impute_lr)
-        axes[1].plot(this_cb.n_iter, np.array(this_cb.q)[:, 0], label='Dict value %.2f' % impute_lr)
-    axes[0].legend()
-    axes[1].legend()
+    axes[0].legend(loc='upper left', bbox_to_anchor=(1, 1))
+    axes[0].set_ylabel('Function value')
+    axes[1].set_ylabel('Dictionary value')
 
+    axes[2].set_xlabel('# iter')
+    # axes[2].legend()
+    axes[2].set_ylabel('Dictionary value')
     plt.show()
 
 
-def single_run(n_components, impute_lr, data):
+def single_run(n_components, impute, full_projection, data):
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
-                       reduction=3, l1_ratio=1, alpha=1e-3, max_n_iter=30000,
-                       full_projection=True,
-                       impute=True,
-                       impute_lr=impute_lr,
+                       reduction=3, l1_ratio=1, alpha=0.1, max_n_iter=100000,
+                       full_projection=full_projection,
+                       persist_P=True,
+                       impute=impute,
                        backend='c',
                        verbose=3,
+                       learning_rate=0.75,
+                       offset=1000,
                        random_state=0,
                        callback=cb)
     estimator.fit(data)
-    return cb
+    return cb, estimator
+
 
 if __name__ == '__main__':
     main()

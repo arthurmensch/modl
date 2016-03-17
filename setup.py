@@ -15,7 +15,7 @@ MAINTAINER_EMAIL = 'arthur.mensch@m4x.org'
 URL = 'https://github.com/arthurmensch/modl'
 LICENSE = 'new BSD'
 DOWNLOAD_URL = 'https://github.com/arthurmensch/modl'
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 
 
 def configuration(parent_package='', top_path=None):

@@ -49,7 +49,7 @@ class Callback(object):
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=10, verbose=5,
+mf = DictCompleter(n_components=30, alpha=1, verbose=5,
                    batch_size=60, detrend=True,
                    offset=0,
                    fit_intercept=True,
@@ -57,7 +57,7 @@ mf = DictCompleter(n_components=30, alpha=10, verbose=5,
                    random_state=0,
                    learning_rate=1,
                    max_n_iter=20000,
-                   backend='c')
+                   backend='python')
 
 # Need to download from spira
 X = load_movielens('1m')
@@ -67,8 +67,9 @@ X_tr = X_tr.tocsr()
 X_te = X_te.tocsr()
 cb = Callback(X_tr, X_te)
 mf.set_params(callback=cb)
+t0 = time.time()
 mf.fit(X_tr)
-
+print('Time : %.2f s' % (time.time() - t0))
 plt.figure()
 plt.plot(cb.times, cb.rmse, label='Test')
 plt.plot(cb.times, cb.rmse_tr, label='Train')
