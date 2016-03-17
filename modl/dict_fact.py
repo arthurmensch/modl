@@ -69,8 +69,8 @@ class DictMF(BaseEstimator):
                  batch_size=1,
                  offset=0,
                  reduction=1,
-                 full_projection=False,
-                 exact_E=False,
+                 full_projection=True,
+                 exact_E=None,
                  # Preproc parameters
                  fit_intercept=False,
                  # Dict parameter
@@ -118,11 +118,12 @@ class DictMF(BaseEstimator):
         self.exact_E = exact_E
 
     def _reset_stat(self):
-        for elem in ['A_', 'B_', 'beta_', 'E_', 'E_mult_',
-                     'F_', 'reg_', 'weights_']:
+        multiplier = self.impute_mult_[0]
+        for elem in ['A_', 'B_', 'beta_', 'E_', 'impute_mult_',
+                     'reg_', 'weights_']:
             if hasattr(self, elem):
-                setattr(self, elem, getattr(self, elem) * self.multiplier_)
-        self.multiplier_ = 1
+                setattr(self, elem, getattr(self, elem) * multiplier)
+        self.impute_mult_[0] = 1
 
     def _init(self, X):
         """Initialize statistic and dictionary"""
@@ -177,25 +178,23 @@ class DictMF(BaseEstimator):
             self.weights_ = np.zeros(n_rows)
             self.reg_ = np.zeros(n_rows)
             self.E_ = np.zeros((self.n_components, n_cols), order='F')
-            self.F_ = np.zeros(self.n_components)
-            self.multiplier_ = 1
-            self.E_mult_ = 0
+            self.impute_mult_ = np.array([1, 0.])  # multiplier_, F_
         else:
             # Init dummy matrices
-            self.G_ = np.zeros((0, 0), order='F')
-            self.beta_ = np.zeros((0, 0), order="F")
-            self.weights_ = np.zeros(0)
-            self.reg_ = np.zeros(0)
-            self.E_ = np.zeros((0, 0), order='F')
-            self.F_ = np.zeros(0)
-            self.multiplier_ = 0
-            self.E_mult_ = 0
+            self.G_ = np.zeros((1, 1), order='F')
+            self.beta_ = np.zeros((1, 1), order="F")
+            self.weights_ = np.zeros(1)
+            self.reg_ = np.zeros(1)
+            self.E_ = np.zeros((1, 1), order='F')
+            self.impute_mult_ = np.zeros(1)
 
         if self.persist_P or self.impute:
             self.P_ = np.zeros((n_rows, self.n_components), order='C')
         else:
             self.P_ = np.zeros((0, 0), order='C')
 
+        self.exact_E_ = self.exact_E or (
+            self.exact_E is None and self.full_projection)
         if self.debug:
             self.loss_ = np.empty(self.max_n_iter)
             self.loss_indep_ = 0.
@@ -309,6 +308,14 @@ class DictMF(BaseEstimator):
         self.random_state_.shuffle(row_range)
         batches = gen_batches(len(row_range), self.batch_size)
 
+        if self.fit_intercept:
+            components_range = np.arange(1, self.n_components)
+        else:
+            components_range = np.arange(self.n_components)
+
+        subset_range = np.arange(n_cols, dtype='i4')
+
+
         if self.backend == 'c':
             # Init various arrays for efficiency
             R = np.empty((self.n_components, n_cols), order='F')
@@ -328,11 +335,6 @@ class DictMF(BaseEstimator):
             else:
                 P_temp = np.empty((self.n_components, self.batch_size),
                                   order='F')
-            if self.fit_intercept:
-                components_range = np.arange(1, self.n_components)
-            else:
-                components_range = np.arange(self.n_components)
-            weights = np.zeros(max_subset_size + 1)
             subset_mask = np.zeros(n_cols, dtype='i1')
             dict_subset_temp = np.zeros(max_subset_size, dtype='i4')
             dict_subset_lim = np.zeros(1, dtype='i4')
@@ -340,44 +342,47 @@ class DictMF(BaseEstimator):
 
         for batch in batches:
             row_batch = row_range[batch]
+
             if 0 < self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
                 return
+
             if sp.isspmatrix_csr(X):
                 if self.backend == 'c':
-                    self.n_iter_ = _update_code_sparse_batch(X.data, X.indices,
-                                                             X.indptr,
-                                                             n_rows,
-                                                             n_cols,
-                                                             row_batch,
-                                                             sample_subset,
-                                                             self.alpha,
-                                                             self.learning_rate,
-                                                             self.offset,
-                                                             self.Q_,
-                                                             self.P_,
-                                                             self.A_,
-                                                             self.B_,
-                                                             self.counter_,
-                                                             self.G_,
-                                                             self.beta_,
-                                                             self.impute,
-                                                             Q_subset,
-                                                             P_temp,
-                                                             G_temp,
-                                                             X_temp,
-                                                             subset_mask,
-                                                             dict_subset_temp,
-                                                             dict_subset_lim,
-                                                             weights,
-                                                             self.n_iter_,
-                                                             self.max_n_iter,
-                                                             self.persist_P or self.impute
-                                                             )
+                    _update_code_sparse_batch(X.data,
+                                              X.indices,
+                                              X.indptr,
+                                              n_rows,
+                                              n_cols,
+                                              row_batch,
+                                              sample_subset,
+                                              self.alpha,
+                                              self.learning_rate,
+                                              self.offset,
+                                              self.Q_,
+                                              self.P_,
+                                              self.A_, self.B_,
+                                              self.counter_,
+                                              self.E_,
+                                              self.reg_,
+                                              self.weights_,
+                                              self.G_,
+                                              self.beta_,
+                                              self.impute_mult_,
+                                              self.impute,
+                                              self.exact_E_,
+                                              self.persist_P,
+                                              Q_subset,
+                                              P_temp,
+                                              G_temp,
+                                              X_temp,
+                                              subset_mask,
+                                              dict_subset_temp,
+                                              dict_subset_lim
+                                              )
+                    self.n_iter_ += row_batch.shape[0]
                     dict_subset = dict_subset_temp[:dict_subset_lim[0]]
                 else:
                     for j in row_batch:
-                        if 0 < self.max_n_iter <= self.n_iter_:
-                            return
                         subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
 
                         X_temp = np.empty((1, subset.shape[0]), order='F')
@@ -392,47 +397,59 @@ class DictMF(BaseEstimator):
                                                   for j in row_batch])
                     dict_subset = np.unique(dict_subset)
             else:  # X is a dense matrix : we force masks
-                subset = self.random_state_.permutation(n_cols)[:subset_size]
-                X_temp = X[row_batch][:, subset]  # Trigger copy
+                self.random_state_.shuffle(subset_range)
+                subset = subset_range[:subset_size]
+                this_X = X[row_batch][:, subset] # Trigger copy
                 if self.backend == 'python':
-                    self._update_code_slow(X_temp,
+                    self._update_code_slow(this_X,
                                            subset,
                                            sample_subset[row_batch], )
                 else:
-                    _update_code(X_temp, subset, sample_subset[row_batch],
-                                 self.alpha, self.learning_rate,
-                                 self.offset, self.Q_, self.A_, self.B_,
+                    _update_code(this_X,
+                                 subset,
+                                 sample_subset[row_batch],
+                                 self.alpha,
+                                 self.learning_rate,
+                                 self.offset, self.Q_,
+                                 self.P_,
+                                 self.A_,
+                                 self.B_,
                                  self.counter_,
+                                 self.E_,
+                                 self.reg_,
+                                 self.weights_,
                                  self.G_,
                                  self.beta_,
+                                 self.impute_mult_,
                                  self.impute,
+                                 self.exact_E_,
+                                 self.persist_P,
                                  Q_subset,
                                  P_temp,
                                  G_temp,
-                                 subset_mask,
-                                 weights)
+                                 subset_mask)
                 dict_subset = subset
                 self.n_iter_ += len(row_batch)
 
-            if self.impute and self.multiplier_ < 1e-50:
+            if self.impute and self.impute_mult_[0] < 1e-50:
                 self._reset_stat()
-
+            self.random_state_.shuffle(components_range)
             # Dictionary update
             if self.backend == 'python':
-                self._update_dict_slow(dict_subset)
+                self._update_dict_slow(dict_subset, components_range)
             else:
-                self.random_state_.shuffle(components_range)
-                _update_dict(self.Q_, dict_subset, self.fit_intercept,
+                _update_dict(self.Q_,
+                             dict_subset,
+                             self.fit_intercept,
                              self.l1_ratio,
                              self.full_projection,
                              self.A_,
                              self.B_,
                              self.E_,
-                             self.F_,
                              self.G_,
-                             self.E_mult_,
+                             self.impute_mult_,
                              self.impute,
-                             self.full_projection if self.exact_E is None else self.exact_E,
+                             self.exact_E_,
                              R,
                              Q_subset,
                              norm,
@@ -489,54 +506,54 @@ class DictMF(BaseEstimator):
             this_X /= self.counter_[this_subset + 1] / self.counter_[0]
         else:
             this_alpha = self.alpha * this_subset.shape[0] / n_cols
-
         Qx = np.dot(Q_subset, this_X.T)
 
+        w = pow((1. + self.offset) / (self.offset + self.counter_[0]),
+                self.learning_rate)
         if self.impute:
-            w = pow((1. + self.offset) / (self.offset + self.counter_[0]),
-                    self.learning_rate)
             this_G = self.G_.copy()
             if w != 1:
-                self.multiplier_ *= 1 - w
-            w_norm = w / self.multiplier_
+                self.impute_mult_[0] *= 1 - w
+            w_norm = w / self.impute_mult_[0]
+
+            norm_X = np.sum(this_X ** 2, axis=1)
+
             reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1)
-            inv_reg_strength = np.where(reg_strength, 1. / reg_strength, 0)
+            inv_reg_strength = np.zeros(batch_size)
+            nonzero_indices = reg_strength != 0
+            inv_reg_strength[nonzero_indices] = 1. / reg_strength[nonzero_indices]
+            sum_reg_strength = np.sum(reg_strength)
 
-            if self.exact_E or (self.exact_E is None and self.full_projection):
-                self.E_ += w_norm / batch_size * self.Q_ * np.sum(reg_strength)
-            else:
-                self.E_mult_ += w_norm / batch_size * np.sum(reg_strength)
+            if self.exact_E_:
+                self.E_ += w_norm / batch_size * self.Q_ * sum_reg_strength
 
-            self.F_ += w_norm / batch_size * np.sum(reg_strength)
+            self.impute_mult_[1] += w_norm / batch_size * sum_reg_strength
 
             self.reg_[sample_subset] += w_norm * (
-                this_alpha + .5 * np.sum(this_X ** 2,
-                                         axis=1) * inv_reg_strength)
+                this_alpha + .5 * norm_X * inv_reg_strength)
             self.weights_[sample_subset] += w_norm
 
             self.beta_[sample_subset] += w_norm * (
-                Qx.T + self.P_[sample_subset] * (np.sum(
-                    this_X ** 2, axis=1) * inv_reg_strength)[:, np.newaxis])
+                Qx.T + self.P_[sample_subset] * (norm_X * inv_reg_strength)[:, np.newaxis])
             this_beta = self.beta_[sample_subset].copy()
 
             for ii, i in enumerate(sample_subset):
                 this_sample_reg = self.reg_[i] / self.weights_[i]
                 this_G.flat[::self.n_components + 1] += this_sample_reg
-                this_P = linalg.solve(this_G, this_beta[ii] * self.multiplier_,
+                this_P = linalg.solve(this_G, this_beta[ii],
                                       sym_pos=True,
-                                      overwrite_a=True,
+                                      overwrite_a=False,
                                       check_finite=False)
                 this_G.flat[::self.n_components + 1] -= this_sample_reg
-                this_P /= self.weights_[i] * self.multiplier_
+                this_P /= self.weights_[i]
                 self.P_[i] = this_P.T
             this_P = self.P_[sample_subset].T
             self.A_ += this_P.dot(this_P.T) * w_norm / batch_size
             self.B_[:, this_subset] += this_P.dot(this_X) * w_norm / batch_size
         else:
-            w_A = pow((1 + self.offset) / (self.offset + self.counter_[0]),
-                      self.learning_rate)
             w_B = np.power(
-                (1 + self.offset) / (self.offset + self.counter_[this_subset + 1]),
+                (1 + self.offset) / (
+                    self.offset + self.counter_[this_subset + 1]),
                 self.learning_rate)
 
             this_G = np.dot(Q_subset, Q_subset.T).T
@@ -546,8 +563,8 @@ class DictMF(BaseEstimator):
             if self.persist_P:
                 self.P_[sample_subset] = this_P.T
 
-            self.A_ *= 1 - w_A
-            self.A_ += this_P.dot(this_P.T) * w_A / batch_size
+            self.A_ *= 1 - w
+            self.A_ += this_P.dot(this_P.T) * w / batch_size
             self.B_[:, this_subset] *= 1 - w_B
             self.B_[:, this_subset] += this_P.dot(this_X) * w_B / batch_size
 
@@ -559,7 +576,7 @@ class DictMF(BaseEstimator):
                                  self.alpha * np.sum(this_P ** 2)) * w
             self.loss_[self.n_iter_] = self.loss_indep_ + dict_loss
 
-    def _update_dict_slow(self, subset):
+    def _update_dict_slow(self, subset, components_range):
         """Update dictionary from statistic
         Parameters
         ----------
@@ -579,7 +596,6 @@ class DictMF(BaseEstimator):
         """
         n_components = self.Q_.shape[0]
         Q_subset = self.Q_[:, subset]
-        E_approx = self.full_projection
         if self.impute and not self.full_projection:
             self.G_ -= Q_subset.dot(Q_subset.T)
 
@@ -589,21 +605,15 @@ class DictMF(BaseEstimator):
             norm = enet_norm(Q_subset, self.l1_ratio)
 
         ger, = linalg.get_blas_funcs(('ger',), (self.A_, Q_subset))
-        # Intercept on first column
-        if self.fit_intercept:
-            components_range = np.arange(1, n_components)
-        else:
-            components_range = np.arange(n_components)
-        self.random_state_.shuffle(components_range)
 
         if self.impute:
-            self.A_.flat[::(n_components + 1)] += self.F_
-            if self.exact_E or (self.exact_E is None and self.full_projection):
+            self.A_.flat[::(n_components + 1)] += self.impute_mult_[1]
+            if self.exact_E_:
                 R = self.B_[:, subset] + self.E_[:, subset] - np.dot(
                     Q_subset.T,
                     self.A_).T
             else:
-                R = self.B_[:, subset] + self.E_mult_ * Q_subset - np.dot(
+                R = self.B_[:, subset] + self.impute_mult_[1] * Q_subset - np.dot(
                     Q_subset.T,
                     self.A_).T
         else:
@@ -629,7 +639,7 @@ class DictMF(BaseEstimator):
             self.Q_[:, subset] = Q_subset
 
         if self.impute:
-            self.A_.flat[::(n_components + 1)] -= self.F_
+            self.A_.flat[::(n_components + 1)] -= self.impute_mult_[1]
             if not self.full_projection:
                 self.G_ += Q_subset.dot(Q_subset.T)
             else:

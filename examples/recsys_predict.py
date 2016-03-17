@@ -56,8 +56,8 @@ mf = DictCompleter(n_components=30, alpha=10, verbose=5,
                    full_projection=False,
                    random_state=0,
                    learning_rate=1,
-                   max_n_iter=40000,
-                   backend='python')
+                   max_n_iter=20000,
+                   backend='c')
 
 # Need to download from spira
 X = load_movielens('1m')

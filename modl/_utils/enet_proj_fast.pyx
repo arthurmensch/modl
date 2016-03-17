@@ -1,3 +1,8 @@
+# encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
+
 """Projection on the elastic-net ball (Cython version)
 **References:**
 
@@ -5,10 +10,6 @@ J. Mairal, F. Bach, J. Ponce, G. Sapiro, 2009: Online dictionary learning
 for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 """
 
-# encoding: utf-8
-# cython: cdivision=True
-# cython: boundscheck=False
-# cython: wraparound=False
 
 import cython
 
@@ -53,8 +54,6 @@ cdef inline double sign(double a) nogil:
         return -1.
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 cdef inline void swap(double[:] b, unsigned int i, unsigned int j,
                       double * buf) nogil:
     buf[0] = b[i]
@@ -63,10 +62,6 @@ cdef inline void swap(double[:] b, unsigned int i, unsigned int j,
     return
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.initializedcheck(False)
-@cython.nonecheck(False)
 cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,
                              double l1_ratio) nogil:
     cdef unsigned int m = v.shape[0]
@@ -155,9 +150,6 @@ cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,
     return
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.initializedcheck(False)
 cpdef double enet_norm(double[:] v, double l1_ratio) nogil:
     """Returns the elastic net norm of a vector
 

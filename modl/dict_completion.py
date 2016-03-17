@@ -72,7 +72,6 @@ class DictCompleter(DictMF):
                  # Dict parameter
                  dict_init=None,
                  l1_ratio=0,
-                 n_samples=None,
                  max_n_iter=10000,
                  # Generic parameters
                  random_state=None,
@@ -88,6 +87,7 @@ class DictCompleter(DictMF):
                         offset,
                         reduction,
                         full_projection,
+                        False,
                         # Preproc parameters
                         fit_intercept,
                         # Dict parameter
@@ -95,7 +95,7 @@ class DictCompleter(DictMF):
                         l1_ratio,
                         False,  # Impute do not work !
                         True,  # persist_P
-                        n_samples,
+                        None,
                         max_n_iter,
                         # Generic parameters
                         random_state,

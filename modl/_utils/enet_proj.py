@@ -11,7 +11,7 @@ from .enet_proj_fast import enet_norm as c_enet_norm
 from .enet_proj_fast import enet_projection_inplace
 
 
-def enet_projection(v, radius=1., l1_ratio=1, check_input=True):
+def enet_projection(v, radius=1., l1_ratio=1, check_input=False):
     if check_input:
         v = check_array(v, dtype=np.float64, order='C', copy=False,
                         ensure_2d=False)

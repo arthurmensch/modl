@@ -186,12 +186,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             else:
                 data_list = list(zip(imgs, confounds))
 
-
         if self.impute:
             record_samples = [check_niimg(img).shape[3] for img in imgs]
             offset_list = np.zeros(len(imgs) + 1, dtype='int')
             offset_list[1:] = np.cumsum(record_samples)
-
 
         if self.dict_init is not None:
             dict_init = self.masker_.transform(self.dict_init)
