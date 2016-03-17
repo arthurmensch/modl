@@ -245,7 +245,7 @@ class DictMF(BaseEstimator):
         if not sp.isspmatrix_csr(X):
             G = self.Q_.dot(self.Q_.T)
             Qx = self.Q_.dot(X.T)
-            G.flat[::self.n_components + 1] += 2 * self.alpha
+            G.flat[::self.n_components + 1] += self.alpha
             P = linalg.solve(G, Qx, sym_pos=True,
                              overwrite_a=True, check_finite=False)
             return P
@@ -262,7 +262,7 @@ class DictMF(BaseEstimator):
                 C = Q_idx.dot(Q_idx.T)
                 Qx = Q_idx.dot(x)
                 C.flat[
-                ::self.n_components + 1] += 2 * self.alpha * nnz / n_cols
+                ::self.n_components + 1] += self.alpha * nnz / n_cols
                 P[j] = linalg.solve(C, Qx, sym_pos=True,
                                     overwrite_a=True, check_finite=False)
             return P
@@ -519,6 +519,7 @@ class DictMF(BaseEstimator):
             norm_X = np.sum(this_X ** 2, axis=1)
 
             reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1)
+            # reg_strength = np.ones(batch_size)
             inv_reg_strength = np.zeros(batch_size)
             nonzero_indices = reg_strength != 0
             inv_reg_strength[nonzero_indices] = 1. / reg_strength[nonzero_indices]
