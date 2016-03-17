@@ -106,6 +106,7 @@ def main():
                     'offset': estimator.offset,
                     'reduction': estimator.reduction, 'alpha': estimator.alpha,
                     'iter': cb.iter, 'times': cb.times,
+                    'obj': cb.obj,
                     'sparsity': cb.sparsity, 'q': cb.q}
         full_res_dict.append(res_dict)
     json.dump(full_res_dict, open('results.json', 'w+'))
