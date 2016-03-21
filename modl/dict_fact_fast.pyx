@@ -119,6 +119,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                      beta,
                      impute_mult,
                      impute,
+                     1.,
                      exact_E,
                      persist_P,
                      Q_subset,
@@ -146,6 +147,7 @@ cpdef void _update_code(double[::1, :] X_temp,
                         double[::1, :] beta,
                         double[:] impute_mult,  # [multiplier, E_norm, F]
                         bint impute,
+                        double reduction,
                         bint exact_E,
                         bint persist_P,
                         double[::1, :] Q_subset,
@@ -212,7 +214,10 @@ cpdef void _update_code(double[::1, :] X_temp,
         for ii in range(batch_size):
             for jj in range(len_subset):
                 j = this_subset[jj]
-                X_temp[ii, jj] /= (1. *  counter[j + 1]) / counter[0]
+                if reduction == 1.:
+                    X_temp[ii, jj] /= (1. *  counter[j + 1]) / counter[0]
+                else:
+                    X_temp[ii, jj] *= reduction
     else:
         this_alpha = alpha * (1. * len_subset) / n_cols
     # P_temp = Q_subset.dot(X_temp)
@@ -234,19 +239,20 @@ cpdef void _update_code(double[::1, :] X_temp,
 
         for ii in range(batch_size):
             i = sample_subset[ii]
-            reg_strength = 0
-            for jj in range(n_components):
-                reg_strength += P[i, jj] ** 2
-            if reg_strength != 0:
-                inv_reg_strength = 1. / reg_strength
-            else:
-                inv_reg_strength = 0
-            sum_reg_strength += reg_strength
+            reg_strength = 1
+            inv_reg_strength = 1
+            # for jj in range(n_components):
+            #     reg_strength += P[i, jj] ** 2
+            # if reg_strength != 0:
+            #     inv_reg_strength = 1. / reg_strength
+            # else:
+            #     inv_reg_strength = 0
+            # sum_reg_strength += reg_strength
             sum_X = 0
             for jj in range(len_subset):
                 sum_X += X_temp[ii, jj] ** 2
             reg[i] += w_norm * (
-                this_alpha + .5 * sum_X * inv_reg_strength)
+                2. * this_alpha + sum_X * inv_reg_strength)
             weights[i] += w_norm
 
             for jj in range(n_components):
@@ -269,7 +275,7 @@ cpdef void _update_code(double[::1, :] X_temp,
             for jj in range(n_components):
                 P_temp[jj, ii] /= weights[i]
                 P[i, jj] = P_temp[jj, ii]
-
+        sum_reg_strength = batch_size
         impute_mult[1] += w_norm / batch_size * sum_reg_strength
         if exact_E:
             for ii in range(n_components):

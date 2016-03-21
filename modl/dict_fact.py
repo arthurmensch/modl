@@ -2,7 +2,7 @@
 Author: Arthur Mensch (2016)
 Dictionary learning with masked data
 """
-from math import pow, ceil
+from math import pow, ceil, sqrt
 
 import numpy as np
 import scipy.sparse as sp
@@ -71,6 +71,7 @@ class DictMF(BaseEstimator):
                  reduction=1,
                  full_projection=True,
                  exact_E=None,
+                 average_Q=False,
                  damping_factor=1,
                  # Preproc parameters
                  fit_intercept=False,
@@ -118,6 +119,7 @@ class DictMF(BaseEstimator):
 
         self.full_projection = full_projection
         self.exact_E = exact_E
+        self.average_Q = average_Q
 
     def _reset_stat(self):
         multiplier = self.impute_mult_[0]
@@ -164,7 +166,7 @@ class DictMF(BaseEstimator):
                                                       n_cols)
         # Fix this
         self.Q_ = np.asfortranarray(
-            enet_scale(self.Q_, l1_ratio=self.l1_ratio, radius=1))
+            enet_scale(self.Q_, l1_ratio=self.l1_ratio, radius=sqrt(n_cols) / self.n_components))
 
         self.A_ = np.zeros((self.n_components, self.n_components),
                            order='F')
@@ -191,7 +193,9 @@ class DictMF(BaseEstimator):
             self.impute_mult_ = np.zeros(1)
 
         if self.persist_P or self.impute:
-            self.P_ = np.zeros((n_rows, self.n_components), order='C')
+            self.P_ = self.transform(X).T
+            # self.A_ = self.P_.T.dot(self.P_)
+            # self.B_ = self.P_.T.dot(X)
         else:
             self.P_ = np.zeros((0, 0), order='C')
 
@@ -206,7 +210,13 @@ class DictMF(BaseEstimator):
 
     @property
     def components_(self):
-        return self.Q_
+        if self.average_Q and self.exact_E_:
+            if self.impute_mult_[1] != 0:
+                return self.E_ * self.impute_mult_[1]
+            else:
+                return self.E_ * self.impute_mult_[0]
+        else:
+            return self.Q_
 
     def fit(self, X, y=None):
         """Use X to learn a dictionary Q_. The algorithm cycles on X
@@ -245,9 +255,9 @@ class DictMF(BaseEstimator):
         """
         X = check_array(X, accept_sparse='csr', order='F')
         if not sp.isspmatrix_csr(X):
-            G = self.Q_.dot(self.Q_.T)
-            Qx = self.Q_.dot(X.T)
-            G.flat[::self.n_components + 1] += self.alpha
+            G = self.components_.dot(self.components_.T)
+            Qx = self.components_.dot(X.T)
+            G.flat[::self.n_components + 1] += 2 * self.alpha
             P = linalg.solve(G, Qx, sym_pos=True,
                              overwrite_a=True, check_finite=False)
             return P
@@ -260,7 +270,7 @@ class DictMF(BaseEstimator):
                 idx = X.indices[X.indptr[j]:X.indptr[j + 1]]
                 x = X.data[X.indptr[j]:X.indptr[j + 1]]
 
-                Q_idx = self.Q_[:, idx]
+                Q_idx = self.components_[:, idx]
                 C = Q_idx.dot(Q_idx.T)
                 Qx = Q_idx.dot(x)
                 C.flat[
@@ -316,7 +326,6 @@ class DictMF(BaseEstimator):
             components_range = np.arange(self.n_components)
 
         subset_range = np.arange(n_cols, dtype='i4')
-
 
         if self.backend == 'c':
             # Init various arrays for efficiency
@@ -405,7 +414,7 @@ class DictMF(BaseEstimator):
                 if self.backend == 'python':
                     self._update_code_slow(this_X,
                                            subset,
-                                           sample_subset[row_batch], )
+                                           sample_subset[row_batch])
                 else:
                     _update_code(this_X,
                                  subset,
@@ -424,6 +433,7 @@ class DictMF(BaseEstimator):
                                  self.beta_,
                                  self.impute_mult_,
                                  self.impute,
+                                 self.reduction,
                                  self.exact_E_,
                                  self.persist_P,
                                  Q_subset,
@@ -505,7 +515,10 @@ class DictMF(BaseEstimator):
 
         if self.impute:
             this_alpha = self.alpha
-            this_X /= self.counter_[this_subset + 1] / self.counter_[0]
+            if self.reduction == 1.:  # For sparse matrices
+                this_X /= self.counter_[this_subset + 1] / self.counter_[0]
+            else:
+                this_X *= self.reduction
         else:
             this_alpha = self.alpha * this_subset.shape[0] / n_cols
         Qx = np.dot(Q_subset, this_X.T)
@@ -520,11 +533,12 @@ class DictMF(BaseEstimator):
 
             norm_X = np.sum(this_X ** 2, axis=1)
 
-            reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1) / self.damping_factor
-            # reg_strength = np.ones(batch_size)
-            inv_reg_strength = np.zeros(batch_size)
-            nonzero_indices = reg_strength != 0
-            inv_reg_strength[nonzero_indices] = 1. / reg_strength[nonzero_indices]
+            # reg_strength = np.sum(this_X ** 2, axis=1) / self.damping_factor
+            # reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1)
+            reg_strength = np.ones(batch_size)
+            inv_reg_strength = np.ones(batch_size)
+            # nonzero_indices = reg_strength != 0
+            # inv_reg_strength[nonzero_indices] = 1. / reg_strength[nonzero_indices]
             sum_reg_strength = np.sum(reg_strength)
 
             if self.exact_E_:
@@ -533,7 +547,7 @@ class DictMF(BaseEstimator):
             self.impute_mult_[1] += w_norm / batch_size * sum_reg_strength
 
             self.reg_[sample_subset] += w_norm * (
-                this_alpha + .5 * norm_X * inv_reg_strength)
+                2 * this_alpha + norm_X * inv_reg_strength)
             self.weights_[sample_subset] += w_norm
 
             self.beta_[sample_subset] += w_norm * (
@@ -543,12 +557,11 @@ class DictMF(BaseEstimator):
             for ii, i in enumerate(sample_subset):
                 this_sample_reg = self.reg_[i] / self.weights_[i]
                 this_G.flat[::self.n_components + 1] += this_sample_reg
-                this_P = linalg.solve(this_G, this_beta[ii],
+                this_P = linalg.solve(this_G, this_beta[ii] / self.weights_[i],
                                       sym_pos=True,
                                       overwrite_a=False,
                                       check_finite=False)
                 this_G.flat[::self.n_components + 1] -= this_sample_reg
-                this_P /= self.weights_[i]
                 self.P_[i] = this_P.T
             this_P = self.P_[sample_subset].T
             self.A_ += this_P.dot(this_P.T) * w_norm / batch_size

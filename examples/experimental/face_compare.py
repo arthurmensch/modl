@@ -31,18 +31,23 @@ class Callback(object):
         self.sparsity = []
         self.iter = []
         self.q = []
+        self.e = []
+        self.f = []
         self.start_time = time.clock()
         self.test_time = 0
 
     def __call__(self, mf):
         test_time = time.clock()
-        P = mf.transform(self.X_tr)
+        P = mf.P_ # mf.transform(self.X_tr)
         loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2)
         regul = mf.alpha * np.sum(P ** 2)
-        self.obj.append(loss + regul)
+        self.obj.append(loss.flat[0] + regul)
 
+        self.e.append(mf.E_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
         self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
-        self.sparsity.append(np.sum(mf.Q_ != 0) / mf.Q_.size)
+        self.f.append(mf.impute_mult_[1])
+        self.sparsity.append(np.sum(mf.components_ != 0) / mf.Q_.size)
+        # self.sparsity.append(np.sum(np.abs(mf.components_)) / np.sum(mf.components_ ** 2) / mf.Q_.size)
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
         self.iter.append(mf.n_iter_)
@@ -86,17 +91,19 @@ def main():
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    res = Parallel(n_jobs=40, verbose=10)(
+    res = Parallel(n_jobs=8, verbose=10)(
         delayed(single_run)(n_components, impute, full_projection, offset,
                             learning_rate, reduction,
                             alpha,
+                            average_Q,
                             data)
-        for impute in [True, False]
+        for impute in [True]
+        for average_Q in [True, False]
         for full_projection in [True, False]
-        for offset in [0, 100, 1000, 10000]
-        for learning_rate in [0.75, 1]  # 1]
-        for reduction in [1, 2, 5]
-        for alpha in [0.1, 0.01])
+        for offset in [0, 1000]
+        for learning_rate in [0.8]
+        for reduction in [3]
+        for alpha in [0.1])
 
     full_res_dict = []
     for cb, estimator in res:
@@ -105,8 +112,11 @@ def main():
                     'learning_rate': estimator.learning_rate,
                     'offset': estimator.offset,
                     'reduction': estimator.reduction, 'alpha': estimator.alpha,
+                    'average_Q': estimator.average_Q,
                     'iter': cb.iter, 'times': cb.times,
                     'obj': cb.obj,
+                    'e': cb.e,
+                    'f': cb.f,
                     'sparsity': cb.sparsity, 'q': cb.q}
         full_res_dict.append(res_dict)
     json.dump(full_res_dict, open('results.json', 'w+'))
@@ -134,10 +144,13 @@ def main():
 def single_run(n_components, impute, full_projection, offset, learning_rate,
                reduction,
                alpha,
+               average_Q,
                data):
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
-                       reduction=reduction, l1_ratio=1, alpha=alpha, max_n_iter=100000,
+                       reduction=reduction, l1_ratio=1, alpha=alpha,
+                       max_n_iter=4000,
+                       average_Q=average_Q,
                        full_projection=full_projection,
                        persist_P=True,
                        impute=impute,

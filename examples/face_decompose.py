@@ -52,13 +52,17 @@ class Callback(object):
 
     def __call__(self, mf):
         test_time = time.clock()
-        P = mf.transform(self.X_tr)
-        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2)
+        # P = mf.transform(self.X_tr)
+        P = mf.P_.T
+        # print(np.sum((P - P_) ** 2), np.sum(P ** 2), np.sum(P_ ** 2))
+        # P = P_
+        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
 
         self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
-        self.sparsity.append(np.sum(mf.Q_ != 0) / mf.Q_.size)
+        self.sparsity.append(np.sum(mf.components_ != 0) / mf.Q_.size)
+        # self.sparsity.append(np.sum(np.abs(mf.Q_)) / np.sum(mf.Q_ ** 2))
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
         self.iter.append(mf.n_iter_)
@@ -88,15 +92,16 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=3, l1_ratio=1, alpha=0.1, max_n_iter=15000,
-                   damping_factor=0.001,
-                   full_projection=False,
+                   reduction=5, l1_ratio=1, alpha=0.01, max_n_iter=20000,
+                   damping_factor=1,
+                   full_projection=True,
                    impute=True,
                    persist_P=True,
-                   backend='python',
+                   backend='c',
+                   average_Q=False,
                    verbose=3,
-                   learning_rate=0.75,
-                   offset=1000,
+                   learning_rate=1,
+                   offset=400,
                    random_state=0,
                    callback=cb)
 estimator.fit(data)
@@ -107,13 +112,15 @@ plot_gallery('%s - Train time %.1fs' % (name, train_time),
              components_[:n_components])
 
 P = estimator.transform(data)
-plot_gallery('Original faces',
-             data[:n_components])
-plot_gallery('Reconstruction',
-             P.T.dot(estimator.components_)[:n_components])
+# plot_gallery('Original faces',
+#              data[:n_components])
+plot_gallery('Residual',
+             data[:n_components] - P.T.dot(estimator.components_)[:n_components])
 fig, axes = plt.subplots(2, 1, sharex=True)
 axes[0].plot(cb.iter, cb.obj, label='Function value')
+axes[0].set_xlabel('Function value')
 axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
-plt.legend()
+axes[1].set_xlabel('Sparsity')
+axes[0].set_xscale('log')
 
 plt.show()
