@@ -237,12 +237,17 @@ cpdef void _update_code(double[::1, :] X_temp,
             impute_mult[0] *= 1 - w
         w_norm = w / impute_mult[0]
 
+        sum_reg_strength = 0
         for ii in range(batch_size):
             i = sample_subset[ii]
-            reg_strength = 1
+            reg_strength = 0
             inv_reg_strength = 1
-            # for jj in range(n_components):
-            #     reg_strength += P[i, jj] ** 2
+            for jj in range(n_components):
+                if P[i, jj]:
+                    reg_strength = 1
+                    sum_reg_strength += 1
+                    break
+            inv_reg_strength = reg_strength
             # if reg_strength != 0:
             #     inv_reg_strength = 1. / reg_strength
             # else:
@@ -275,7 +280,6 @@ cpdef void _update_code(double[::1, :] X_temp,
             for jj in range(n_components):
                 P_temp[jj, ii] /= weights[i]
                 P[i, jj] = P_temp[jj, ii]
-        sum_reg_strength = batch_size
         impute_mult[1] += w_norm / batch_size * sum_reg_strength
         if exact_E:
             for ii in range(n_components):

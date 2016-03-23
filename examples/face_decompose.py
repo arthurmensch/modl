@@ -52,10 +52,7 @@ class Callback(object):
 
     def __call__(self, mf):
         test_time = time.clock()
-        # P = mf.transform(self.X_tr)
         P = mf.P_.T
-        # print(np.sum((P - P_) ** 2), np.sum(P ** 2), np.sum(P_ ** 2))
-        # P = P_
         loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
@@ -92,15 +89,15 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=5, l1_ratio=1, alpha=0.01, max_n_iter=20000,
+                   reduction=3, l1_ratio=1, alpha=0.1, max_n_iter=40000,
                    damping_factor=1,
                    full_projection=True,
                    impute=True,
                    persist_P=True,
-                   backend='c',
+                   backend='python',
                    average_Q=False,
                    verbose=3,
-                   learning_rate=1,
+                   learning_rate=.8,
                    offset=400,
                    random_state=0,
                    callback=cb)

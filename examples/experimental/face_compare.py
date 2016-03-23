@@ -38,8 +38,8 @@ class Callback(object):
 
     def __call__(self, mf):
         test_time = time.clock()
-        P = mf.P_ # mf.transform(self.X_tr)
-        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2)
+        P = mf.P_.T
+        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss.flat[0] + regul)
 
@@ -91,19 +91,17 @@ def main():
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    res = Parallel(n_jobs=8, verbose=10)(
+    res = Parallel(n_jobs=32, verbose=10)(
         delayed(single_run)(n_components, impute, full_projection, offset,
                             learning_rate, reduction,
                             alpha,
-                            average_Q,
                             data)
         for impute in [True]
-        for average_Q in [True, False]
         for full_projection in [True, False]
         for offset in [0, 1000]
-        for learning_rate in [0.8]
-        for reduction in [3]
-        for alpha in [0.1])
+        for learning_rate in [0.8, 1]
+        for reduction in [3, 5]
+        for alpha in [0.1, 0.01])
 
     full_res_dict = []
     for cb, estimator in res:
@@ -144,13 +142,11 @@ def main():
 def single_run(n_components, impute, full_projection, offset, learning_rate,
                reduction,
                alpha,
-               average_Q,
                data):
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
-                       max_n_iter=4000,
-                       average_Q=average_Q,
+                       max_n_iter=500000,
                        full_projection=full_projection,
                        persist_P=True,
                        impute=impute,

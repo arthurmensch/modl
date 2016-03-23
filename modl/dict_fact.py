@@ -193,9 +193,11 @@ class DictMF(BaseEstimator):
             self.impute_mult_ = np.zeros(1)
 
         if self.persist_P or self.impute:
-            self.P_ = self.transform(X).T
-            # self.A_ = self.P_.T.dot(self.P_)
-            # self.B_ = self.P_.T.dot(X)
+            self.P_ = np.zeros((n_rows, self.n_components))
+            # if self.n_samples is not None:
+            #     self.P_ = np.zeros((n_rows, self.n_components))
+            # else:
+            #     self.P_ = self.transform(X).T
         else:
             self.P_ = np.zeros((0, 0), order='C')
 
@@ -351,6 +353,9 @@ class DictMF(BaseEstimator):
             dict_subset_lim = np.zeros(1, dtype='i4')
             X_temp = np.zeros((1, max_subset_size), order='F')
 
+        # if self.n_samples is not None:
+        #     self.P_[sample_subset] = self.transform(X)
+        #
         for batch in batches:
             row_batch = row_range[batch]
 
@@ -533,13 +538,14 @@ class DictMF(BaseEstimator):
 
             norm_X = np.sum(this_X ** 2, axis=1)
 
-            # reg_strength = np.sum(this_X ** 2, axis=1) / self.damping_factor
+            # reg_strength = 100 * np.any(self.P_[sample_subset], axis=1)
+            reg_strength = np.sqrt(np.sum(this_X ** 2, axis=1))
             # reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1)
-            reg_strength = np.ones(batch_size)
-            inv_reg_strength = np.ones(batch_size)
-            # nonzero_indices = reg_strength != 0
-            # inv_reg_strength[nonzero_indices] = 1. / reg_strength[nonzero_indices]
             sum_reg_strength = np.sum(reg_strength)
+            # inv_reg_strength = reg_strength
+            inv_reg_strength = np.zeros(batch_size)
+            nonzero_indices = reg_strength != 0
+            inv_reg_strength[nonzero_indices] = 1. / reg_strength[nonzero_indices]
 
             if self.exact_E_:
                 self.E_ += w_norm / batch_size * self.Q_ * sum_reg_strength
@@ -556,6 +562,7 @@ class DictMF(BaseEstimator):
 
             for ii, i in enumerate(sample_subset):
                 this_sample_reg = self.reg_[i] / self.weights_[i]
+                print(this_sample_reg)
                 this_G.flat[::self.n_components + 1] += this_sample_reg
                 this_P = linalg.solve(this_G, this_beta[ii] / self.weights_[i],
                                       sym_pos=True,
