@@ -536,33 +536,28 @@ class DictMF(BaseEstimator):
                 self.impute_mult_[0] *= 1 - w
             w_norm = w / self.impute_mult_[0]
 
-            norm_X = np.sum(this_X ** 2, axis=1)
-
-            # reg_strength = 100 * np.any(self.P_[sample_subset], axis=1)
-            reg_strength = np.sqrt(np.sum(this_X ** 2, axis=1))
-            # reg_strength = np.sum(self.P_[sample_subset] ** 2, axis=1)
-            sum_reg_strength = np.sum(reg_strength)
-            # inv_reg_strength = reg_strength
-            inv_reg_strength = np.zeros(batch_size)
-            nonzero_indices = reg_strength != 0
-            inv_reg_strength[nonzero_indices] = 1. / reg_strength[nonzero_indices]
+            sq_norm_X = np.sqrt(np.sum(this_X ** 2, axis=1))
+            # multiplier = np.ones(batch_size) * self.alpha
+            multiplier = np.sqrt(np.sum(this_X ** 2, axis=1))
+            dict_reg = np.sum(sq_norm_X * multiplier)
+            code_reg = np.zeros(batch_size)
+            code_reg[multiplier != 0] = sq_norm_X[multiplier != 0] / multiplier[multiplier != 0]
 
             if self.exact_E_:
-                self.E_ += w_norm / batch_size * self.Q_ * sum_reg_strength
+                self.E_ += w_norm / batch_size * self.Q_ * dict_reg
 
-            self.impute_mult_[1] += w_norm / batch_size * sum_reg_strength
+            self.impute_mult_[1] += w_norm / batch_size * dict_reg
 
             self.reg_[sample_subset] += w_norm * (
-                2 * this_alpha + norm_X * inv_reg_strength)
+                2 * this_alpha + code_reg)
             self.weights_[sample_subset] += w_norm
 
             self.beta_[sample_subset] += w_norm * (
-                Qx.T + self.P_[sample_subset] * (norm_X * inv_reg_strength)[:, np.newaxis])
+                Qx.T + self.P_[sample_subset] * code_reg[:, np.newaxis])
             this_beta = self.beta_[sample_subset].copy()
 
             for ii, i in enumerate(sample_subset):
                 this_sample_reg = self.reg_[i] / self.weights_[i]
-                print(this_sample_reg)
                 this_G.flat[::self.n_components + 1] += this_sample_reg
                 this_P = linalg.solve(this_G, this_beta[ii] / self.weights_[i],
                                       sym_pos=True,

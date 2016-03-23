@@ -89,7 +89,7 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=3, l1_ratio=1, alpha=0.1, max_n_iter=40000,
+                   reduction=10, l1_ratio=1, alpha=0.1, max_n_iter=40000,
                    damping_factor=1,
                    full_projection=True,
                    impute=True,

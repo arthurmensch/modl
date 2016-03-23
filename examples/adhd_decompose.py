@@ -24,7 +24,7 @@ n_jobs = 3
 
 dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      memory=expanduser("~/nilearn_cache"), memory_level=2,
-                     reduction=3,
+                     reduction=4,
                      full_projection=True,
                      impute=True,
                      verbose=4,
