@@ -8,6 +8,8 @@ import numpy as np
 import scipy.sparse as sp
 from scipy import linalg
 from sklearn.base import BaseEstimator
+from sklearn.cluster import FeatureAgglomeration
+from sklearn.feature_extraction import grid_to_graph
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
@@ -71,7 +73,7 @@ class DictMF(BaseEstimator):
                  reduction=1,
                  full_projection=True,
                  exact_E=None,
-                 average_Q=False,
+                 clustering=False,
                  damping_factor=1,
                  # Preproc parameters
                  fit_intercept=False,
@@ -119,7 +121,7 @@ class DictMF(BaseEstimator):
 
         self.full_projection = full_projection
         self.exact_E = exact_E
-        self.average_Q = average_Q
+        self.clustering = clustering
 
     def _reset_stat(self):
         multiplier = self.impute_mult_[0]
@@ -165,8 +167,9 @@ class DictMF(BaseEstimator):
                 self.Q_[:] = self.random_state_.randn(self.n_components,
                                                       n_cols)
         # Fix this
+        radius = sqrt(n_cols) / self.n_components
         self.Q_ = np.asfortranarray(
-            enet_scale(self.Q_, l1_ratio=self.l1_ratio, radius=sqrt(n_cols) / self.n_components))
+            enet_scale(self.Q_, l1_ratio=self.l1_ratio, radius=radius))
 
         self.A_ = np.zeros((self.n_components, self.n_components),
                            order='F')
@@ -194,10 +197,10 @@ class DictMF(BaseEstimator):
 
         if self.persist_P or self.impute:
             self.P_ = np.zeros((n_rows, self.n_components))
-            # if self.n_samples is not None:
-            #     self.P_ = np.zeros((n_rows, self.n_components))
-            # else:
-            #     self.P_ = self.transform(X).T
+            if self.n_samples is not None:
+                self.P_ = np.zeros((n_rows, self.n_components))
+            else:
+                self.P_ = self._reduced_transform(X).T
         else:
             self.P_ = np.zeros((0, 0), order='C')
 
@@ -212,13 +215,7 @@ class DictMF(BaseEstimator):
 
     @property
     def components_(self):
-        if self.average_Q and self.exact_E_:
-            if self.impute_mult_[1] != 0:
-                return self.E_ * self.impute_mult_[1]
-            else:
-                return self.E_ * self.impute_mult_[0]
-        else:
-            return self.Q_
+        return self.Q_
 
     def fit(self, X, y=None):
         """Use X to learn a dictionary Q_. The algorithm cycles on X
@@ -275,10 +272,29 @@ class DictMF(BaseEstimator):
                 Q_idx = self.components_[:, idx]
                 C = Q_idx.dot(Q_idx.T)
                 Qx = Q_idx.dot(x)
-                C.flat[
-                ::self.n_components + 1] += self.alpha * nnz / n_cols
+                C.flat[::self.n_components + 1] += self.alpha * nnz / n_cols
                 P[j] = linalg.solve(C, Qx, sym_pos=True,
                                     overwrite_a=True, check_finite=False)
+            return P
+
+    def _reduced_transform(self, X):
+        # For dense matrices only
+        if not sp.isspmatrix_csr(X):
+            n_rows, n_cols = X.shape
+            G_temp = self.G_.copy()
+            G_temp.flat[::self.n_components + 1] += 2 * self.alpha
+            subset_size = int(ceil(n_cols / self.reduction))
+            batches = gen_batches(len(X), self.batch_size)
+            subset_range = np.arange(n_cols, dtype='i4')
+            P = np.zeros((self.n_components, n_rows), order='F')
+            for batch in batches:
+                this_X = X[batch]
+                self.random_state_.shuffle(subset_range)
+                subset = subset_range[:subset_size]
+                Qx = self.components_[:, subset].dot(this_X[:, subset].T)
+                P[:, batch] = linalg.solve(G_temp, Qx, sym_pos=True,
+                                           overwrite_a=True,
+                                           check_finite=False)
             return P
 
     def partial_fit(self, X, y=None, sample_subset=None):
@@ -353,15 +369,22 @@ class DictMF(BaseEstimator):
             dict_subset_lim = np.zeros(1, dtype='i4')
             X_temp = np.zeros((1, max_subset_size), order='F')
 
-        # if self.n_samples is not None:
-        #     self.P_[sample_subset] = self.transform(X)
-        #
+        if self.n_samples is not None:
+            # inefficient ?
+            if np.all(self.P_[0] == 0):
+                self.P_[sample_subset] = self._reduced_transform(X).T
+
+        if self.clustering:
+            connectivity = grid_to_graph(64, 64)
+            fa = FeatureAgglomeration(n_clusters=subset_size,
+                                                 linkage='ward',
+                                                 connectivity=connectivity).fit(X)
+            clustering = fa.labels_
         for batch in batches:
             row_batch = row_range[batch]
 
             if 0 < self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
                 return
-
             if sp.isspmatrix_csr(X):
                 if self.backend == 'c':
                     _update_code_sparse_batch(X.data,
@@ -413,9 +436,14 @@ class DictMF(BaseEstimator):
                                                   for j in row_batch])
                     dict_subset = np.unique(dict_subset)
             else:  # X is a dense matrix : we force masks
-                self.random_state_.shuffle(subset_range)
-                subset = subset_range[:subset_size]
-                this_X = X[row_batch][:, subset] # Trigger copy
+                if not self.clustering:
+                    self.random_state_.shuffle(subset_range)
+                    subset = subset_range[:subset_size]
+                else:
+                    permutation = self.random_state_.permutation(n_cols).astype('i4')
+                    _, subset = np.unique(clustering[permutation], return_index=True)
+                    subset = permutation[subset]
+                this_X = X[row_batch][:, subset]  # Trigger copy
                 if self.backend == 'python':
                     self._update_code_slow(this_X,
                                            subset,
@@ -536,24 +564,18 @@ class DictMF(BaseEstimator):
                 self.impute_mult_[0] *= 1 - w
             w_norm = w / self.impute_mult_[0]
 
-            sq_norm_X = np.sqrt(np.sum(this_X ** 2, axis=1))
-            # multiplier = np.ones(batch_size) * self.alpha
-            multiplier = np.sqrt(np.sum(this_X ** 2, axis=1))
-            dict_reg = np.sum(sq_norm_X * multiplier)
-            code_reg = np.zeros(batch_size)
-            code_reg[multiplier != 0] = sq_norm_X[multiplier != 0] / multiplier[multiplier != 0]
-
+            sum_X = np.sum(this_X ** 2)
             if self.exact_E_:
-                self.E_ += w_norm / batch_size * self.Q_ * dict_reg
+                self.E_ += w_norm / batch_size * self.Q_ * sum_X / 1
 
-            self.impute_mult_[1] += w_norm / batch_size * dict_reg
+            self.impute_mult_[1] += w_norm / batch_size * sum_X / 1
 
             self.reg_[sample_subset] += w_norm * (
-                2 * this_alpha + code_reg)
+                2 * this_alpha + 1)
             self.weights_[sample_subset] += w_norm
 
             self.beta_[sample_subset] += w_norm * (
-                Qx.T + self.P_[sample_subset] * code_reg[:, np.newaxis])
+                Qx.T + self.P_[sample_subset] * 1)
             this_beta = self.beta_[sample_subset].copy()
 
             for ii, i in enumerate(sample_subset):
@@ -623,7 +645,6 @@ class DictMF(BaseEstimator):
             norm = enet_norm(Q_subset, self.l1_ratio)
 
         ger, = linalg.get_blas_funcs(('ger',), (self.A_, Q_subset))
-
         if self.impute:
             self.A_.flat[::(n_components + 1)] += self.impute_mult_[1]
             if self.exact_E_:
@@ -631,7 +652,8 @@ class DictMF(BaseEstimator):
                     Q_subset.T,
                     self.A_).T
             else:
-                R = self.B_[:, subset] + self.impute_mult_[1] * Q_subset - np.dot(
+                R = self.B_[:, subset] + self.impute_mult_[
+                                             1] * Q_subset - np.dot(
                     Q_subset.T,
                     self.A_).T
         else:

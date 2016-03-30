@@ -18,7 +18,7 @@ n_jobs = 20
 raw = True
 init = True
 
-trace_folder = expanduser('~/output/modl/hcp')
+trace_folder = expanduser('~/output/modl/hcp_new_1')
 try:
     os.makedirs(trace_folder)
 except OSError:
@@ -30,7 +30,7 @@ if raw:
     func_filenames = sorted(list(mapping.values()))
 else:
     hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data',
-                                          n_subjects=1000)
+                                          n_subjects=2000)
 
     func_filenames = hcp_dataset.func # list of 4D nifti files for each subject
 
@@ -45,7 +45,7 @@ dict_fact = SpcaFmri(mask=mask,
                      n_components=n_components,
                      dict_init=fetch_atlas_smith_2009().rsn70 if
                      init else None,
-                     reduction=12,
+                     reduction=1,
                      alpha=0.001,
                      random_state=0,
                      n_epochs=1,

@@ -243,7 +243,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                         components).to_filename(join(self.trace_folder,
                                                            'record_%s.nii.gz' % record))
 
-        self.components_ = dict_mf.Q_
+        self.components_ = dict_mf.Q_.copy()
         _normalize_and_flip(self.components_)
         return self
 

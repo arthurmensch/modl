@@ -9,8 +9,6 @@ from scipy.linalg.cython_lapack cimport dposv
 from scipy.linalg.cython_blas cimport dgemm, dger
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
-cimport numpy as np
-
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
 cdef char TRANS = 'T'
@@ -211,6 +209,7 @@ cpdef void _update_code(double[::1, :] X_temp,
 
     if impute:
         this_alpha = alpha
+        sum_X = 0
         for ii in range(batch_size):
             for jj in range(len_subset):
                 j = this_subset[jj]
@@ -218,6 +217,7 @@ cpdef void _update_code(double[::1, :] X_temp,
                     X_temp[ii, jj] /= (1. *  counter[j + 1]) / counter[0]
                 else:
                     X_temp[ii, jj] *= reduction
+                sum_X += X_temp[ii, jj] ** 2
     else:
         this_alpha = alpha * (1. * len_subset) / n_cols
     # P_temp = Q_subset.dot(X_temp)
@@ -240,29 +240,13 @@ cpdef void _update_code(double[::1, :] X_temp,
         sum_reg_strength = 0
         for ii in range(batch_size):
             i = sample_subset[ii]
-            reg_strength = 0
-            inv_reg_strength = 1
-            for jj in range(n_components):
-                if P[i, jj]:
-                    reg_strength = 1
-                    sum_reg_strength += 1
-                    break
-            inv_reg_strength = reg_strength
-            # if reg_strength != 0:
-            #     inv_reg_strength = 1. / reg_strength
-            # else:
-            #     inv_reg_strength = 0
-            # sum_reg_strength += reg_strength
-            sum_X = 0
-            for jj in range(len_subset):
-                sum_X += X_temp[ii, jj] ** 2
             reg[i] += w_norm * (
-                2. * this_alpha + sum_X * inv_reg_strength)
+                2. * this_alpha + 1)
             weights[i] += w_norm
 
             for jj in range(n_components):
                 beta[i, jj] += w_norm * (
-                    P_temp[jj, ii] + P[i, jj] * sum_X * inv_reg_strength)
+                    P_temp[jj, ii] + P[i, jj])
                 P_temp[jj, ii] = beta[i, jj]
 
             this_sample_reg = reg[i] / weights[i]
@@ -280,11 +264,11 @@ cpdef void _update_code(double[::1, :] X_temp,
             for jj in range(n_components):
                 P_temp[jj, ii] /= weights[i]
                 P[i, jj] = P_temp[jj, ii]
-        impute_mult[1] += w_norm / batch_size * sum_reg_strength
+        impute_mult[1] += w_norm / batch_size * sum_X
         if exact_E:
             for ii in range(n_components):
                 for jj in range(n_cols):
-                    E[ii, jj] += w_norm / batch_size * Q[ii, jj] * sum_reg_strength
+                    E[ii, jj] += w_norm / batch_size * Q[ii, jj] * sum_X
 
     else:
         dgemm(&NTRANS, &TRANS,

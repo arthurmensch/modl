@@ -10,7 +10,7 @@ from nilearn import datasets
 
 from modl.spca_fmri import SpcaFmri
 
-adhd_dataset = datasets.fetch_adhd(n_subjects=20)
+adhd_dataset = datasets.fetch_adhd(n_subjects=40)
 
 func_filenames = adhd_dataset.func  # list of 4D nifti files for each subject
 
@@ -24,15 +24,15 @@ n_jobs = 3
 
 dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      memory=expanduser("~/nilearn_cache"), memory_level=2,
-                     reduction=4,
-                     full_projection=True,
+                     reduction=3,
+                     full_projection=False,
                      impute=True,
                      verbose=4,
-                     alpha=0.1,
+                     alpha=1e-3,
                      random_state=0,
-                     learning_rate=.8,
-                     offset=3000,
-                     n_epochs=4,
+                     learning_rate=1,
+                     offset=1000,
+                     n_epochs=1,
                      backend='python',
                      n_jobs=n_jobs,
                      )

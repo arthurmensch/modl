@@ -41,6 +41,7 @@ class Callback(object):
         self.X_tr = X_tr
         # self.X_te = X_te
         self.obj = []
+        self.obj_tr = []
         self.rmse = []
         self.rmse_tr = []
         self.times = []
@@ -56,6 +57,10 @@ class Callback(object):
         loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
+        # P = mf.transform(self.X_tr)
+        # loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
+        # regul = mf.alpha * np.sum(P ** 2)
+        # self.obj_tr.append(loss + regul)
 
         self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.Q_.size)
@@ -89,15 +94,16 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=10, l1_ratio=1, alpha=0.1, max_n_iter=40000,
+                   reduction=10, l1_ratio=1
+                   , alpha=0, max_n_iter=30000,
                    damping_factor=1,
-                   full_projection=True,
+                   full_projection=False,
+                   clustering=False,
                    impute=True,
                    persist_P=True,
                    backend='python',
-                   average_Q=False,
                    verbose=3,
-                   learning_rate=.8,
+                   learning_rate=1,
                    offset=400,
                    random_state=0,
                    callback=cb)
@@ -114,7 +120,10 @@ P = estimator.transform(data)
 plot_gallery('Residual',
              data[:n_components] - P.T.dot(estimator.components_)[:n_components])
 fig, axes = plt.subplots(2, 1, sharex=True)
-axes[0].plot(cb.iter, cb.obj, label='Function value')
+axes[0].plot(cb.iter, cb.obj, label='P_')
+# axes[0].plot(cb.iter, cb.obj_tr, label='P')
+axes[0].legend()
+
 axes[0].set_xlabel('Function value')
 axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
 axes[1].set_xlabel('Sparsity')

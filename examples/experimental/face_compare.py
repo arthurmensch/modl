@@ -43,9 +43,7 @@ class Callback(object):
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss.flat[0] + regul)
 
-        self.e.append(mf.E_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
         self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
-        self.f.append(mf.impute_mult_[1])
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.Q_.size)
         # self.sparsity.append(np.sum(np.abs(mf.components_)) / np.sum(mf.components_ ** 2) / mf.Q_.size)
         self.test_time += time.clock() - test_time
@@ -113,8 +111,6 @@ def main():
                     'average_Q': estimator.average_Q,
                     'iter': cb.iter, 'times': cb.times,
                     'obj': cb.obj,
-                    'e': cb.e,
-                    'f': cb.f,
                     'sparsity': cb.sparsity, 'q': cb.q}
         full_res_dict.append(res_dict)
     json.dump(full_res_dict, open('results.json', 'w+'))
