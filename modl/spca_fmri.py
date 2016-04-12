@@ -101,7 +101,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  exact_E=None,
                  learning_rate=1,
                  offset=0,
-                 impute=False,
+                 var_red=False,
+                 var_red_surr='homogeneous',
+                 alpha_var_red_surr=1,
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -135,7 +137,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.batch_size = batch_size
         self.reduction = reduction
         self.full_projection = full_projection
-        self.impute = impute
+        self.var_red = var_red
+
+
         self.backend = backend
         self.shelve = shelve
         self.trace_folder = trace_folder
@@ -143,6 +147,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.exact_E = exact_E
         self.learning_rate = learning_rate
         self.offset = offset
+
+        self.alpha_var_red_surr = alpha_var_red_surr
+        self.var_red_surr = var_red_surr
 
     def fit(self, imgs, y=None, confounds=None, raw=False):
         """Compute the mask and the ICA maps across subjects
@@ -186,7 +193,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             else:
                 data_list = list(zip(imgs, confounds))
 
-        if self.impute:
+        if self.var_red:
             record_samples = [check_niimg(img).shape[3] for img in imgs]
             offset_list = np.zeros(len(imgs) + 1, dtype='int')
             offset_list[1:] = np.cumsum(record_samples)
@@ -203,8 +210,11 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          exact_E=self.exact_E,
                          learning_rate=self.learning_rate,
                          offset=self.offset,
-                         impute=self.impute,
-                         n_samples=offset_list[-1] + 1 if self.impute else None,
+                         alpha_var_red_surr=self.alpha_var_red_surr,
+                         var_red_surr=self.var_red_surr,
+                         var_red=self.var_red,
+                         n_samples=offset_list[-1] + 1 if self.var_red else
+                         None,
                          batch_size=self.batch_size,
                          random_state=random_state,
                          dict_init=dict_init,
@@ -218,7 +228,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
 
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
-            if self.impute:
+            if self.var_red:
                 offset = offset_list[this_data_idx]
             if self.verbose:
                 print('Streaming record %s' % record)
@@ -230,7 +240,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                 else:
                     this_data = self.masker_.transform(this_data[0],
                                                        confounds=this_data[1])
-            if self.impute:
+            if self.var_red:
+                if self.var_red_surr:
+                    S = np.sqrt(np.sum(this_data ** 2, axis=1))
+                    this_data /= S[:, np.newaxis]
                 dict_mf.partial_fit(this_data, sample_subset=offset + np.arange(this_data.shape[0]))
             else:
                 dict_mf.partial_fit(this_data)

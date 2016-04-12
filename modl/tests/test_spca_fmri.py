@@ -7,7 +7,7 @@ from nilearn.image import iter_img
 from modl.spca_fmri import SpcaFmri
 
 backends = ['c', 'python']
-imputes = [True, False]
+var_reds = [True, False]
 
 
 # Utils function are copied from nilearn.decomposition.tests.test_canica
@@ -73,14 +73,14 @@ def _make_test_data(rng=None, n_subjects=8, noisy=False):
 
 
 @pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("impute", imputes)
-def test_sparse_pca(backend, impute):
+@pytest.mark.parametrize("var_red", var_reds)
+def test_sparse_pca(backend, var_red):
     data, mask_img, components, rng = _make_test_data(n_subjects=10)
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           mask=mask_img,
                           backend=backend,
-                          impute=impute,
-                          reduction=2 if impute else 1,
+                          var_red=var_red,
+                          reduction=2 if var_red else 1,
                           smoothing_fwhm=0., n_epochs=2, alpha=0.01)
     sparse_pca.fit(data)
     maps = sparse_pca.masker_. \
@@ -97,13 +97,13 @@ def test_sparse_pca(backend, impute):
 
     G = np.abs(components.dot(maps.T))
     # Hard
-    # if impute:
+    # if var_red:
     #     recovered_maps = min(np.sum(np.any(G > 0.5, axis=1)),
     #                          np.sum(np.any(G > 0.5, axis=0)))
     # else:
     #     recovered_maps = min(np.sum(np.any(G > 0.95, axis=1)),
     #                  np.sum(np.any(G > 0.95, axis=0)))
-    if impute:
+    if var_red:
         recovered_maps = np.sum(G > 0.7)
     else:
         recovered_maps = np.sum(G > 0.95)
@@ -112,7 +112,7 @@ def test_sparse_pca(backend, impute):
     # Smoke test n_epochs > 1
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           mask=mask_img,
-                          impute=impute,
+                          var_red=var_red,
                           smoothing_fwhm=0., n_epochs=2, alpha=1)
     sparse_pca.fit(data)
 
@@ -120,7 +120,7 @@ def test_sparse_pca(backend, impute):
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           reduction=2,
                           mask=mask_img,
-                          impute=impute,
+                          var_red=var_red,
                           smoothing_fwhm=0., n_epochs=1, alpha=1)
     sparse_pca.fit(data)
 

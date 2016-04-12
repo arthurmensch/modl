@@ -26,13 +26,15 @@ dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      memory=expanduser("~/nilearn_cache"), memory_level=2,
                      reduction=3,
                      full_projection=False,
-                     impute=True,
+                     var_red=False,
                      verbose=4,
-                     alpha=1e-3,
+                     alpha=0.001,
+                     var_red_surr='homogeneous',
+                     alpha_var_red_surr=0.1,
                      random_state=0,
-                     learning_rate=1,
-                     offset=1000,
-                     n_epochs=1,
+                     learning_rate=.8,
+                     offset=0,
+                     n_epochs=3,
                      backend='python',
                      n_jobs=n_jobs,
                      )
@@ -48,10 +50,17 @@ components_img.to_filename('components.nii.gz')
 time = time.time() - t0
 print('[Example] Run in %.2f s' % time)
 # Show components from both methods using 4D plotting tools
-from nilearn.plotting import plot_prob_atlas, show
+import matplotlib.pyplot as plt
+from nilearn.plotting import plot_prob_atlas, plot_stat_map, show
+from nilearn.image import index_img
 
 print('[Example] Displaying')
-
+fig, axes = plt.subplots(2, 1)
 plot_prob_atlas(components_img, view_type="filled_contours",
-                title="Reduced sparse PCA",colorbar=False)
+                axes=axes[0])
+plot_stat_map(index_img(components_img, 0),
+              axes=axes[1],
+              colorbar=False,
+              threshold=0)
+plt.savefig('components.pdf')
 show()

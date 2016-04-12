@@ -57,52 +57,21 @@ class DictCompleter(DictMF):
         self.Q_: ndarray (n_components, n_cols):
             Learned dictionary
     """
-    def __init__(self, alpha=1.0,
-                 n_components=30,
-                 # Hyper-parameters
-                 learning_rate=1.,
-                 batch_size=1,
-                 offset=0,
-                 reduction=1,
-                 full_projection=False,
-                 # Preproc parameters
-                 fit_intercept=True,
-                 detrend=True,
+
+    def __init__(self, alpha=1.0, n_components=30, learning_rate=1.,
+                 batch_size=1, offset=0, reduction=1,
+                 fit_intercept=False, dict_init=None, l1_ratio=0,
+                 max_n_iter=0,
+                 random_state=None, verbose=0, backend='c', debug=False,
+                 detrend=False,
                  crop=None,
-                 # Dict parameter
-                 dict_init=None,
-                 l1_ratio=0,
-                 max_n_iter=10000,
-                 # Generic parameters
-                 random_state=None,
-                 verbose=0,
-                 backend='c',
-                 debug=False,
                  callback=None):
-        DictMF.__init__(self, alpha,
-                        n_components,
-                        # Hyper-parameters
-                        learning_rate,
-                        batch_size,
-                        offset,
-                        reduction,
-                        full_projection,
-                        False,
-                        # Preproc parameters
-                        fit_intercept,
-                        # Dict parameter
-                        dict_init,
-                        l1_ratio,
-                        False,  # Impute do not work !
-                        True,  # persist_P
-                        None,
-                        max_n_iter,
-                        # Generic parameters
-                        random_state,
-                        verbose,
-                        backend,
-                        debug,
-                        callback)
+        super().__init__(alpha, n_components, learning_rate, batch_size,
+                         offset, reduction, False, None,
+                         fit_intercept, dict_init, l1_ratio, True,
+                         False, False, False, None,
+                         None, True, max_n_iter, random_state,
+                         verbose, backend, debug, callback)
         self.detrend = detrend
         self.crop = crop
 

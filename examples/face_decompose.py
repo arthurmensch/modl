@@ -47,16 +47,19 @@ class Callback(object):
         self.times = []
         self.sparsity = []
         self.iter = []
+        self.regul = []
         self.q = []
         self.start_time = time.clock()
         self.test_time = 0
 
     def __call__(self, mf):
         test_time = time.clock()
-        P = mf.P_.T
+        # P = mf.P_.T
+        P = mf.transform(self.X_tr)
         loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
+        self.regul.append(regul)
         # P = mf.transform(self.X_tr)
         # loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         # regul = mf.alpha * np.sum(P ** 2)
@@ -94,17 +97,19 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=10, l1_ratio=1
-                   , alpha=0, max_n_iter=30000,
-                   damping_factor=1,
+                   reduction=5,
+                   l1_ratio=1,
+                   alpha=0,
+                   var_red_surr='homogeneous',
+                   alpha_var_red_surr=0.5,
+                   max_n_iter=30000,
                    full_projection=False,
-                   clustering=False,
-                   impute=True,
+                   var_red=True,
                    persist_P=True,
                    backend='python',
                    verbose=3,
-                   learning_rate=1,
-                   offset=400,
+                   learning_rate=.8,
+                   offset=1000,
                    random_state=0,
                    callback=cb)
 estimator.fit(data)
@@ -121,6 +126,7 @@ plot_gallery('Residual',
              data[:n_components] - P.T.dot(estimator.components_)[:n_components])
 fig, axes = plt.subplots(2, 1, sharex=True)
 axes[0].plot(cb.iter, cb.obj, label='P_')
+axes[0].plot(cb.iter, cb.regul, label='regul')
 # axes[0].plot(cb.iter, cb.obj_tr, label='P')
 axes[0].legend()
 
