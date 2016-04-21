@@ -193,7 +193,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             else:
                 data_list = list(zip(imgs, confounds))
 
-        if self.var_red:
+        if self.var_red or True:
             record_samples = [check_niimg(img).shape[3] for img in imgs]
             offset_list = np.zeros(len(imgs) + 1, dtype='int')
             offset_list[1:] = np.cumsum(record_samples)
@@ -213,8 +213,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          alpha_var_red_surr=self.alpha_var_red_surr,
                          var_red_surr=self.var_red_surr,
                          var_red=self.var_red,
-                         n_samples=offset_list[-1] + 1 if self.var_red else
+                         n_samples=offset_list[-1] + 1 if self.var_red or True else
                          None,
+                         full_G=True,
                          batch_size=self.batch_size,
                          random_state=random_state,
                          dict_init=dict_init,

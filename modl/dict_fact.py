@@ -182,24 +182,33 @@ class DictMF(BaseEstimator):
                            order='F')
         self.B_ = np.zeros((self.n_components, n_cols), order="F")
 
+        self.B_freeze_ = self.B_.copy()
+
+        self.subset_ = np.zeros((n_rows, n_cols))
+
         self.counter_ = np.zeros(n_cols + 1, dtype='int')
 
         self.n_iter_ = 0
 
         if self.full_G:
             self.G_ = self.Q_.dot(self.Q_.T).T
+            self.row_counter_ = np.zeros(n_rows, dtype='int')
         else:
             self.G_ = np.zeros((1, 1), order='F')
 
         self.var_red_mult_ = np.array([1, 0.])  # multiplier_, F_
-        if self.var_red:
+
+        if self.full_G or self.var_red:
             self.beta_ = np.zeros((n_rows, self.n_components), order="F")
+        else:
+            self.beta_ = np.zeros((1, 1), order="F")
+
+        if self.var_red:
             self.weights_ = np.zeros(n_rows)
             self.reg_ = np.zeros(n_rows)
             self.E_ = np.zeros((self.n_components, n_cols), order='F')
         else:
             # Init dummy matrices
-            self.beta_ = np.zeros((1, 1), order="F")
             self.weights_ = np.zeros(1)
             self.reg_ = np.zeros(1)
             self.E_ = np.zeros((1, 1), order='F')
@@ -235,6 +244,8 @@ class DictMF(BaseEstimator):
             while (not self._check_init() or
                                    self.n_iter_ + self.batch_size - 1 < self.max_n_iter):
                 self.partial_fit(X)
+                self.B_freeze_ = self.B_.copy() * self.var_red_mult_[0]
+                self.var_red_mult_[1] = 0
         else:
             # Default to one pass
             self.partial_fit(X)
@@ -435,10 +446,15 @@ class DictMF(BaseEstimator):
             else:  # X is a dense matrix : we force masks
                 self.random_state_.shuffle(subset_range)
                 subset = subset_range[:subset_size]
+                last_subset = np.where(self.subset_[components_range])[0]
+                self.subset_[components_range] = 0
+                self.subset_[components_range][:, subset] = 1
                 this_X = X[row_batch][:, subset]  # Trigger copy
+                last_X = X[row_batch][:, last_subset]  # Trigger copy
                 if self.backend == 'python':
                     self._update_code_slow(this_X,
                                            subset,
+                                           last_X, last_subset,
                                            sample_subset[row_batch])
                 else:
                     _update_code(this_X,
@@ -501,7 +517,8 @@ class DictMF(BaseEstimator):
                 if self.callback is not None:
                     self.callback(self)
 
-    def _update_code_slow(self, this_X, this_subset, sample_subset):
+    def _update_code_slow(self, this_X, this_subset, last_X, last_subset,
+                          sample_subset):
         """Compute code for a mini-batch and update algorithm statistics accordingly
 
         Parameters
@@ -520,6 +537,7 @@ class DictMF(BaseEstimator):
 
         self.counter_[0] += batch_size
         self.counter_[this_subset + 1] += batch_size
+        self.row_counter_[sample_subset] += 1
 
         if self.sparse_data:
             this_alpha = self.alpha * this_subset.shape[0] / n_cols
@@ -570,14 +588,19 @@ class DictMF(BaseEstimator):
         else:
             if self.full_G:
                 this_G = self.G_.copy()
+                self.beta_[sample_subset] *= 1 - 1. / np.power(self.row_counter_[
+                    sample_subset, np.newaxis], self.learning_rate)
+                self.beta_[sample_subset] += Qx.T / np.power(self.row_counter_[
+                    sample_subset, np.newaxis], self.learning_rate)
+                beta = self.beta_[sample_subset].T.copy()
+                # beta = Qx
             else:
                 this_G = np.dot(Q_subset, Q_subset.T).T
+                beta = Qx
 
             this_G.flat[::self.n_components + 1] += this_alpha
-            this_P = linalg.solve(this_G, Qx, sym_pos=True, overwrite_a=True,
+            this_P = linalg.solve(this_G, beta, sym_pos=True, overwrite_a=True,
                                   check_finite=False)
-            if self.persist_P:
-                self.P_[sample_subset] = this_P.T
 
             if self.sparse_data:
                 self.A_ *= 1 - w
@@ -593,9 +616,17 @@ class DictMF(BaseEstimator):
                 if w != 1:
                     self.var_red_mult_[0] *= 1 - w
                 w_norm = w / self.var_red_mult_[0]
-                self.B_[:, this_subset] += this_P.dot(
-                    this_X) * w_norm / batch_size
+                self.B_[:, this_subset] += this_P.dot(this_X) * w_norm / batch_size
+                if last_subset:
+                    self.B_[:, last_subset] -= self.P_[sample_subset].dot(last_X) * w_norm / batch_size
+                    self.var_red_mult_[1] += w_norm / batch_size
+                    # self.B_[:, last_subset] += self.B_freeze_ * w_norm / batch_size
+                # self.B_[:, ~this_subset] *= (1 + w_norm / batch_size)
+                # self.B_ += this_P.dot(X) * w_norm / batch_size
                 self.A_ += this_P.dot(this_P.T) * w_norm / batch_size
+
+            if self.persist_P:
+                self.P_[sample_subset] = this_P.T
 
         if self.debug:
             dict_loss = .5 * np.sum(self.Q_.dot(self.Q_.T) * self.A_) - np.sum(
@@ -643,7 +674,7 @@ class DictMF(BaseEstimator):
                 R = self.B_[:, subset] + self.var_red_mult_[1] \
                                          * Q_subset - Q_subset.T.dot(self.A_).T
         else:
-            R = self.B_[:, subset] - np.dot(Q_subset.T, self.A_).T
+            R = self.B_[:, subset] + self.B_freeze_[:, subset] * self.var_red_mult_[1] - np.dot(Q_subset.T, self.A_).T
 
         ger, = linalg.get_blas_funcs(('ger',), (self.A_, Q_subset))
         for j in components_range:

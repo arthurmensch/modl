@@ -34,7 +34,7 @@ dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      random_state=0,
                      learning_rate=.8,
                      offset=0,
-                     n_epochs=3,
+                     n_epochs=2,
                      backend='python',
                      n_jobs=n_jobs,
                      )
