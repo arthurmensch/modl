@@ -106,8 +106,8 @@ class DictCompleter(DictMF):
         """
         X = sp.csr_matrix(X)
         out = np.zeros_like(X.data)
-        _predict(out, X.indices, X.indptr, self.P_,
-                 self.Q_)
+        _predict(out, X.indices, X.indptr, self.code_,
+                 self.components_)
 
         if self.detrend:
             for i in range(X.shape[0]):

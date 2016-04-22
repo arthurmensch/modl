@@ -98,12 +98,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  batch_size=20,
                  reduction=1,
                  full_projection=False,
-                 exact_E=None,
                  learning_rate=1,
                  offset=0,
                  var_red=False,
-                 var_red_surr='homogeneous',
-                 alpha_var_red_surr=1,
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -139,17 +136,12 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.full_projection = full_projection
         self.var_red = var_red
 
-
         self.backend = backend
         self.shelve = shelve
         self.trace_folder = trace_folder
 
-        self.exact_E = exact_E
         self.learning_rate = learning_rate
         self.offset = offset
-
-        self.alpha_var_red_surr = alpha_var_red_surr
-        self.var_red_surr = var_red_surr
 
     def fit(self, imgs, y=None, confounds=None, raw=False):
         """Compute the mask and the ICA maps across subjects
@@ -207,15 +199,12 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          alpha=self.alpha,
                          reduction=self.reduction,
                          full_projection=self.full_projection,
-                         exact_E=self.exact_E,
                          learning_rate=self.learning_rate,
                          offset=self.offset,
-                         alpha_var_red_surr=self.alpha_var_red_surr,
-                         var_red_surr=self.var_red_surr,
                          var_red=self.var_red,
+                         var_red_scheme=self.var_red_scheme,
                          n_samples=offset_list[-1] + 1 if self.var_red or True else
                          None,
-                         full_G=True,
                          batch_size=self.batch_size,
                          random_state=random_state,
                          dict_init=dict_init,
@@ -242,22 +231,20 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                     this_data = self.masker_.transform(this_data[0],
                                                        confounds=this_data[1])
             if self.var_red:
-                if self.var_red_surr:
-                    S = np.sqrt(np.sum(this_data ** 2, axis=1))
-                    this_data /= S[:, np.newaxis]
-                dict_mf.partial_fit(this_data, sample_subset=offset + np.arange(this_data.shape[0]))
+                dict_mf.partial_fit(this_data,
+                                    sample_subset=offset + np.arange(this_data.shape[0]))
             else:
                 dict_mf.partial_fit(this_data)
             if record % 4 == 0:
                 if self.trace_folder is not None:
-                    components = dict_mf.Q_.copy()
+                    components = dict_mf.components_.copy()
                     _normalize_and_flip(components)
 
                     self.masker_.inverse_transform(
                         components).to_filename(join(self.trace_folder,
                                                            'record_%s.nii.gz' % record))
 
-        self.components_ = dict_mf.Q_.copy()
+        self.components_ = dict_mf.components_.copy()
         _normalize_and_flip(self.components_)
         return self
 

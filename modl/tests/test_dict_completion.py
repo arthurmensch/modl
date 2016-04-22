@@ -28,7 +28,7 @@ def test_dict_completion(backend):
 
     mf.fit(X)
 
-    Y = np.dot(mf.P_, mf.Q_)
+    Y = np.dot(mf.code_, mf.components_)
     Y2 = mf.predict(X).toarray()
 
     assert_array_almost_equal(Y, Y2)
@@ -54,7 +54,7 @@ def test_dict_completion_normalise(backend):
 
     mf.fit(X)
 
-    Y = np.dot(mf.P_, mf.Q_)
+    Y = np.dot(mf.code_, mf.components_)
     Y += mf.col_mean_[np.newaxis, :]
     Y += mf.row_mean_[:, np.newaxis]
     Y2 = mf.predict(X).toarray()

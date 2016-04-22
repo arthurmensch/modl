@@ -64,7 +64,7 @@ def test_dict_mf_reconstruction(backend, var_red):
                      random_state=rng_global, reduction=1)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.Q_)
+    Y = P.T.dot(dict_mf.components_)
     assert_array_almost_equal(X, Y, decimal=1)
 
 
@@ -81,7 +81,7 @@ def test_dict_mf_reconstruction_reduction(backend, var_red):
                      random_state=rng_global, reduction=2)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.Q_)
+    Y = P.T.dot(dict_mf.components_)
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
     assert (rel_error < 0.06)
 
@@ -100,7 +100,7 @@ def test_dict_mf_reconstruction_reduction_batch(backend, var_red):
                      reduction=2, )
     dict_mf.fit(X)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.Q_)
+    Y = P.T.dot(dict_mf.components_)
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
     assert (rel_error < 0.04)
 
@@ -130,7 +130,7 @@ def test_dict_mf_reconstruction_sparse(backend, var_red):
                      random_state=rng_global)
     dict_mf.fit(sp_X)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.Q_)
+    Y = P.T.dot(dict_mf.components_)
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
     assert (rel_error < 0.04)
     # Much stronger
@@ -149,7 +149,7 @@ def test_dict_mf_reconstruction_sparse_dict(backend, var_red):
                      var_red=var_red,
                      random_state=rng_global)
     dict_mf.fit(X)
-    Q_rec = dict_mf.Q_
+    Q_rec = dict_mf.components_
     Q_rec /= np.sqrt(np.sum(Q_rec ** 2, axis=1))[:, np.newaxis]
     Q /= np.sqrt(np.sum(Q ** 2, axis=1))[:, np.newaxis]
     G = np.abs(Q_rec.dot(Q.T))
@@ -157,6 +157,6 @@ def test_dict_mf_reconstruction_sparse_dict(backend, var_red):
                          np.sum(np.any(G > 0.95, axis=0)))
     assert (recovered_maps >= 4)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.Q_)
+    Y = P.T.dot(dict_mf.components_)
     # Much stronger
     # assert_array_almost_equal(X, Y, decimal=2)

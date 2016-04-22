@@ -65,8 +65,8 @@ class Callback(object):
         # regul = mf.alpha * np.sum(P ** 2)
         # self.obj_tr.append(loss + regul)
 
-        self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
-        self.sparsity.append(np.sum(mf.components_ != 0) / mf.Q_.size)
+        self.q.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
+        self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
         # self.sparsity.append(np.sum(np.abs(mf.Q_)) / np.sum(mf.Q_ ** 2))
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
@@ -99,17 +99,13 @@ cb = Callback(data)
 estimator = DictMF(n_components=n_components, batch_size=10,
                    reduction=5,
                    l1_ratio=1,
-                   alpha=0.001,
-                   var_red_surr='homogeneous',
-                   alpha_var_red_surr=0.5,
-                   max_n_iter=40000,
+                   alpha=0.00001,
+                   max_n_iter=50000,
                    full_projection=False,
-                   var_red=False,
-                   full_G=True,
-                   persist_P=True,
+                   var_red='past_based',
                    backend='python',
                    verbose=3,
-                   learning_rate=0.8,
+                   learning_rate=1,
                    offset=0,
                    random_state=0,
                    callback=cb)

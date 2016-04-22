@@ -30,7 +30,7 @@ class Callback(object):
         self.times = []
         self.sparsity = []
         self.iter = []
-        self.q = []
+        self.components = []
         self.e = []
         self.f = []
         self.start_time = time.clock()
@@ -38,14 +38,13 @@ class Callback(object):
 
     def __call__(self, mf):
         test_time = time.clock()
-        P = mf.P_.T
-        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
-        regul = mf.alpha * np.sum(P ** 2)
+        code = mf.code_.T
+        loss = np.sum((self.X_tr - code.T.dot(mf.components_)) ** 2) / 2
+        regul = mf.alpha * np.sum(code ** 2)
         self.obj.append(loss.flat[0] + regul)
 
-        self.q.append(mf.Q_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
-        self.sparsity.append(np.sum(mf.components_ != 0) / mf.Q_.size)
-        # self.sparsity.append(np.sum(np.abs(mf.components_)) / np.sum(mf.components_ ** 2) / mf.Q_.size)
+        self.components.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
+        self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
         self.iter.append(mf.n_iter_)
@@ -89,29 +88,29 @@ def main():
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    res = Parallel(n_jobs=32, verbose=10)(
-        delayed(single_run)(n_components, impute, full_projection, offset,
+    res = Parallel(n_jobs=3, verbose=10)(
+        delayed(single_run)(n_components, var_red, full_projection, offset,
                             learning_rate, reduction,
                             alpha,
                             data)
-        for impute in [True]
-        for full_projection in [True, False]
-        for offset in [0, 1000]
-        for learning_rate in [0.8, 1]
-        for reduction in [3, 5]
-        for alpha in [0.1, 0.01])
+        for full_projection in [False]
+        for offset in [0]
+        for learning_rate in [.8]
+        for var_red, reduction in [(None, 5), ('code_only', 5),
+                                   ('sample_based', 5),
+                                   (None, 1)]
+        for alpha in [0.001])
 
     full_res_dict = []
     for cb, estimator in res:
-        res_dict = {'impute': estimator.impute,
+        res_dict = {'var_red': estimator.var_red,
                     'full_projection': estimator.full_projection,
                     'learning_rate': estimator.learning_rate,
                     'offset': estimator.offset,
                     'reduction': estimator.reduction, 'alpha': estimator.alpha,
-                    'average_Q': estimator.average_Q,
                     'iter': cb.iter, 'times': cb.times,
                     'obj': cb.obj,
-                    'sparsity': cb.sparsity, 'q': cb.q}
+                    'sparsity': cb.sparsity, 'components': cb.components}
         full_res_dict.append(res_dict)
     json.dump(full_res_dict, open('results.json', 'w+'))
 
@@ -119,11 +118,10 @@ def main():
     fig.subplots_adjust(left=0.15, right=0.7)
     for cb, estimator in res:
         axes[0].plot(cb.iter, cb.obj,
-                     label='impute : %s\n full proj % s\n lr %.2f\n offset %.2f' % (
-                     estimator.impute, estimator.full_projection,
-                     estimator.learning_rate, estimator.offset))
+                     label='var_red %s' % (
+                     estimator.var_red))
         axes[1].plot(cb.iter, cb.sparsity)
-        axes[2].plot(cb.iter, np.array(cb.q)[:, 2])
+        axes[2].plot(cb.iter, np.array(cb.components)[:, 2])
 
     axes[0].legend(loc='upper left', bbox_to_anchor=(1, 1))
     axes[0].set_ylabel('Function value')
@@ -135,18 +133,17 @@ def main():
     plt.savefig('face_compare.pdf')
 
 
-def single_run(n_components, impute, full_projection, offset, learning_rate,
+def single_run(n_components, var_red, full_projection, offset, learning_rate,
                reduction,
                alpha,
                data):
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
-                       max_n_iter=500000,
+                       max_n_iter=10000,
                        full_projection=full_projection,
-                       persist_P=True,
-                       var_red=impute,
-                       backend='c',
+                       var_red=var_red,
+                       backend='python',
                        verbose=3,
                        learning_rate=learning_rate,
                        offset=offset,
