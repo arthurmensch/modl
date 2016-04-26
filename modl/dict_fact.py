@@ -180,9 +180,9 @@ class DictMF(BaseEstimator):
 
         if (self.var_red is not None and not
             self.var_red in ['code_only', 'past_based',
-                             'sample_based']):
+                             'sample_based', 'two_epochs']):
             raise ValueError("var_red should be in {None, 'code_only',"
-                             " 'past_based', 'sample_based'],"
+                             " 'past_based', 'two_epochs', 'sample_based'],"
                              " got %s" % self.var_red)
         if self.var_red:
             self.row_counter_ = np.zeros(n_samples, dtype='int')
@@ -461,17 +461,26 @@ class DictMF(BaseEstimator):
             self.multiplier_ *= 1 - w
 
         w_norm = w / self.multiplier_
-        if self.var_red == 'past_based':
-            self.B_[:, subset] += this_code.dot(this_X) * w_norm / batch_size
-            last_subset = self.subsets_[sample_subset]
-            for i in range(batch_size):
-                last_X = X[i][last_subset[i]] * self.reduction
-                last_code = self.code_[sample_subset[i]]
-                self.B_[:, last_subset[i]] -= np.outer(last_code, last_X) * w_norm / batch_size
+        if self.var_red in ['past_based', 'two_epoch']:
             self.subsets_[sample_subset] = False
             these_subsets = np.zeros((len(sample_subset), n_cols), dtype=bool)
             these_subsets[:, subset] = True
             self.subsets_[sample_subset] = these_subsets
+            last_subset = self.subsets_[sample_subset]
+
+            if self.var_red == 'past_based':
+                self.B_[:, subset] += this_code.dot(this_X) * w_norm / batch_size
+                for i in range(batch_size):
+                    last_X = X[i][last_subset[i]] * self.reduction
+                    last_code = self.code_[sample_subset[i]]
+                    self.B_[:, last_subset[i]] -= np.outer(last_code, last_X) * w_norm / batch_size
+            else: # Could be made for n epochs (would converge with garantee)
+                self.B_[:, subset] += this_code.dot(this_X) * w_norm / batch_size / 2
+                for i in range(batch_size):
+                    last_X = X[i][last_subset[i]] * self.reduction
+                    last_code = self.code_[sample_subset[i]]
+                    self.B_[:, last_subset[i]] += np.outer(last_code, last_X) * w_norm / 2
+
         elif self.var_red == 'sample_based':
             self.B_ += this_code.dot(X) * w_norm / batch_size
         else:

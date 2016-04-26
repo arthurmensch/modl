@@ -88,7 +88,7 @@ def main():
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    res = Parallel(n_jobs=3, verbose=10)(
+    res = Parallel(n_jobs=1, verbose=10)(
         delayed(single_run)(n_components, var_red, full_projection, offset,
                             learning_rate, reduction,
                             alpha,
@@ -117,17 +117,17 @@ def main():
     fig, axes = plt.subplots(3, 1, sharex=True)
     fig.subplots_adjust(left=0.15, right=0.7)
     for cb, estimator in res:
-        axes[0].plot(cb.iter, cb.obj,
-                     label='var_red %s' % (
-                     estimator.var_red))
-        axes[1].plot(cb.iter, cb.sparsity)
-        axes[2].plot(cb.iter, np.array(cb.components)[:, 2])
+        axes[0].plot(cb.times, cb.obj,
+                     label='%s, %s' % (
+                     estimator.reduction, estimator.var_red))
+        axes[1].plot(cb.times, cb.sparsity)
+        axes[2].plot(cb.times, np.array(cb.components)[:, 2])
 
     axes[0].legend(loc='upper left', bbox_to_anchor=(1, 1))
     axes[0].set_ylabel('Function value')
     axes[1].set_ylabel('Sparsity')
 
-    axes[2].set_xlabel('# iter')
+    axes[2].set_xlabel('Time')
     # axes[2].legend()
     axes[2].set_ylabel('Dictionary value')
     plt.savefig('face_compare.pdf')
@@ -140,7 +140,7 @@ def single_run(n_components, var_red, full_projection, offset, learning_rate,
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
-                       max_n_iter=10000,
+                       max_n_iter=20000,
                        full_projection=full_projection,
                        var_red=var_red,
                        backend='python',

@@ -202,7 +202,6 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          learning_rate=self.learning_rate,
                          offset=self.offset,
                          var_red=self.var_red,
-                         var_red_scheme=self.var_red_scheme,
                          n_samples=offset_list[-1] + 1 if self.var_red or True else
                          None,
                          batch_size=self.batch_size,
