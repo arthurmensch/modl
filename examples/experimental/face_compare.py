@@ -93,9 +93,13 @@ def main():
         for full_projection in [False]
         for offset in [0]
         for learning_rate in [.8]
-        for var_red, reduction in [(None, 5), ('code_only', 5),
+        for var_red, reduction in [(None, 5),
+                                   ('code_only', 5),
                                    ('sample_based', 5),
-                                   (None, 1)]
+                                   ('legacy', 5),
+                                   # ('two_epochs', 5),
+                                   (None, 1)
+                                   ]
         for alpha in [0.001])
 
     full_res_dict = []
@@ -137,7 +141,7 @@ def single_run(n_components, var_red, full_projection, offset, learning_rate,
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
-                       max_n_iter=20000,
+                       max_n_iter=50000,
                        full_projection=full_projection,
                        var_red=var_red,
                        backend='python',

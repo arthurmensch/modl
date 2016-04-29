@@ -8,7 +8,6 @@ from libc.math cimport pow
 from scipy.linalg.cython_lapack cimport dposv
 from scipy.linalg.cython_blas cimport dgemm, dger
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
-
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
 cdef char TRANS = 'T'
@@ -19,6 +18,38 @@ cdef double oned = 1
 cdef double moned = -1
 
 ctypedef np.uint32_t UINT32_t
+
+
+def _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
+           double learning_rate, double offset):
+    cdef int len_subset = subset.shape[0]
+    cdef int full_count = counter[0]
+    cdef int count
+    cdef int i, jj, j
+    w[0] = 1
+    for i in range(full_count + 1, full_count + 1 + batch_size):
+        w[0] *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+    w[0] = 1 - w[0]
+    for jj in range(len_subset):
+        j = subset[jj]
+        count = counter[j + 1]
+        w[jj + 1] = 1
+        for i in range(1, 1 + batch_size):
+            w[jj + 1] *= (1 - (full_count + i) / (count + i) * pow(
+                (1 + offset) / (offset + full_count + i), learning_rate))
+        w[jj + 1] = 1 - w[jj + 1]
+
+def _get_simple_weights(int[:] subset, long[:] counter, long batch_size,
+           double learning_rate, double offset):
+    cdef int len_subset = subset.shape[0]
+    cdef int full_count = counter[0]
+    cdef int count
+    cdef int i, jj, j
+    cdef double w = 1
+    for i in range(full_count + 1, full_count + 1 + batch_size):
+        w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+    w = 1 - w
+    return w
 
 cpdef long _update_code_sparse_batch(double[:] X_data,
                                      int[:] X_indices,

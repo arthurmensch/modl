@@ -2,7 +2,7 @@
 Author: Arthur Mensch (2016)
 Dictionary learning with masked data
 """
-from math import pow, ceil
+from math import ceil
 
 import numpy as np
 from scipy import linalg
@@ -10,7 +10,8 @@ from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
-from .dict_fact_fast import _update_dict, _update_code
+from .dict_fact_fast import _update_dict, _update_code, _get_weights, \
+    _get_simple_weights
 
 
 class DictMF(BaseEstimator):
@@ -174,21 +175,23 @@ class DictMF(BaseEstimator):
 
         self.n_iter_ = 0
 
-        self.G_ = self.components_.dot(self.components_.T).T
-
-        self.multiplier_ = 1
-
         if (self.var_red is not None and not
             self.var_red in ['code_only', 'past_based',
-                             'sample_based', 'two_epochs']):
+                             'sample_based', 'two_epochs', 'legacy']):
             raise ValueError("var_red should be in {None, 'code_only',"
-                             " 'past_based', 'two_epochs', 'sample_based'],"
+                             " 'past_based', 'two_epochs', 'sample_based',"
+                             "'legacy'],"
                              " got %s" % self.var_red)
-        if self.var_red:
-            self.row_counter_ = np.zeros(n_samples, dtype='int')
-            self.beta_ = np.zeros((n_samples, self.n_components), order="F")
-            if self.var_red == 'past_based':
-                self.subsets_ = np.zeros((n_samples, n_cols), dtype=bool)
+
+        if self.var_red != 'legacy':
+            self.G_ = self.components_.dot(self.components_.T).T
+            self.multiplier_ = 1
+            if self.var_red:
+                self.row_counter_ = np.zeros(n_samples, dtype='int')
+                self.beta_ = np.zeros((n_samples, self.n_components),
+                                      order="F")
+                if self.var_red == 'past_based':
+                    self.subsets_ = np.zeros((n_samples, n_cols), dtype=bool)
 
         self.code_ = np.zeros((n_samples, self.n_components))
 
@@ -235,7 +238,10 @@ class DictMF(BaseEstimator):
             Code obtained projecting X on the dictionary
         """
         X = check_array(X, order='F')
-        G = self.G_.copy()
+        if self.var_red != 'legacy':
+            G = self.G_.copy()
+        else:
+            G = self.components_.dot(self.components_.T)
         Qx = self.components_.dot(X.T)
         G.flat[::self.n_components + 1] += 2 * self.alpha
         P = linalg.solve(G, Qx, sym_pos=True,
@@ -331,7 +337,7 @@ class DictMF(BaseEstimator):
                               order='F')
             subset_mask = np.zeros(n_cols, dtype='i1')
 
-        if self.var_red:
+        if self.var_red and self.var_red != 'legacy':
             unseen_subset = self.row_counter_[sample_subset] == 0
             self.code_[sample_subset][unseen_subset] = \
                 self._reduced_transform(X[unseen_subset])
@@ -374,7 +380,7 @@ class DictMF(BaseEstimator):
                              subset_mask)
             dict_subset = subset
 
-            if True or self.multiplier_ < 1e-50:
+            if self.var_red != 'legacy' and self.multiplier_ < 1e-50:
                 self._reset_stat()
 
             self.random_state_.shuffle(components_range)
@@ -431,75 +437,90 @@ class DictMF(BaseEstimator):
         self.counter_[0] += batch_size
         self.counter_[subset + 1] += batch_size
 
-        this_alpha = self.alpha
-        this_X *= self.reduction
-        Qx = np.dot(Q_subset, this_X.T)
-
-        w = pow((1. + self.offset) / (self.offset + self.counter_[0]),
-                self.learning_rate)
-
-        this_G = self.G_.copy()
-        this_G.flat[::self.n_components + 1] += this_alpha
-
-        if self.var_red:
-            self.row_counter_[sample_subset] += 1
-            self.beta_[sample_subset] *= 1 - 1. / self.row_counter_[
-                                                      sample_subset][:,
-                                                  np.newaxis]
-            self.beta_[sample_subset] += Qx.T / self.row_counter_[
-                                                    sample_subset][:,
-                                                np.newaxis]
-            beta = self.beta_[sample_subset].T
-        else:
+        if self.var_red == 'legacy':
+            Qx = np.dot(Q_subset, this_X.T)
+            this_alpha = self.alpha / self.reduction
+            this_G = Q_subset.dot(Q_subset.T)
+            this_G.flat[::self.n_components + 1] += this_alpha
             beta = Qx
-
-        this_code = linalg.solve(this_G,
-                                 beta,
-                                 sym_pos=True, overwrite_a=True,
-                                 check_finite=False)
-
-        if w != 1:
-            self.multiplier_ *= 1 - w
-
-        w_norm = w / self.multiplier_
-        if self.var_red in ['past_based', 'two_epoch']:
-            self.subsets_[sample_subset] = False
-            these_subsets = np.zeros((len(sample_subset), n_cols), dtype=bool)
-            these_subsets[:, subset] = True
-            self.subsets_[sample_subset] = these_subsets
-            last_subset = self.subsets_[sample_subset]
-
-            if self.var_red == 'past_based':
-                self.B_[:, subset] += this_code.dot(
-                    this_X) * w_norm / batch_size
-                for i in range(batch_size):
-                    last_X = X[i][last_subset[i]] * self.reduction
-                    last_code = self.code_[sample_subset[i]]
-                    self.B_[:, last_subset[i]] -= np.outer(last_code,
-                                                           last_X) * w_norm / batch_size
-            else:  # Could be made for n epochs (would converge with garantee)
-                self.B_[:, subset] += this_code.dot(
-                    this_X) * w_norm / batch_size / 2
-                for i in range(batch_size):
-                    last_X = X[i][last_subset[i]] * self.reduction
-                    last_code = self.code_[sample_subset[i]]
-                    self.B_[:, last_subset[i]] += np.outer(last_code,
-                                                           last_X) * w_norm / 2
-
-        elif self.var_red == 'sample_based':
-            self.B_ += this_code.dot(X) * w_norm / batch_size
-        elif self.var_red == 'weight_based':
-            w_B = np.power(
-                (1. + self.offset) / (self.offset + self.counter_[subset + 1]),
-                self.learning_rate)
+            w = np.zeros(len(subset) + 1)
+            _get_weights(w, subset, self.counter_, batch_size,
+                         self.learning_rate, self.offset)
+            w_A = w[0]
+            w_B = w[1:]
+            this_code = linalg.solve(this_G,
+                                     beta,
+                                     sym_pos=True, overwrite_a=True,
+                                     check_finite=False)
             self.B_[:, subset] *= 1 - w_B
             self.B_[:, subset] += this_code.dot(this_X) * w_B / batch_size
+
+            self.A_ *= 1 - w_A
+            self.A_ += this_code.dot(this_code.T) * w_A / batch_size
+
+            self.code_[sample_subset] = this_code.T
         else:
-            self.B_[:, subset] += this_code.dot(this_X) * w_norm / batch_size
+            this_X *= self.reduction
+            Qx = np.dot(Q_subset, this_X.T)
+            this_alpha = self.alpha
+            w = _get_simple_weights(subset, self.counter_, batch_size,
+                                    self.learning_rate, self.offset)
+            # print(w, old_w)
+            this_G = self.G_.copy()
+            this_G.flat[::self.n_components + 1] += this_alpha
 
-        self.A_ += this_code.dot(this_code.T) * w_norm / batch_size
+            if self.var_red:
+                self.row_counter_[sample_subset] += 1
+                w_beta = np.power(self.row_counter_[sample_subset]
+                                  [:, np.newaxis], -self.learning_rate)
+                self.beta_[sample_subset] *= 1 - w_beta
+                self.beta_[sample_subset] += Qx.T * w_beta
+                beta = self.beta_[sample_subset].T
+            else:
+                beta = Qx
 
-        self.code_[sample_subset] = this_code.T
+            this_code = linalg.solve(this_G,
+                                     beta,
+                                     sym_pos=True, overwrite_a=True,
+                                     check_finite=False)
+            self.code_[sample_subset] = this_code.T
+
+            if w != 1:
+                self.multiplier_ *= 1 - w
+
+            w_norm = w / self.multiplier_
+            if self.var_red in ['past_based', 'two_epoch']:
+                self.subsets_[sample_subset] = False
+                these_subsets = np.zeros((len(sample_subset), n_cols),
+                                         dtype=bool)
+                these_subsets[:, subset] = True
+                self.subsets_[sample_subset] = these_subsets
+                last_subset = self.subsets_[sample_subset]
+
+                if self.var_red == 'past_based':
+                    self.B_[:, subset] += this_code.dot(
+                        this_X) * w_norm / batch_size
+                    for i in range(batch_size):
+                        last_X = X[i][last_subset[i]] * self.reduction
+                        last_code = self.code_[sample_subset[i]]
+                        self.B_[:, last_subset[i]] -= np.outer(last_code,
+                                                               last_X) * w_norm / batch_size
+                else:
+                    self.B_[:, subset] += this_code.dot(
+                        this_X) * w_norm / batch_size / 2
+                    for i in range(batch_size):
+                        last_X = X[i][last_subset[i]] * self.reduction
+                        last_code = self.code_[sample_subset[i]]
+                        self.B_[:, last_subset[i]] += np.outer(last_code,
+                                                               last_X) * w_norm / 2
+
+            elif self.var_red == 'sample_based':
+                self.B_ += this_code.dot(X) * w_norm / batch_size
+            else:
+                self.B_[:, subset] += this_code.dot(
+                    this_X) * w_norm / batch_size
+
+            self.A_ += this_code.dot(this_code.T) * w_norm / batch_size
 
         if self.debug:
             dict_loss = .5 * np.sum(
@@ -533,7 +554,8 @@ class DictMF(BaseEstimator):
         if self.full_projection:
             norm = enet_norm(self.components_, self.l1_ratio)
         else:
-            self.G_ -= Q_subset.dot(Q_subset.T)
+            if self.var_red != 'legacy':
+                self.G_ -= Q_subset.dot(Q_subset.T)
             norm = enet_norm(Q_subset, self.l1_ratio)
 
         if self.var_red == 'past_based':
@@ -560,9 +582,11 @@ class DictMF(BaseEstimator):
             # R -= np.dot(stat.A[:, j].reshape(n_components, 1),
         if not self.full_projection:
             self.components_[:, subset] = Q_subset
-            self.G_ += Q_subset.dot(Q_subset.T)
+            if self.var_red != 'legacy':
+                self.G_ += Q_subset.dot(Q_subset.T)
         else:
-            self.G_ = self.components_.dot(self.components_.T).T
+            if self.var_red != 'legacy':
+                self.G_ = self.components_.dot(self.components_.T).T
 
     def _callback(self):
         if self.callback is not None:

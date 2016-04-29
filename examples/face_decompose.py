@@ -48,22 +48,28 @@ class Callback(object):
         self.sparsity = []
         self.iter = []
         self.regul = []
+        self.regul_tr = []
         self.q = []
+        self.diff = []
         self.start_time = time.clock()
         self.test_time = 0
 
     def __call__(self, mf):
         test_time = time.clock()
-        # P = mf.P_.T
-        P = mf.transform(self.X_tr)
+        P = mf.code_.T
         loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(P ** 2)
         self.obj.append(loss + regul)
         self.regul.append(regul)
-        # P = mf.transform(self.X_tr)
-        # loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
-        # regul = mf.alpha * np.sum(P ** 2)
-        # self.obj_tr.append(loss + regul)
+
+        P = mf.transform(self.X_tr)
+        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
+        regul = mf.alpha * np.sum(P ** 2)
+        self.obj_tr.append(loss + regul)
+        self.regul_tr.append(regul)
+
+        beta = self.X_tr.dot(mf.components_.T)
+        self.diff.append(np.sum((beta - mf.beta_) ** 2))
 
         self.q.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
@@ -100,12 +106,12 @@ estimator = DictMF(n_components=n_components, batch_size=10,
                    reduction=5,
                    l1_ratio=1,
                    alpha=0.001,
-                   max_n_iter=1000000,
+                   max_n_iter=20000,
                    full_projection=False,
                    var_red='sample_based',
                    backend='python',
                    verbose=3,
-                   learning_rate=1,
+                   learning_rate=.8,
                    offset=0,
                    random_state=0,
                    callback=cb)
@@ -121,15 +127,19 @@ P = estimator.transform(data)
 #              data[:n_components])
 plot_gallery('Residual',
              data[:n_components] - P.T.dot(estimator.components_)[:n_components])
-fig, axes = plt.subplots(2, 1, sharex=True)
+fig, axes = plt.subplots(3, 1, sharex=True)
 axes[0].plot(cb.iter, cb.obj, label='P_')
-axes[0].plot(cb.iter, cb.regul, label='regul')
-# axes[0].plot(cb.iter, cb.obj_tr, label='P')
+axes[0].plot(cb.iter, cb.regul, label='regul_')
+axes[0].plot(cb.iter, cb.regul_tr, label='regul')
+axes[0].plot(cb.iter, cb.obj_tr, label='P')
 axes[0].legend()
+
+axes[2].plot(cb.iter, cb.diff, label='beta_ variance')
 
 axes[0].set_xlabel('Function value')
 axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
 axes[1].set_xlabel('Sparsity')
 axes[0].set_xscale('log')
+
 
 plt.show()
