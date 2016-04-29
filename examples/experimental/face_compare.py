@@ -2,9 +2,6 @@ import json
 import time
 from math import sqrt
 
-import matplotlib
-
-matplotlib.use('pdf')
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import RandomState
@@ -130,7 +127,7 @@ def main():
     axes[2].set_xlabel('Time')
     # axes[2].legend()
     axes[2].set_ylabel('Dictionary value')
-    plt.savefig('face_compare.pdf')
+    plt.show()
 
 
 def single_run(n_components, var_red, full_projection, offset, learning_rate,
