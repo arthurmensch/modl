@@ -4,6 +4,7 @@ import os
 from os.path import join
 
 import numpy as np
+import pandas as pd
 from nilearn.datasets.utils import _get_dataset_dir
 from nilearn.input_data import NiftiMasker
 from sklearn.datasets.base import Bunch

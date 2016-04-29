@@ -257,7 +257,8 @@ class DictMF(BaseEstimator):
             subset = subset_range[:subset_size]
 
             if self.var_red == 'past_based':
-                these_subsets = np.zeros((sample_subset.shape[0], n_cols), dtype=bool)
+                these_subsets = np.zeros((sample_subset.shape[0], n_cols),
+                                         dtype=bool)
                 these_subsets[:, subset] = True
                 self.subsets_[sample_subset] = these_subsets
 
@@ -420,7 +421,7 @@ class DictMF(BaseEstimator):
         sample_subset: ndarray (batch_size),
             Sample indices of this_X within X
         """
-        this_X = X[:, subset].copy() # trigger copy
+        this_X = X[:, subset].copy()  # trigger copy
 
         batch_size, _ = this_X.shape
         _, n_cols = self.components_.shape
@@ -469,20 +470,30 @@ class DictMF(BaseEstimator):
             last_subset = self.subsets_[sample_subset]
 
             if self.var_red == 'past_based':
-                self.B_[:, subset] += this_code.dot(this_X) * w_norm / batch_size
+                self.B_[:, subset] += this_code.dot(
+                    this_X) * w_norm / batch_size
                 for i in range(batch_size):
                     last_X = X[i][last_subset[i]] * self.reduction
                     last_code = self.code_[sample_subset[i]]
-                    self.B_[:, last_subset[i]] -= np.outer(last_code, last_X) * w_norm / batch_size
-            else: # Could be made for n epochs (would converge with garantee)
-                self.B_[:, subset] += this_code.dot(this_X) * w_norm / batch_size / 2
+                    self.B_[:, last_subset[i]] -= np.outer(last_code,
+                                                           last_X) * w_norm / batch_size
+            else:  # Could be made for n epochs (would converge with garantee)
+                self.B_[:, subset] += this_code.dot(
+                    this_X) * w_norm / batch_size / 2
                 for i in range(batch_size):
                     last_X = X[i][last_subset[i]] * self.reduction
                     last_code = self.code_[sample_subset[i]]
-                    self.B_[:, last_subset[i]] += np.outer(last_code, last_X) * w_norm / 2
+                    self.B_[:, last_subset[i]] += np.outer(last_code,
+                                                           last_X) * w_norm / 2
 
         elif self.var_red == 'sample_based':
             self.B_ += this_code.dot(X) * w_norm / batch_size
+        elif self.var_red == 'weight_based':
+            w_B = np.power(
+                (1. + self.offset) / (self.offset + self.counter_[subset + 1]),
+                self.learning_rate)
+            self.B_[:, subset] *= 1 - w_B
+            self.B_[:, subset] += this_code.dot(this_X) * w_B / batch_size
         else:
             self.B_[:, subset] += this_code.dot(this_X) * w_norm / batch_size
 
@@ -526,7 +537,8 @@ class DictMF(BaseEstimator):
             norm = enet_norm(Q_subset, self.l1_ratio)
 
         if self.var_red == 'past_based':
-            R = self.B_[:, subset] / self.multiplier_ - np.dot(Q_subset.T, self.A_).T
+            R = self.B_[:, subset] / self.multiplier_ - np.dot(Q_subset.T,
+                                                               self.A_).T
         else:
             R = self.B_[:, subset] - np.dot(Q_subset.T, self.A_).T
 
