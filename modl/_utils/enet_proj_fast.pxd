@@ -1,6 +1,10 @@
+# encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
+
 cimport numpy as np
 
-# ctypedef np.float64_t double
 ctypedef np.uint32_t UINT32_t
 
 cpdef double enet_norm(double[:] v, double l1_ratio) nogil

@@ -4,6 +4,7 @@
 # cython: wraparound=False
 
 from libc.math cimport pow
+cimport numpy as np
 
 from scipy.linalg.cython_lapack cimport dposv
 from scipy.linalg.cython_blas cimport dgemm, dger
@@ -18,10 +19,9 @@ cdef double zerod = 0
 cdef double oned = 1
 cdef double moned = -1
 
-cimp
 ctypedef np.uint32_t UINT32_t
 
-def _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
+cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
     cdef int len_subset = subset.shape[0]
     cdef int full_count = counter[0]
@@ -40,7 +40,7 @@ def _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
                 (1 + offset) / (offset + full_count + i), learning_rate))
         w[jj + 1] = 1 - w[jj + 1]
 
-def _get_simple_weights(long[:] subset, long[:] counter, long batch_size,
+cpdef double _get_simple_weights(long[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
     cdef int len_subset = subset.shape[0]
     cdef int full_count = counter[0]
@@ -505,7 +505,7 @@ cpdef void _update_dict(double[::1, :] D_,
               )
 
 
-def _predict(double[:] X_data,
+cpdef void _predict(double[:] X_data,
              int[:] X_indices,
              int[:] X_indptr,
              double[:, ::1] P,

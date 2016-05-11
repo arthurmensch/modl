@@ -108,7 +108,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  target_affine=None, target_shape=None,
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=0,
-                 n_jobs=1, backend='c', verbose=0,
+                 n_jobs=1, backend='python', verbose=0,
                  trace_folder=None
                  ):
         BaseDecomposition.__init__(self, n_components=n_components,
