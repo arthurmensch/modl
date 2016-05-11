@@ -30,6 +30,7 @@ class Callback(object):
         self.components = []
         self.e = []
         self.f = []
+        self.b = []
         self.start_time = time.clock()
         self.test_time = 0
 
@@ -39,7 +40,10 @@ class Callback(object):
         loss = np.sum((self.X_tr - code.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(code ** 2)
         self.obj.append(loss.flat[0] + regul)
-
+        sum_B = sqrt(np.sum(mf.B_ ** 2))
+        if hasattr(mf, 'multiplier_'):
+            sum_B *= mf.multiplier_
+        self.b.append(sum_B)
         self.components.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
         self.test_time += time.clock() - test_time
@@ -85,7 +89,7 @@ def main():
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    res = Parallel(n_jobs=1, verbose=10)(
+    res = Parallel(n_jobs=5, verbose=10)(
         delayed(single_run)(n_components, var_red, full_projection, offset,
                             learning_rate, reduction,
                             alpha,
@@ -93,12 +97,12 @@ def main():
         for full_projection in [False]
         for offset in [0]
         for learning_rate in [.8]
-        for var_red, reduction in [(None, 5),
+        for var_red, reduction in [('none', 5),
                                    ('code_only', 5),
                                    ('sample_based', 5),
-                                   ('legacy', 5),
+                                   ('weight_based', 5),
                                    # ('two_epochs', 5),
-                                   (None, 1)
+                                   ('none', 1)
                                    ]
         for alpha in [0.001])
 
@@ -115,14 +119,15 @@ def main():
         full_res_dict.append(res_dict)
     json.dump(full_res_dict, open('results.json', 'w+'))
 
-    fig, axes = plt.subplots(3, 1, sharex=True)
+    fig, axes = plt.subplots(4, 1, sharex=True)
     fig.subplots_adjust(left=0.15, right=0.7)
     for cb, estimator in res:
         axes[0].plot(cb.times, cb.obj,
                      label='%s, %s' % (
-                     estimator.reduction, estimator.var_red))
+                         estimator.reduction, estimator.var_red))
         axes[1].plot(cb.times, cb.sparsity)
         axes[2].plot(cb.times, np.array(cb.components)[:, 2])
+        axes[3].plot(cb.times, cb.b)
 
     axes[0].legend(loc='upper left', bbox_to_anchor=(1, 1))
     axes[0].set_ylabel('Function value')
@@ -131,7 +136,7 @@ def main():
     axes[2].set_xlabel('Time')
     # axes[2].legend()
     axes[2].set_ylabel('Dictionary value')
-    plt.show()
+    plt.savefig('face_compare.pdf')
 
 
 def single_run(n_components, var_red, full_projection, offset, learning_rate,
@@ -141,8 +146,8 @@ def single_run(n_components, var_red, full_projection, offset, learning_rate,
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
-                       max_n_iter=50000,
-                       full_projection=full_projection,
+                       max_n_iter=20000,
+                       projection=full_projection,
                        var_red=var_red,
                        backend='python',
                        verbose=3,

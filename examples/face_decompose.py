@@ -1,7 +1,6 @@
 import time
 from math import sqrt
 
-import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import RandomState
 from sklearn.datasets import fetch_olivetti_faces
@@ -69,8 +68,10 @@ class Callback(object):
         self.regul_tr.append(regul)
 
         beta = self.X_tr.dot(mf.components_.T)
-        self.diff.append(np.sum((beta - mf.beta_) ** 2))
-
+        if hasattr(mf, 'beta_'):
+            self.diff.append(np.sum((beta - mf.beta_) ** 2))
+        else:
+            self.diff.append(0.)
         self.q.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
         # self.sparsity.append(np.sum(np.abs(mf.Q_)) / np.sum(mf.Q_ ** 2))
@@ -103,43 +104,45 @@ data = faces_centered
 cb = Callback(data)
 
 estimator = DictMF(n_components=n_components, batch_size=10,
-                   reduction=5,
+                   reduction=10,
                    l1_ratio=1,
                    alpha=0.001,
-                   max_n_iter=20000,
-                   full_projection=False,
-                   var_red='sample_based',
-                   backend='python',
-                   verbose=3,
+                   max_n_iter=10000,
+                   projection='partial',
+                   var_red='weight_based',
+                   backend='c',
+                   verbose=0,
                    learning_rate=.8,
                    offset=0,
-                   random_state=0,
+                   random_state=2,
                    callback=cb)
 estimator.fit(data)
 train_time = (time.time() - t0)
 print("done in %0.3fs" % train_time)
-components_ = estimator.components_
-plot_gallery('%s - Train time %.1fs' % (name, train_time),
-             components_[:n_components])
 
-P = estimator.transform(data)
-# plot_gallery('Original faces',
-#              data[:n_components])
-plot_gallery('Residual',
-             data[:n_components] - P.T.dot(estimator.components_)[:n_components])
-fig, axes = plt.subplots(3, 1, sharex=True)
-axes[0].plot(cb.iter, cb.obj, label='P_')
-axes[0].plot(cb.iter, cb.regul, label='regul_')
-axes[0].plot(cb.iter, cb.regul_tr, label='regul')
-axes[0].plot(cb.iter, cb.obj_tr, label='P')
-axes[0].legend()
-
-axes[2].plot(cb.iter, cb.diff, label='beta_ variance')
-
-axes[0].set_xlabel('Function value')
-axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
-axes[1].set_xlabel('Sparsity')
-axes[0].set_xscale('log')
-
-
-plt.show()
+# import matplotlib.pyplot as plt
+# components_ = estimator.components_
+# plot_gallery('%s - Train time %.1fs' % (name, train_time),
+#              components_[:n_components])
+#
+# P = estimator.transform(data)
+# # plot_gallery('Original faces',
+# #              data[:n_components])
+# plot_gallery('Residual',
+#              data[:n_components] - P.T.dot(estimator.components_)[:n_components])
+# fig, axes = plt.subplots(3, 1, sharex=True)
+# axes[0].plot(cb.iter, cb.obj, label='P_')
+# axes[0].plot(cb.iter, cb.regul, label='regul_')
+# axes[0].plot(cb.iter, cb.regul_tr, label='regul')
+# axes[0].plot(cb.iter, cb.obj_tr, label='P')
+# axes[0].legend()
+#
+# axes[2].plot(cb.iter, cb.diff, label='beta_ variance')
+#
+# axes[0].set_xlabel('Function value')
+# axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
+# axes[1].set_xlabel('Sparsity')
+# axes[0].set_xscale('log')
+#
+#
+# plt.show()

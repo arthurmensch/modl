@@ -198,7 +198,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         dict_mf = DictMF(n_components=self.n_components,
                          alpha=self.alpha,
                          reduction=self.reduction,
-                         full_projection=self.full_projection,
+                         projection=self.full_projection,
                          learning_rate=self.learning_rate,
                          offset=self.offset,
                          var_red=self.var_red,
