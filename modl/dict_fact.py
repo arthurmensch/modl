@@ -70,8 +70,8 @@ class DictMF(BaseEstimator):
                  offset=0,
                  # Reduction parameter
                  reduction=1,
-                 var_red='none',
-                 projection='full',
+                 var_red='weight_based',
+                 projection='partial',
                  fit_intercept=False,
                  # Dict parameter
                  dict_init=None,

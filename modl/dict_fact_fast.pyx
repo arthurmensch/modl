@@ -18,6 +18,7 @@ cdef double zerod = 0
 cdef double oned = 1
 cdef double moned = -1
 
+cimp
 ctypedef np.uint32_t UINT32_t
 
 def _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
