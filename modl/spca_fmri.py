@@ -8,6 +8,8 @@ component sparsity
 from __future__ import division
 
 import itertools
+import json
+import time
 from os.path import join
 
 import numpy as np
@@ -185,10 +187,12 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             else:
                 data_list = list(zip(imgs, confounds))
 
-        if self.var_red or True:
+        if raw:
+            record_samples = [np.load(img, mmap_mode='r').shape[0] for img in imgs]
+        else:
             record_samples = [check_niimg(img).shape[3] for img in imgs]
-            offset_list = np.zeros(len(imgs) + 1, dtype='int')
-            offset_list[1:] = np.cumsum(record_samples)
+        offset_list = np.zeros(len(imgs) + 1, dtype='int')
+        offset_list[1:] = np.cumsum(record_samples)
 
         if self.dict_init is not None:
             dict_init = self.masker_.transform(self.dict_init)
@@ -214,6 +218,11 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         data_idx = itertools.chain(*[random_state.permutation(
             len(imgs)) for _ in range(n_epochs)])
 
+        if self.trace_folder is not None:
+            results = {'reduction': self.reduction, 'alpha': self.alpha,
+                       'timings': [0.]}
+            json.dump(results, open(join(self.trace_folder, 'results.json'), 'w+'))
+
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
             if self.var_red:
@@ -221,20 +230,27 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             if self.verbose:
                 print('Streaming record %s' % record)
             if raw:
-                this_data = np.load(this_data)
+                this_data = np.load(this_data, mmap_mode=None)
             else:
                 if self.shelve:
                     this_data = this_data.get()
                 else:
                     this_data = self.masker_.transform(this_data[0],
                                                        confounds=this_data[1])
+            if self.trace_folder is not None:
+                t0 = time.time()
             if self.var_red:
                 dict_mf.partial_fit(this_data,
                                     sample_subset=offset + np.arange(this_data.shape[0]))
             else:
                 dict_mf.partial_fit(this_data)
-            if record % 4 == 0:
-                if self.trace_folder is not None:
+            if self.trace_folder is not None:
+                t1 = (time.time() - t0) + results['timings'][-1]
+                results['timings'].append(t1)
+                json.dump(results,
+                          open(join(self.trace_folder, 'results.json'), 'w+'))
+
+                if record % 1 == 0:
                     components = dict_mf.components_.copy()
                     _normalize_and_flip(components)
 

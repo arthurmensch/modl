@@ -9,7 +9,6 @@ import scipy.sparse as sp
 from scipy import linalg
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
-from sklearn.utils._random import sample_without_replacement
 
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import _update_dict, _update_code, _get_weights, \
@@ -139,7 +138,7 @@ class DictMF(BaseEstimator):
         }
         return projections[self.projection]
 
-    def _check_and_init(self, X):
+    def _init(self, X):
         """Initialize statistic and dictionary"""
         if self.var_red not in ['none', 'code_only', 'weight_based',
                                 'sample_based']:
@@ -160,9 +159,9 @@ class DictMF(BaseEstimator):
         n_rows, n_cols = X.shape
 
         if self.n_samples is not None:
-            n_samples = self.n_samples
+            self.n_samples_ = self.n_samples
         else:
-            n_samples = n_rows
+            self.n_samples_ = n_rows
 
         self.random_state_ = check_random_state(self.random_state)
 
@@ -212,11 +211,11 @@ class DictMF(BaseEstimator):
             self.multiplier_ = np.array([1.])
 
         if self.var_red in ['code_only', 'sample_based']:
-            self.row_counter_ = np.zeros(n_samples, dtype='int')
-            self.beta_ = np.zeros((n_samples, self.n_components),
+            self.row_counter_ = np.zeros(self.n_samples_, dtype='int')
+            self.beta_ = np.zeros((self.n_samples_, self.n_components),
                                   order="F")
 
-        self.code_ = np.zeros((n_samples, self.n_components))
+        self.code_ = np.zeros((self.n_samples_, self.n_components))
 
         if self.backend == 'c':
             if not hasattr(self, 'row_counter_'):
@@ -256,7 +255,7 @@ class DictMF(BaseEstimator):
         if self.max_n_iter > 0:
             self.partial_fit(X)
             while self.n_iter_ + self.batch_size - 1 < self.max_n_iter:
-                self.partial_fit(X)
+                self.partial_fit(X, check_input=False)
         else:
             # Default to one pass
             self.partial_fit(X)
@@ -306,16 +305,15 @@ class DictMF(BaseEstimator):
         n_rows, n_cols = X.shape
         G = self.G_.copy()
         G.flat[::self.n_components + 1] += 2 * self.alpha
-        subset_size = int(ceil(n_cols / self.reduction))
+        len_subset = int(ceil(n_cols / self.reduction))
         batches = gen_batches(len(X), self.batch_size)
         row_range = self.random_state_.permutation(n_rows)
         code = np.zeros((n_rows, self.n_components), order='C')
+        subset_range = np.arange(n_cols, dtype='i4')
         for batch in batches:
             sample_subset = row_range[batch]
-            subset = sample_without_replacement(n_cols,
-                                                subset_size,
-                                                random_state=
-                                                self.random_state_)
+            self.random_state_.shuffle(subset_range)
+            subset = subset_range[:len_subset]
             self.row_counter_[sample_subset] += 1
             this_X = X[sample_subset][:, subset] * self.reduction
 
@@ -361,7 +359,7 @@ class DictMF(BaseEstimator):
                                    overwrite_a=True, check_finite=False)
         return code
 
-    def partial_fit(self, X, y=None, sample_subset=None):
+    def partial_fit(self, X, y=None, sample_subset=None, check_input=True):
         """Stream data X to update the estimator dictionary
 
         Parameters
@@ -379,7 +377,11 @@ class DictMF(BaseEstimator):
                 "with backend == 'python'")
 
         if not self._is_initialized():
-            X = self._check_and_init(X)
+            self._init(X)
+
+        if check_input:
+            X = check_array(X, dtype='float', order='C',
+                            accept_sparse=self.sparse_)
 
         n_rows, n_cols = X.shape
 
@@ -401,15 +403,7 @@ class DictMF(BaseEstimator):
         else:
             D_range = np.arange(self.n_components)
 
-        if self.sparse_:
-            this_X = np.empty((1, len_subset), order='F')
-        else:
-            this_X = np.empty((self.batch_size, len_subset), order='F')
-
-        if self.var_red == 'sample_based':
-            full_X = np.zeros((self.batch_size, n_cols), order='F')
-        else:
-            full_X = None
+        this_X = np.empty((1, len_subset), order='F')
 
         if self.backend == 'c':
             # Init various arrays for efficiency
@@ -430,7 +424,7 @@ class DictMF(BaseEstimator):
                 subset_mask = np.zeros(n_cols, dtype='i1')
                 dict_subset = np.zeros(len_subset, dtype='i4')
                 dict_subset_lim = np.zeros(1, dtype='i4')
-
+        subset_range = np.arange(n_cols, dtype='i4')
         for batch in batches:
             row_batch = row_range[batch]
             if 0 < self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
@@ -484,14 +478,11 @@ class DictMF(BaseEstimator):
                     dict_subset = np.unique(dict_subset)
             # End if self.sparse_
             else:
-                subset = sample_without_replacement(n_cols, len_subset,
-                                                    random_state=
-                                                    self.random_state_).astype(
-                    'i4')
-                this_X[:] = X[row_batch][:, subset]
+                self.random_state_.shuffle(subset_range)
+                subset = subset_range[:len_subset]
 
-                if self.var_red == 'sample_based':
-                    full_X[:] = X[row_batch]
+                full_X = np.asfortranarray(X[row_batch])
+                this_X = full_X[:, subset]
 
                 if self.backend == 'c':
                     _update_code(this_X,
@@ -547,7 +538,7 @@ class DictMF(BaseEstimator):
             self.n_iter_ += len(row_batch)
 
             if self.verbose and self.n_iter_ // ceil(
-                    int(n_rows / self.verbose)) == self.n_verbose_call_:
+                    int(self.n_samples_ / self.verbose)) == self.n_verbose_call_:
                 print("Iteration %i" % self.n_iter_)
                 self.n_verbose_call_ += 1
                 if self.callback is not None:
