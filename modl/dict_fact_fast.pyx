@@ -21,7 +21,7 @@ cdef double moned = -1
 
 ctypedef np.uint32_t UINT32_t
 
-cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
+cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
     cdef int len_subset = subset.shape[0]
     cdef int full_count = counter[0]
@@ -40,7 +40,7 @@ cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch
                 (1 + offset) / (offset + full_count + i), learning_rate))
         w[jj + 1] = 1 - w[jj + 1]
 
-cpdef double _get_simple_weights(long[:] subset, long[:] counter, long batch_size,
+cpdef double _get_simple_weights(int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
     cdef int len_subset = subset.shape[0]
     cdef int full_count = counter[0]
@@ -53,115 +53,115 @@ cpdef double _get_simple_weights(long[:] subset, long[:] counter, long batch_siz
     return w
 
 
-# cpdef long _update_code_sparse_batch(double[:] X_data,
-#                                      int[:] X_indices,
-#                                      int[:] X_indptr,
-#                                      int n_rows,
-#                                      int n_cols,
-#                                      long[:] row_batch,
-#                                      long[:] sample_subset,
-#                                      double alpha,
-#                                      double learning_rate,
-#                                      double offset,
-#                                      double[::1, :] Q,
-#                                      double[:, ::1] P,
-#                                      double[::1, :] A,
-#                                      double[::1, :] B,
-#                                      long[:] counter,
-#                                      double[::1, :] E,
-#                                      double[:] reg,
-#                                      double[:] weights,
-#                                      double[::1, :] G,
-#                                      double[::1, :] beta,
-#                                      double[:] impute_mult,  # [E_norm, multiplier]
-#                                      bint impute,
-#                                      bint exact_E,
-#                                      bint persist_P,
-#                                      double[::1, :] Q_subset,
-#                                      double[::1, :] P_temp,
-#                                      double[::1, :] G_temp,
-#                                      double[::1, :] X_temp,
-#                                      char[:] subset_mask,
-#                                      int[:] dict_subset,
-#                                      int[:] dict_subset_lim,
-#                                      ) except *:
-#     """
-#     Parameters
-#     ----------
-#     X_data: masked data matrix (csr)
-#     X_indices: masked data matrix (csr)
-#     X_indptr: masked data matrix (csr)
-#     n_rows: masked data matrix (csr)
-#     n_cols: masked data matrix (csr)
-#     alpha: regularization parameter
-#     learning_rate: decrease rate in the learning sequence (in [.5, 1])
-#     offset: offset in the learning sequence
-#     Q: Dictionary
-#     A: Algorithm variable
-#     B: Algorithm variable
-#     counter: Algorithm variable
-#     G: Algorithm variable
-#     beta: Algorithm variable
-#     impute: Online update of Gram matrix
-#     Q_subset : Temporary array. Holds the subdictionary
-#     P_temp: Temporary array. Holds the codes for the mini batch
-#     G_temp: Temporary array. Holds the Gram matrix.
-#     subset_mask: Holds the binary mask for visited features
-#     dict_subset: for union of seen features
-#     dict_subset_lim: for union of seen features (holds the number of seen
-#      features)
-#     weights_temp: Temporary array. Holds the update weights
-#     n_iter: Updated by the function, for early stopping
-#     max_n_iter: Iteration budget
-#     update_P: keeps an updated version of the code
-#     """
-#     cdef int len_batch = row_batch.shape[0]
-#     cdef int n_components = Q.shape[0]
-#     cdef int ii, i, j, jj, k, idx_j
-#     cdef int l = 0
-#     cdef int[:] subset
-#     subset_mask[:] = 0
-#     for ii in range(len_batch):
-#         i = row_batch[ii]
-#         subset = X_indices[X_indptr[i]:X_indptr[i + 1]]
-#         len_subset = subset.shape[0]
-#         for jj in range(len_subset):
-#             idx_j = X_indptr[i] + jj
-#             X_temp[0, jj] = X_data[idx_j]
-#             j = subset[jj]
-#             if not subset_mask[j]:
-#                 subset_mask[j] = 1
-#                 dict_subset[l] = j
-#                 l += 1
-#
-#         _update_code(X_temp[:1],
-#                      subset,
-#                      sample_subset[i:i + 1],
-#                      alpha,
-#                      learning_rate,
-#                      offset,
-#                      Q, P,
-#                      A, B,
-#                      counter,
-#                      E,
-#                      reg,
-#                      weights,
-#                      G,
-#                      beta,
-#                      impute_mult,
-#                      impute,
-#                      1.,
-#                      exact_E,
-#                      persist_P,
-#                      Q_subset,
-#                      P_temp,
-#                      G_temp,
-#                      subset_mask,
-#                      )
-#     dict_subset_lim[0] = l
+cpdef long _update_code_sparse_batch(double[:] X_data,
+                                     int[:] X_indices,
+                                     int[:] X_indptr,
+                                     int n_rows,
+                                     int n_cols,
+                                     long[:] row_batch,
+                                     long[:] sample_subset,
+                                     double alpha,
+                                     double learning_rate,
+                                     double offset,
+                                     long var_red,
+                                     long projection,
+                                     double reduction,
+                                     double[::1, :] D_,
+                                     double[:, ::1] code_,
+                                     double[::1, :] A_,
+                                     double[::1, :] B_,
+                                     double[::1, :] G_,
+                                     double[::1, :] beta_,
+                                     double[:] multiplier_,
+                                     long[:] counter_,
+                                     long[:] row_counter_,
+                                     double[::1, :] D_subset,
+                                     double[::1, :] code_temp,
+                                     double[::1, :] G_temp,
+                                     double[::1, :] X_temp,
+                                     double[:] w_temp,
+                                     char[:] subset_mask,
+                                     int[:] dict_subset,
+                                     int[:] dict_subset_lim,
+                                     double[::1, :] dummy_2d_float,
+                                     ) except *:
+    """
+    Parameters
+    ----------
+    X_data: masked data matrix (csr)
+    X_indices: masked data matrix (csr)
+    X_indptr: masked data matrix (csr)
+    n_rows: masked data matrix (csr)
+    n_cols: masked data matrix (csr)
+    alpha: regularization parameter
+    learning_rate: decrease rate in the learning sequence (in [.5, 1])
+    offset: offset in the learning sequence
+    Q: Dictionary
+    A: Algorithm variable
+    B: Algorithm variable
+    counter: Algorithm variable
+    G: Algorithm variable
+    beta: Algorithm variable
+    impute: Online update of Gram matrix
+    Q_subset : Temporary array. Holds the subdictionary
+    P_temp: Temporary array. Holds the codes for the mini batch
+    G_temp: Temporary array. Holds the Gram matrix.
+    subset_mask: Holds the binary mask for visited features
+    dict_subset: for union of seen features
+    dict_subset_lim: for union of seen features (holds the number of seen
+     features)
+    weights_temp: Temporary array. Holds the update weights
+    n_iter: Updated by the function, for early stopping
+    max_n_iter: Iteration budget
+    update_P: keeps an updated version of the code
+    """
+    cdef int len_batch = sample_subset.shape[0]
+    cdef int n_components = D_.shape[0]
+    cdef int ii, i, j, jj, k, idx_j
+    cdef int l = 0
+    cdef int[:] subset
+    subset_mask[:] = 0
+    for ii in range(len_batch):
+        i = row_batch[ii]
+        subset = X_indices[X_indptr[i]:X_indptr[i + 1]]
+        len_subset = subset.shape[0]
+        for jj in range(len_subset):
+            idx_j = X_indptr[i] + jj
+            X_temp[0, jj] = X_data[idx_j]
+            j = subset[jj]
+            if not subset_mask[j]:
+                subset_mask[j] = 1
+                dict_subset[l] = j
+                l += 1
 
-cpdef void _update_code(double[::1, :] X,
-                        long[:] subset,
+        _update_code(X_temp,
+                     subset,
+                     sample_subset[ii:ii+1],
+                     alpha,
+                     learning_rate,
+                     offset,
+                     var_red,
+                     projection,
+                     reduction,
+                     D_,
+                     code_,
+                     A_,
+                     B_,
+                     G_,
+                     beta_,
+                     multiplier_,
+                     counter_,
+                     row_counter_,
+                     dummy_2d_float,
+                     D_subset,
+                     code_temp,
+                     G_temp,
+                     w_temp,
+                     )
+    dict_subset_lim[0] = l
+
+cpdef void _update_code(double[::1, :] this_X,
+                        int[:] subset,
                         long[:] sample_subset,
                         double alpha,
                         double learning_rate,
@@ -178,11 +178,11 @@ cpdef void _update_code(double[::1, :] X,
                         double[:] multiplier_,
                         long[:] counter_,
                         long[:] row_counter_,
+                        double[::1, :] full_X,
                         double[::1, :] D_subset,
-                        double[::1, :] this_X,
-                        double[::1, :] this_code,
-                        double[::1, :] this_G,
-                        double[:] w_arr) except *:
+                        double[::1, :] code_temp,
+                        double[::1, :] G_temp,
+                        double[:] w_temp) except *:
     """
     Compute code for a mini-batch and update algorithm statistics accordingly
 
@@ -201,24 +201,24 @@ cpdef void _update_code(double[::1, :] X,
     T: algorithm variable
     impute: Online update of Gram matrix
     D_subset : Temporary array. Holds the subdictionary
-    this_code: Temporary array. Holds the codes for the mini batch
-    this_G: emporary array. Holds the Gram matrix.
+    code_temp: Temporary array. Holds the codes for the mini batch
+    G_temp: emporary array. Holds the Gram matrix.
     subset_mask: Holds the binary mask for visited features
     weights: Temporary array. Holds the update weights
 
     """
-    cdef int batch_size = X.shape[0]
+    cdef int batch_size = this_X.shape[0]
     cdef int len_subset = subset.shape[0]
     cdef int n_components = D_.shape[0]
     cdef int n_cols = D_.shape[1]
-    cdef double* X_ptr = &X[0, 0]
+    cdef double* full_X_ptr = &full_X[0, 0]
     cdef double* D_subset_ptr = &D_subset[0, 0]
     cdef double* D_ptr = &D_[0, 0]
     cdef double* A_ptr = &A_[0, 0]
     cdef double* B_ptr = &B_[0, 0]
     cdef double* G_ptr = &G_[0, 0]
-    cdef double* this_code_ptr = &this_code[0, 0]
-    cdef double* this_G_ptr = &this_G[0, 0]
+    cdef double* this_code_ptr = &code_temp[0, 0]
+    cdef double* this_G_ptr = &G_temp[0, 0]
     cdef double* this_X_ptr = &this_X[0, 0]
     cdef int info = 0
     cdef int ii, jj, i, j, k, m
@@ -229,8 +229,6 @@ cpdef void _update_code(double[::1, :] X,
 
     for jj in range(len_subset):
         j = subset[jj]
-        for ii in range(batch_size):
-            this_X[ii, jj] = X[ii, j]
         for k in range(n_components):
             D_subset[k, jj] = D_[k, j]
 
@@ -240,7 +238,7 @@ cpdef void _update_code(double[::1, :] X,
         for jj in range(len_subset):
             j = subset[jj]
             counter_[j + 1] += batch_size
-        _get_weights(w_arr, subset, counter_, batch_size,
+        _get_weights(w_temp, subset, counter_, batch_size,
              learning_rate, offset)
 
         # P_temp = np.dot(D_subset, this_X.T)
@@ -263,7 +261,7 @@ cpdef void _update_code(double[::1, :] X,
               this_G_ptr, &n_components
               )
         for p in range(n_components):
-            this_G[p, p] += alpha / reduction
+            G_temp[p, p] += alpha / reduction
 
         dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
               this_code_ptr, &n_components,
@@ -271,8 +269,8 @@ cpdef void _update_code(double[::1, :] X,
         if info != 0:
             raise ValueError
 
-        wdbatch = w_arr[0] / batch_size
-        one_m_w = 1 - w_arr[0]
+        wdbatch = w_temp[0] / batch_size
+        one_m_w = 1 - w_temp[0]
         # A_ *= 1 - w_A
         # A_ += this_code.dot(this_code.T) * w_A / batch_size
         dgemm(&NTRANS, &TRANS,
@@ -289,9 +287,9 @@ cpdef void _update_code(double[::1, :] X,
         for jj in range(len_subset):
             j = subset[jj]
             for k in range(n_components):
-                D_subset[k, jj] = B_[k, j] * (1 - w_arr[jj + 1])
+                D_subset[k, jj] = B_[k, j] * (1 - w_temp[jj + 1])
             for ii in range(batch_size):
-                this_X[ii, jj] *= w_arr[jj + 1] / batch_size
+                this_X[ii, jj] *= w_temp[jj + 1] / batch_size
         dgemm(&NTRANS, &NTRANS,
               &n_components, &len_subset, &batch_size,
               &oned,
@@ -328,8 +326,8 @@ cpdef void _update_code(double[::1, :] X,
 
         for p in range(n_components):
             for q in range(n_components):
-                this_G[p, q] = G_[p, q]
-            this_G[p, p] += alpha
+                G_temp[p, q] = G_[p, q]
+            G_temp[p, p] += alpha
 
         if var_red != 1:
             for ii in range(batch_size):
@@ -338,8 +336,8 @@ cpdef void _update_code(double[::1, :] X,
                 w = pow(row_counter_[i], -learning_rate)
                 for p in range(n_components):
                     beta_[i, p] *= 1 - w
-                    beta_[i, p] += this_code[p, ii] * w
-                    this_code[p, ii] = beta_[i, p]
+                    beta_[i, p] += code_temp[p, ii] * w
+                    code_temp[p, ii] = beta_[i, p]
         dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
               this_code_ptr, &n_components,
               &info)
@@ -362,7 +360,7 @@ cpdef void _update_code(double[::1, :] X,
               &n_components, &n_cols, &batch_size,
               &wdbatch,
               this_code_ptr, &n_components,
-              X_ptr, &batch_size,
+              full_X_ptr, &batch_size,
               &oned,
               B_ptr, &n_components
               )
@@ -387,13 +385,10 @@ cpdef void _update_code(double[::1, :] X,
     for ii in range(batch_size):
         i = sample_subset[ii]
         for k in range(n_components):
-            code_[i, k] = this_code[k, ii]
-
-
-
+            code_[i, k] = code_temp[k, ii]
 
 cpdef void _update_dict(double[::1, :] D_,
-                  long[:] dict_subset,
+                  int[:] dict_subset,
                   bint fit_intercept,
                   double l1_ratio,
                   long projection,
@@ -503,7 +498,6 @@ cpdef void _update_dict(double[::1, :] D_,
               &zerod,
               G_ptr, &n_components
               )
-
 
 cpdef void _predict(double[:] X_data,
              int[:] X_indices,

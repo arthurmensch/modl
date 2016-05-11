@@ -5,6 +5,7 @@ Dictionary learning with masked data
 from math import ceil
 
 import numpy as np
+import scipy.sparse as sp
 from scipy import linalg
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
@@ -12,7 +13,7 @@ from sklearn.utils._random import sample_without_replacement
 
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import _update_dict, _update_code, _get_weights, \
-    _get_simple_weights
+    _get_simple_weights, _update_code_sparse_batch
 
 
 class DictMF(BaseEstimator):
@@ -61,6 +62,10 @@ class DictMF(BaseEstimator):
         self.Q_: ndarray (n_components, n_cols):
             Learned dictionary
     """
+
+    _dummy_2d_float = np.zeros((1, 1), order='F')
+    _dummy_1d_int = np.zeros(1, dtype='int')
+    _dummy_1d_float = np.zeros(1)
 
     def __init__(self, alpha=1.0,
                  n_components=30,
@@ -134,7 +139,7 @@ class DictMF(BaseEstimator):
         }
         return projections[self.projection]
 
-    def _init(self, X):
+    def _check_and_init(self, X):
         """Initialize statistic and dictionary"""
         if self.var_red not in ['none', 'code_only', 'weight_based',
                                 'sample_based']:
@@ -145,7 +150,12 @@ class DictMF(BaseEstimator):
             raise ValueError("projection should be in {'partial', 'full'},"
                              " got %s" % self.projection)
 
-        X = check_array(X, dtype='float', order='F')
+        X = check_array(X, dtype='float', order='F', accept_sparse='csr')
+
+        self.sparse_ = sp.issparse(X)
+        if self.sparse_ and self.var_red != 'weight_based':
+            raise NotImplementedError("Sparse input can only be used with "
+                                      "var_red='weight_based', got %s" % self.var_red)
 
         n_rows, n_cols = X.shape
 
@@ -195,6 +205,7 @@ class DictMF(BaseEstimator):
         self.counter_ = np.zeros(n_cols + 1, dtype='int')
 
         self.n_iter_ = 0
+        self.n_verbose_call_ = 0
 
         if self.var_red != 'weight_based':
             self.G_ = self.D_.dot(self.D_.T).T
@@ -209,24 +220,26 @@ class DictMF(BaseEstimator):
 
         if self.backend == 'c':
             if not hasattr(self, 'row_counter_'):
-                self.row_counter_ = np.zeros(1, dtype='int')
+                self.row_counter_ = self._dummy_1d_int
             if not hasattr(self, 'G_'):
-                self.G_ = np.zeros((1, 1), order='F')
+                self.G_ = self._dummy_2d_float
             if not hasattr(self, 'beta_'):
-                self.beta_ = np.zeros((1, 1), order='F')
+                self.beta_ = self._dummy_2d_float
             if not hasattr(self, 'multiplier_'):
-                self.multiplier_ = np.zeros(1)
+                self.multiplier_ = self._dummy_1d_float
 
         if self.debug:
             self.loss_ = np.empty(self.max_n_iter)
             self.loss_indep_ = 0.
 
-    def _check_init(self):
+        return X
+
+    def _is_initialized(self):
         return hasattr(self, 'D_')
 
     def _reset_stat(self):
         if (self.var_red in ['code_only, sample_based'] and
-                self.multiplier_[0] < 1e-50):
+                    self.multiplier_[0] < 1e-50):
             self.A_ *= self.multiplier_[0]
             self.B_ *= self.multiplier_[0]
             self.multiplier_[0] = 1.
@@ -240,18 +253,22 @@ class DictMF(BaseEstimator):
         X: ndarray (n_samples, n_features)
             Dataset to learn the dictionary from
         """
-        X = check_array(X, dtype='float', order='F')
         if self.max_n_iter > 0:
-            self.partial_fit(X, check_input=False)
+            self.partial_fit(X)
             while self.n_iter_ + self.batch_size - 1 < self.max_n_iter:
-                self.partial_fit(X, check_input=False)
+                self.partial_fit(X)
         else:
             # Default to one pass
-            self.partial_fit(X, check_input=False)
+            self.partial_fit(X)
 
     def _refit(self, X):
         """Use X and Q to learn a code P"""
         self.code_ = self.transform(X)
+
+    def _check_fitted(self):
+        if not hasattr(self, 'D_'):
+            raise ValueError('DictLearning object has not been'
+                             ' fitted before transform')
 
     def transform(self, X, y=None):
         """Computes the loadings to reconstruct dataset X
@@ -267,16 +284,23 @@ class DictMF(BaseEstimator):
         code: ndarray(n_samples, n_components)
             Code obtained projecting X on the dictionary
         """
+        self._check_fitted()
         X = check_array(X, order='F')
+        if self.sparse_:
+            return self._sparse_transform(X)
+        else:
+            return self._dense_transform(X)
+
+    def _dense_transform(self, X, y=None):
         if self.var_red != 'weight_based':
             G = self.G_.copy()
         else:
             G = self.D_.dot(self.D_.T)
         Dx = self.D_.dot(X.T)
         G.flat[::self.n_components + 1] += 2 * self.alpha
-        P = linalg.solve(G, Dx, sym_pos=True,
-                         overwrite_a=True, check_finite=False)
-        return P
+        code = linalg.solve(G, Dx, sym_pos=True,
+                            overwrite_a=True, check_finite=False)
+        return code
 
     def _reduced_transform(self, X):
         n_rows, n_cols = X.shape
@@ -285,7 +309,7 @@ class DictMF(BaseEstimator):
         subset_size = int(ceil(n_cols / self.reduction))
         batches = gen_batches(len(X), self.batch_size)
         row_range = self.random_state_.permutation(n_rows)
-        P = np.zeros((n_rows, self.n_components), order='C')
+        code = np.zeros((n_rows, self.n_components), order='C')
         for batch in batches:
             sample_subset = row_range[batch]
             subset = sample_without_replacement(n_cols,
@@ -296,12 +320,48 @@ class DictMF(BaseEstimator):
             this_X = X[sample_subset][:, subset] * self.reduction
 
             Dx = self.D_[:, subset].dot(this_X.T)
-            P[batch] = linalg.solve(G, Dx, sym_pos=True,
-                                    overwrite_a=True,
-                                    check_finite=False).T
-        return P
+            code[batch] = linalg.solve(G, Dx, sym_pos=True,
+                                       overwrite_a=True,
+                                       check_finite=False).T
+        return code
 
-    def partial_fit(self, X, y=None, sample_subset=None, check_input=True):
+    def _sparse_transform(self, X):
+        """Ridge with missing value.
+
+        Useful to relearn code from a given dictionary
+
+        Parameters
+        ----------
+        X: ndarray( n_samples, n_features)
+            Data matrix
+        Q: ndarray (n_components, n_features)
+            Dictionary
+        alpha: float,
+            Regularization parameter
+
+        Returns
+        -------
+        P: ndarray (n_components, n_samples)
+            Code for each of X sample
+        """
+        X = check_array(X, accept_sparse='csr', order='F')
+        row_range = X.getnnz(axis=1).nonzero()[0]
+        n_rows, n_cols = X.shape
+        code = np.zeros((n_rows, self.n_components), order='F')
+        for j in row_range:
+            nnz = X.indptr[j + 1] - X.indptr[j]
+            idx = X.indices[X.indptr[j]:X.indptr[j + 1]]
+            x = X.data[X.indptr[j]:X.indptr[j + 1]]
+
+            Q_idx = self.D_[:, idx]
+            G = Q_idx.dot(Q_idx.T)
+            Qx = Q_idx.dot(x)
+            G.flat[::self.n_components + 1] += 2 * self.alpha * nnz / n_cols
+            code[j] = linalg.solve(G, Qx, sym_pos=True,
+                                   overwrite_a=True, check_finite=False)
+        return code
+
+    def partial_fit(self, X, y=None, sample_subset=None):
         """Stream data X to update the estimator dictionary
 
         Parameters
@@ -318,21 +378,20 @@ class DictMF(BaseEstimator):
                 "Recording objective loss is only available"
                 "with backend == 'python'")
 
-        if not self._check_init():
-            self._init(X)
+        if not self._is_initialized():
+            X = self._check_and_init(X)
 
-        if check_input:
-            X = check_array(X, dtype='float', order='F')
         n_rows, n_cols = X.shape
 
         if sample_subset is None:
-            sample_subset = np.arange(n_rows)
-
-        old_n_iter = self.n_iter_
-        n_verbose_call = 0
+            sample_subset = np.arange(n_rows, dtype='int')
 
         row_range = np.arange(n_rows)
-        len_subset = int(ceil(n_cols / self.reduction))
+
+        if self.sparse_:
+            len_subset = min(n_cols, self.batch_size * X.getnnz(axis=1).max())
+        else:
+            len_subset = int(ceil(n_cols / self.reduction))
 
         self.random_state_.shuffle(row_range)
         batches = gen_batches(len(row_range), self.batch_size)
@@ -342,13 +401,20 @@ class DictMF(BaseEstimator):
         else:
             D_range = np.arange(self.n_components)
 
+        if self.sparse_:
+            this_X = np.empty((1, len_subset), order='F')
+        else:
+            this_X = np.empty((self.batch_size, len_subset), order='F')
+
+        if self.var_red == 'sample_based':
+            full_X = np.zeros((self.batch_size, n_cols), order='F')
+        else:
+            full_X = None
+
         if self.backend == 'c':
             # Init various arrays for efficiency
             D_subset = np.empty((self.n_components, len_subset),
                                 order='F')
-
-            X_temp = np.empty((self.batch_size, len_subset),
-                              order='F')
             G_temp = np.empty((self.n_components, self.n_components),
                               order='F')
             code_temp = np.empty((self.n_components, self.batch_size),
@@ -360,48 +426,105 @@ class DictMF(BaseEstimator):
                 proj_temp = np.zeros(n_cols)
             else:
                 proj_temp = np.zeros(len_subset)
+            if self.sparse_:
+                subset_mask = np.zeros(n_cols, dtype='i1')
+                dict_subset = np.zeros(len_subset, dtype='i4')
+                dict_subset_lim = np.zeros(1, dtype='i4')
 
         for batch in batches:
             row_batch = row_range[batch]
             if 0 < self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
                 return
-            subset = sample_without_replacement(n_cols, len_subset,
-                                                random_state=
-                                                self.random_state_)
-            this_X = X[row_batch]
-            if self.backend == 'c':
-                this_X = np.asfortranarray(this_X)
-                _update_code(this_X,
-                             subset,
-                             sample_subset[row_batch],
-                             self.alpha,
-                             self.learning_rate,
-                             self.offset,
-                             self._get_var_red(),
-                             self._get_projection(),
-                             self.reduction,
-                             self.D_,
-                             self.code_,
-                             self.A_,
-                             self.B_,
-                             self.G_,
-                             self.beta_,
-                             self.multiplier_,
-                             self.counter_,
-                             self.row_counter_,
-                             D_subset,
-                             X_temp,
-                             code_temp,
-                             G_temp,
-                             w_temp)
+            if self.sparse_:
+                if self.backend == 'c':
+                    _update_code_sparse_batch(X.data, X.indices,
+                                              X.indptr,
+                                              n_rows,
+                                              n_cols,
+                                              row_batch,
+                                              sample_subset[row_batch],
+                                              self.alpha,
+                                              self.learning_rate,
+                                              self.offset,
+                                              self._get_var_red(),
+                                              self._get_projection(),
+                                              self.reduction,
+                                              self.D_,
+                                              self.code_,
+                                              self.A_,
+                                              self.B_,
+                                              self.G_,
+                                              self.beta_,
+                                              self.multiplier_,
+                                              self.counter_,
+                                              self.row_counter_,
+                                              D_subset,
+                                              code_temp,
+                                              G_temp,
+                                              this_X,  # use this_X as X_temp
+                                              w_temp,
+                                              subset_mask,
+                                              dict_subset,
+                                              dict_subset_lim,
+                                              self._dummy_2d_float,
+                                              )
+                    # This is hackish, but np.where becomes a
+                    # bottleneck for low batch size otherwise
+                    dict_subset = dict_subset[:dict_subset_lim[0]]
+                else:
+                    for j in row_batch:
+                        subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
+                        this_X[0, :subset.shape[0]] = X.data[X.indptr[j]:X.indptr[j + 1]]
+                        self._update_code_slow(this_X[:, :subset.shape[0]],
+                                               subset,
+                                               sample_subset[j:j+1])
+                    dict_subset = np.concatenate([X.indices[
+                                                  X.indptr[j]:X.indptr[j + 1]]
+                                                  for j in row_batch])
+                    dict_subset = np.unique(dict_subset)
+            # End if self.sparse_
             else:
-                self._update_code_slow(this_X,
+                subset = sample_without_replacement(n_cols, len_subset,
+                                                    random_state=
+                                                    self.random_state_).astype(
+                    'i4')
+                this_X[:] = X[row_batch][:, subset]
 
-                                       subset,
-                                       sample_subset[row_batch])
-            dict_subset = subset
+                if self.var_red == 'sample_based':
+                    full_X[:] = X[row_batch]
+
+                if self.backend == 'c':
+                    _update_code(this_X,
+                                 subset,
+                                 sample_subset[row_batch],
+                                 self.alpha,
+                                 self.learning_rate,
+                                 self.offset,
+                                 self._get_var_red(),
+                                 self._get_projection(),
+                                 self.reduction,
+                                 self.D_,
+                                 self.code_,
+                                 self.A_,
+                                 self.B_,
+                                 self.G_,
+                                 self.beta_,
+                                 self.multiplier_,
+                                 self.counter_,
+                                 self.row_counter_,
+                                 full_X,
+                                 D_subset,
+                                 code_temp,
+                                 G_temp,
+                                 w_temp)
+                else:
+                    self._update_code_slow(this_X,
+                                           subset,
+                                           sample_subset[row_batch],
+                                           full_X=full_X)
+                dict_subset = subset
+            # End else
             self._reset_stat()
-
             self.random_state_.shuffle(D_range)
             # Dictionary update
             if self.backend == 'c':
@@ -423,15 +546,17 @@ class DictMF(BaseEstimator):
                 self._update_dict_slow(dict_subset, D_range)
             self.n_iter_ += len(row_batch)
 
-            if self.verbose and (self.n_iter_ - old_n_iter) // ceil(
-                    int(n_rows / self.verbose)) == n_verbose_call:
+            if self.verbose and self.n_iter_ // ceil(
+                    int(n_rows / self.verbose)) == self.n_verbose_call_:
                 print("Iteration %i" % self.n_iter_)
-                n_verbose_call += 1
+                self.n_verbose_call_ += 1
                 if self.callback is not None:
                     self.callback(self)
 
-    def _update_code_slow(self, X, subset,
-                          sample_subset):
+    def _update_code_slow(self, this_X,
+                          subset,
+                          sample_subset,
+                          full_X=None):
         """Compute code for a mini-batch and update algorithm statistics accordingly
 
         Parameters
@@ -443,7 +568,6 @@ class DictMF(BaseEstimator):
         sample_subset: ndarray (batch_size),
             Sample indices of this_X within X
         """
-        this_X = X[:, subset]
         batch_size, _ = this_X.shape
         _, n_cols = self.D_.shape
 
@@ -506,7 +630,7 @@ class DictMF(BaseEstimator):
             self.A_ += this_code.dot(this_code.T) * w_norm / batch_size
 
             if self.var_red == 'sample_based':
-                self.B_ += this_code.dot(X) * w_norm / batch_size
+                self.B_ += this_code.dot(full_X) * w_norm / batch_size
             else:
                 self.B_[:, subset] += this_code.dot(
                     this_X) * w_norm / batch_size

@@ -60,18 +60,36 @@ class DictCompleter(DictMF):
 
     def __init__(self, alpha=1.0, n_components=30, learning_rate=1.,
                  batch_size=1, offset=0, reduction=1,
+                 projection='partial',
                  fit_intercept=False, dict_init=None, l1_ratio=0,
                  max_n_iter=0,
                  random_state=None, verbose=0, backend='c', debug=False,
                  detrend=False,
                  crop=None,
                  callback=None):
-        super().__init__(alpha, n_components, learning_rate, batch_size,
-                         offset, reduction, False, None,
-                         fit_intercept, dict_init, l1_ratio, True,
-                         False, False, False, None,
-                         None, True, max_n_iter, random_state,
-                         verbose, backend, debug, callback)
+        super().__init__(alpha=alpha,
+                         n_components=n_components,
+                         # Hyper-parameters
+                         learning_rate=learning_rate,
+                         batch_size=batch_size,
+                         offset=offset,
+                         # Reduction parameter
+                         reduction=reduction,
+                         var_red='weight_based',
+                         projection=projection,
+                         fit_intercept=fit_intercept,
+                         # Dict parameter
+                         dict_init=dict_init,
+                         l1_ratio=l1_ratio,
+                         # For variance reduction
+                         n_samples=None,
+                         # Generic parameters
+                         max_n_iter=max_n_iter,
+                         random_state=random_state,
+                         verbose=verbose,
+                         backend=backend,
+                         debug=debug,
+                         callback=callback)
         self.detrend = detrend
         self.crop = crop
 
@@ -182,4 +200,3 @@ def rmse(X_true, X_pred):
     X_true, X_pred = _check(X_true, X_pred)
     mse = np.mean((X_true.data - X_pred.data) ** 2)
     return np.sqrt(mse)
-

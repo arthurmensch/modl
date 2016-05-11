@@ -31,7 +31,7 @@ class Callback(object):
         test_time = time.clock()
         X_pred = mf.predict(self.X_tr)
         loss = sqnorm(X_pred.data - self.X_tr.data) / 2
-        regul = mf.alpha * (sqnorm(mf.P_))
+        regul = mf.alpha * (sqnorm(mf.code_))
         self.obj.append(loss + regul)
 
         X_pred = mf.predict(self.X_te)
@@ -42,25 +42,25 @@ class Callback(object):
 
         self.rmse.append(rmse)
         self.rmse_tr.append(rmse_tr)
-        self.q.append(mf.Q_[1, :10].copy())
+        self.q.append(mf.D_[1, :10].copy())
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
 
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=1, verbose=5,
-                   batch_size=60, detrend=True,
+mf = DictCompleter(n_components=30, alpha=1e-3, verbose=2,
+                   batch_size=600, detrend=True,
                    offset=0,
                    fit_intercept=True,
-                   full_projection=False,
+                   projection='partial',
                    random_state=0,
-                   learning_rate=1,
-                   max_n_iter=20000,
-                   backend='python')
+                   learning_rate=.8,
+                   max_n_iter=100000,
+                   backend='c')
 
 # Need to download from spira
-X = load_movielens('1m')
+X = load_movielens('10m')
 X_tr, X_te = train_test_split(X, train_size=0.75,
                               random_state=random_state)
 X_tr = X_tr.tocsr()

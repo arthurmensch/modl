@@ -3,14 +3,47 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
-cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
+cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset)
 
-cpdef double _get_simple_weights(long[:] subset, long[:] counter, long batch_size,
+cpdef double _get_simple_weights(int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset)
+
+cpdef long _update_code_sparse_batch(double[:] X_data,
+                                     int[:] X_indices,
+                                     int[:] X_indptr,
+                                     int n_rows,
+                                     int n_cols,
+                                     long[:] row_batch,
+                                     long[:] sample_subset,
+                                     double alpha,
+                                     double learning_rate,
+                                     double offset,
+                                     long var_red,
+                                     long projection,
+                                     double reduction,
+                                     double[::1, :] D_,
+                                     double[:, ::1] code_,
+                                     double[::1, :] A_,
+                                     double[::1, :] B_,
+                                     double[::1, :] G_,
+                                     double[::1, :] beta_,
+                                     double[:] multiplier_,
+                                     long[:] counter_,
+                                     long[:] row_counter_,
+                                     double[::1, :] D_subset,
+                                     double[::1, :] code_temp,
+                                     double[::1, :] G_temp,
+                                     double[::1, :] X_temp,
+                                     double[:] w_temp,
+                                     char[:] subset_mask,
+                                     int[:] dict_subset,
+                                     int[:] dict_subset_lim,
+                                     double[::1, :] dummy_2d_float,
+                                     ) except *
 
 cpdef void _update_code(double[::1, :] X,
-                        long[:] subset,
+                        int[:] subset,
                         long[:] sample_subset,
                         double alpha,
                         double learning_rate,
@@ -34,7 +67,7 @@ cpdef void _update_code(double[::1, :] X,
                         double[:] w_arr) except *
 
 cpdef void _update_dict(double[::1, :] D_,
-                  long[:] dict_subset,
+                  int[:] dict_subset,
                   bint fit_intercept,
                   double l1_ratio,
                   long projection,

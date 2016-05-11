@@ -7,7 +7,7 @@ from nilearn.image import iter_img
 from modl.spca_fmri import SpcaFmri
 
 backends = ['c', 'python']
-var_reds = [True, False]
+var_reds = ['weight_based', 'sample_based']
 
 
 # Utils function are copied from nilearn.decomposition.tests.test_canica
