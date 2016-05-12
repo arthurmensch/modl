@@ -390,9 +390,6 @@ class DictMF(BaseEstimator):
         new_verbose_iter_ = 0
         old_n_iter = self.n_iter_
 
-        if self.callback is not None:
-            self.callback(self)
-
         if sample_subset is None:
             sample_subset = np.arange(n_rows, dtype='int')
 

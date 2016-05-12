@@ -59,7 +59,7 @@ class DictCompleter(DictMF):
     """
 
     def __init__(self, alpha=1.0, n_components=30, learning_rate=1.,
-                 batch_size=1, offset=0, reduction=1,
+                 batch_size=1, offset=0,
                  projection='partial',
                  fit_intercept=False, dict_init=None, l1_ratio=0,
                  max_n_iter=0,
@@ -75,7 +75,7 @@ class DictCompleter(DictMF):
                          batch_size=batch_size,
                          offset=offset,
                          # Reduction parameter
-                         reduction=reduction,
+                         reduction=1,
                          var_red='weight_based',
                          projection=projection,
                          fit_intercept=fit_intercept,
@@ -86,6 +86,7 @@ class DictCompleter(DictMF):
                          n_samples=None,
                          # Generic parameters
                          max_n_iter=max_n_iter,
+                         n_epochs=n_epochs,
                          random_state=random_state,
                          verbose=verbose,
                          backend=backend,

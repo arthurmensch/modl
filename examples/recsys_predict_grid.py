@@ -1,9 +1,12 @@
 # Author: Arthur Mensch
 # License: BSD
+import json
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+from joblib import Parallel
+from joblib import delayed
 
 from modl._utils.cross_validation import train_test_split
 from modl.datasets.movielens import load_movielens, load_netflix
@@ -49,44 +52,35 @@ class Callback(object):
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=0.1, verbose=3,
-                   batch_size=400, detrend=True,
-                   offset=0,
-                   fit_intercept=True,
-                   projection='partial',
-                   random_state=0,
-                   learning_rate=.8,
-                   n_epochs=2,
-                   backend='c')
+def main():
+    alphas = Parallel(delayed(single_run)(alpha) for alpha in np.logspace(-4, 2, 15))
+    json.dump(alphas, open('~/scores.json', 'w+'))
 
-# Need to download from spira
-# X = load_movielens('10m')
-# X_tr, X_te = train_test_split(X, train_size=0.75,
-#                               random_state=random_state)
-X_tr, X_te = load_netflix()
+def single_run(alpha):
+    mf = DictCompleter(n_components=30, alpha=alpha, verbose=3,
+                       batch_size=4000, detrend=True,
+                       offset=0,
+                       fit_intercept=True,
+                       projection='partial',
+                       random_state=0,
+                       learning_rate=.8,
+                       n_epochs=3,
+                       backend='c')
+    # Need to download from spira
+    # X = load_movielens('10m')
+    # X_tr, X_te = train_test_split(X, train_size=0.75,
+    #                               random_state=random_state)
+    X_tr, X_te = load_netflix()
 
-X_tr = X_tr.tocsr()
-X_te = X_te.tocsr()
-cb = Callback(X_tr, X_te)
-mf.set_params(callback=cb)
-t0 = time.time()
-mf.fit(X_tr)
-print('Time : %.2f s' % (time.time() - t0))
+    X_tr = X_tr.tocsr()
+    X_te = X_te.tocsr()
+    cb = Callback(X_tr, X_te)
+    mf.set_params(callback=cb)
+    t0 = time.time()
+    mf.fit(X_tr)
+    print('Time : %.2f s' % (time.time() - t0))
+    return alpha
 
 
-plt.figure()
-plt.plot(cb.times, cb.rmse, label='Test')
-plt.plot(cb.times, cb.rmse_tr, label='Train')
-
-plt.legend()
-plt.xlabel("CPU time")
-plt.xscale("log")
-plt.ylabel("RMSE")
-plt.title('Prediction scores')
-
-plt.figure()
-plt.plot(np.arange(len(cb.q)), cb.q)
-plt.xlabel('Time (relative)')
-plt.ylabel('Feature value')
-plt.title('Dictionary trajectory')
-plt.show()
+if __name__ == '__main__':
+    main()

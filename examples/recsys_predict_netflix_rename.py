@@ -15,6 +15,7 @@ from matplotlib import gridspec
 from sklearn import clone
 from spira.datasets import load_movielens
 from spira.impl.dict_fact import csr_center_data
+from spira.impl.matrix_fact import ExplicitMF
 
 from modl._utils.cross_validation import train_test_split, ShuffleSplit, \
     cross_val_score
@@ -49,7 +50,7 @@ class Callback(object):
                 mf._refit_code(self.X_tr)
         X_pred = mf.predict(self.X_tr)
         loss = sqnorm(X_pred.data - self.X_tr.data) / 2
-        regul = mf.alpha * (sqnorm(mf.P_))  # + sqnorm(mf.Q_))
+        regul = mf.alpha * (sqnorm(mf.code_))  # + sqnorm(mf.Q_))
         self.obj.append(loss + regul)
 
         X_pred = mf.predict(self.X_te)
@@ -59,7 +60,6 @@ class Callback(object):
 
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
-
 
 def compare_learning_rate(version='100k', n_jobs=1, random_state=0):
     if version in ['100k', '1m', '10m']:
@@ -75,12 +75,10 @@ def compare_learning_rate(version='100k', n_jobs=1, random_state=0):
                        alpha=0.1373823795883263 if version == '10m' else 0.16681005372000587,
                        verbose=5,
                        batch_size=600 if version == '10m' else 4000,
-                       normalize=True,
+                       detrend=True,
                        fit_intercept=True,
                        random_state=0,
                        learning_rate=.75,
-                       impute=False,
-                       partial=True,
                        backend='c')
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H'
                                                  '-%M-%S')
@@ -118,7 +116,7 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
     dl_params['10m'] = dict(learning_rate=.75, batch_size=600, offset=0,
                             alpha=3)
     dl_params['netflix'] = dict(learning_rate=.8, batch_size=4000, offset=0,
-                                alpha=0.16)
+                                alpha=0.0016)
     cd_params = {'100k': dict(alpha=.1), '1m': dict(alpha=.03),
                  '10m': dict(alpha=.04),
                  'netflix': dict(alpha=.1)}
@@ -135,22 +133,19 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
 
     cd_mf = ExplicitMF(n_components=60, max_iter=50, alpha=.1, normalize=True,
                        verbose=1, )
-    dl_mf = DictMF(n_components=30, n_epochs=20, alpha=1.17, verbose=5,
-                   batch_size=10000, normalize=True,
-                   fit_intercept=True,
-                   random_state=0,
-                   learning_rate=.75,
-                   impute=False,
-                   partial=False,
-                   backend='c')
-    dl_mf_partial = DictMF(n_components=60, n_epochs=20, alpha=1.17, verbose=5,
-                           batch_size=10000, normalize=True,
-                           fit_intercept=True,
-                           random_state=0,
-                           learning_rate=.75,
-                           impute=False,
-                           partial=True,
-                           backend='c')
+    dl_mf = DictCompleter(n_components=30, n_epochs=20, alpha=1.17, verbose=5,
+                          batch_size=10000, detrend=True,
+                          fit_intercept=True,
+                          random_state=0,
+                          learning_rate=.75,
+                          backend='c')
+    dl_mf_partial = DictCompleter(n_components=60, n_epochs=20, alpha=1.17,
+                                  verbose=2,
+                                  batch_size=10000, detrend=True,
+                                  fit_intercept=True,
+                                  random_state=0,
+                                  learning_rate=.75,
+                                  backend='c')
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H'
                                                  '-%M-%S')
@@ -180,7 +175,7 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
     for mf in mf_list:
         results[dict_id[mf]] = {}
         if not cross_val:
-            if isinstance(mf, DictMF):
+            if isinstance(mf, DictCompleter):
                 mf.set_params(
                     learning_rate=dl_params[version]['learning_rate'],
                     batch_size=dl_params[version]['batch_size'],
@@ -188,17 +183,17 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
             else:
                 mf.set_params(alpha=cd_params[version]['alpha'])
         else:
-            if isinstance(mf, DictMF):
+            if isinstance(mf, DictCompleter):
                 mf.set_params(
                     learning_rate=dl_params[version]['learning_rate'],
                     batch_size=dl_params[version]['batch_size'])
             if version != 'netflix':
                 cv = ShuffleSplit(n_iter=3, train_size=0.66, random_state=0)
-                mf_scores = Parallel(n_jobs=n_jobs, verbose=10)(
+                mf_scores = Parallel(n_jobs=n_jobs, verbose=10, max_nbytes=None)(
                     delayed(single_fit)(mf, alpha, X_tr, cv) for alpha in
                     alphas)
             else:
-                mf_scores = Parallel(n_jobs=n_jobs, verbose=10)(
+                mf_scores = Parallel(n_jobs=n_jobs, verbose=10, max_nbytes=None)(
                     delayed(single_fit)(mf, alpha, X_tr, X_te,
                                         nested=False) for alpha in alphas)
             mf_scores = np.array(mf_scores).mean(axis=1)
@@ -227,7 +222,7 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
 
 def single_fit(mf, alpha, X_tr, cv, nested=True):
     mf_cv = clone(mf)
-    if isinstance(mf_cv, DictMF):
+    if isinstance(mf_cv, DictCompleter):
         mf_cv.set_params(n_epochs=2)
     else:
         mf_cv.set_params(max_iter=10)
@@ -399,7 +394,7 @@ def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
 if __name__ == '__main__':
     # compare_learning_rate('netflix', n_jobs=10)
     # plot_learning_rate()
-    main('netflix', n_jobs=30, cross_val=False)
+    main('netflix', n_jobs=1, cross_val=False)
     # main('100k', n_jobs=1, cross_val=False)
     # main('1m', cross_val=True, n_jobs=15, random_state=0)
     # main('10m', n_jobs=15, cross_val=True, random_state=0)

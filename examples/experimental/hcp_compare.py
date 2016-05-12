@@ -65,7 +65,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
         pass
     dict_fact = SpcaFmri(mask=mask,
                          smoothing_fwhm=3,
-                         batch_size=50,
+                         batch_size=100,
                          shelve=not raw,
                          n_components=n_components,
                          dict_init=fetch_atlas_smith_2009().rsn70 if
