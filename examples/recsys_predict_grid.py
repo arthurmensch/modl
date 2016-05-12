@@ -2,15 +2,15 @@
 # License: BSD
 import json
 import time
+from os.path import expanduser
 
-import matplotlib.pyplot as plt
 import numpy as np
 from joblib import Parallel
 from joblib import delayed
 
-from modl._utils.cross_validation import train_test_split
-from modl.datasets.movielens import load_movielens, load_netflix
+from modl.datasets.movielens import load_netflix
 from modl.dict_completion import DictCompleter
+
 
 def sqnorm(M):
     m = M.ravel()
@@ -52,12 +52,12 @@ class Callback(object):
 
 random_state = 0
 
-def main():
-    alphas = Parallel(delayed(single_run)(alpha) for alpha in np.logspace(-4, 2, 15))
-    json.dump(alphas, open('~/scores.json', 'w+'))
+def main(n_jobs):
+    alphas = Parallel(n_jobs=n_jobs)(delayed(single_run)(alpha) for alpha in np.logspace(-4, 2, 15))
+    json.dump(alphas, open(expanduser('~/scores.json'), 'w+'))
 
 def single_run(alpha):
-    mf = DictCompleter(n_components=30, alpha=alpha, verbose=3,
+    mf = DictCompleter(n_components=30, alpha=alpha, verbose=0,
                        batch_size=4000, detrend=True,
                        offset=0,
                        fit_intercept=True,
@@ -74,13 +74,15 @@ def single_run(alpha):
 
     X_tr = X_tr.tocsr()
     X_te = X_te.tocsr()
-    cb = Callback(X_tr, X_te)
-    mf.set_params(callback=cb)
+    # cb = Callback(X_tr, X_te)
+    # mf.set_params(callback=cb)
     t0 = time.time()
     mf.fit(X_tr)
+    score = mf.score(X_te)
     print('Time : %.2f s' % (time.time() - t0))
-    return alpha
+    print('Score : % .4f' % score)
+    return score
 
 
 if __name__ == '__main__':
-    main()
+    main(15)
