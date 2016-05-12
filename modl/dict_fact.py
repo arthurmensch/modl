@@ -478,8 +478,11 @@ class DictMF(BaseEstimator):
                     dict_subset = np.unique(dict_subset)
             # End if self.sparse_
             else:
-                self.random_state_.shuffle(subset_range)
-                subset = subset_range[:len_subset]
+                if self.reduction != 1:
+                    self.random_state_.shuffle(subset_range)
+                    subset = subset_range[:len_subset]
+                else:
+                    subset = subset_range
 
                 full_X = np.asfortranarray(X[row_batch])
                 this_X = full_X[:, subset]

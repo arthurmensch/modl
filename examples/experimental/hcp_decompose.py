@@ -38,8 +38,14 @@ def main():
         print('First functional nifti image (4D) is at: %s' %
               hcp_dataset.func[0])  # 4D data
 
+    reduction_list = [1, 2, 4, 8, 16]
+    alpha_list = [1e-2, 1e-3, 1e-4]
+
+    reduction_list = [1]
+    alpha_list = [1e-2]
+
     Parallel(n_jobs=n_jobs, verbose=10)(delayed(run)(idx, reduction, alpha, mask, raw, n_components, init, func_filenames) for idx, (reduction, alpha)
-                                        in enumerate(itertools.product([1, 2, 4, 8, 16], [1e-2, 1e-3, 1e-4])))
+                                        in enumerate(itertools.product(reduction_list, alpha_list)))
 
 
 def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
@@ -60,7 +66,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
                          n_epochs=1,
                          backend='c',
                          memory=expanduser("~/nilearn_cache"), memory_level=2,
-                         verbose=100,
+                         verbose=4,
                          n_jobs=1,
                          trace_folder=trace_folder
                          )
@@ -72,7 +78,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
     print('[Example] Dumping results')
     # Decomposition estimator embeds their own masker
     masker = dict_fact.masker_
-    components_img = masker.inverse_transform(  dict_fact.components_)
+    components_img = masker.inverse_transform(dict_fact.components_)
     components_img.to_filename(join(trace_folder, 'components_final.nii.gz'))
     print('[Example] Run in %.2f s' % t1)
     # Show components from both methods using 4D plotting tools
