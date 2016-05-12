@@ -163,11 +163,11 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         BaseDecomposition.fit(self, imgs)
 
         # Cast to MultiNiftiMasker with shelving
-        if self.shelve:
-            masker_params = self.masker_.get_params()
-            mask_img = self.masker_.mask_img_
-            masker_params['mask_img'] = mask_img
-            self.masker_ = MultiNiftiMasker(**masker_params).fit()
+        masker_params = self.masker_.get_params()
+        mask_img = self.masker_.mask_img_
+        masker_params['mask_img'] = mask_img
+        self.masker_ = MultiNiftiMasker(**masker_params).fit()
+
         random_state = check_random_state(self.random_state)
 
         n_epochs = int(self.n_epochs)
@@ -188,7 +188,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                 data_list = list(zip(imgs, confounds))
 
         if raw:
-            record_samples = [np.load(img, mmap_mode='r').shape[0] for img in imgs]
+            record_samples = [np.load(img, mmap_mode='r').shape[0] for img in
+                              imgs]
         else:
             record_samples = [check_niimg(img).shape[3] for img in imgs]
         offset_list = np.zeros(len(imgs) + 1, dtype='int')
@@ -214,6 +215,16 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          backend=self.backend,
                          verbose=max(0, self.verbose - 1))
 
+        # Preinit
+        max_sample_size = max(record_samples)
+        sample_subset_range = np.arange(max_sample_size)
+        n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
+
+        data_array = np.empty((max_sample_size, n_voxels),
+                              dtype='float', order='C')
+
+        self.components_ = np.empty((self.n_components, n_voxels), order='F')
+
         # Epoch logic
         data_idx = itertools.chain(*[random_state.permutation(
             len(imgs)) for _ in range(n_epochs)])
@@ -221,45 +232,50 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if self.trace_folder is not None:
             results = {'reduction': self.reduction, 'alpha': self.alpha,
                        'timings': [0.]}
-            json.dump(results, open(join(self.trace_folder, 'results.json'), 'w+'))
+            json.dump(results,
+                      open(join(self.trace_folder, 'results.json'), 'w+'))
 
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
+            this_n_samples = record_samples[this_data_idx]
             if self.var_red:
                 offset = offset_list[this_data_idx]
             if self.verbose:
                 print('Streaming record %s' % record)
             if raw:
-                this_data = np.load(this_data, mmap_mode=None)
+                data_array[:this_n_samples] = np.load(this_data,
+                                                      mmap_mode=None)
             else:
                 if self.shelve:
-                    this_data = this_data.get()
+                    data_array[:this_n_samples] = this_data.get()
                 else:
-                    this_data = self.masker_.transform(this_data[0],
-                                                       confounds=this_data[1])
+                    data_array[:this_n_samples] = self.masker_.transform(
+                        this_data[0],
+                        confounds=this_data[1])
             if self.trace_folder is not None:
                 t0 = time.time()
             if self.var_red:
-                dict_mf.partial_fit(this_data,
-                                    sample_subset=offset + np.arange(this_data.shape[0]))
+                dict_mf.partial_fit(data_array[:this_n_samples],
+                                    sample_subset=offset + sample_subset_range[
+                                                           :this_n_samples])
             else:
-                print(this_data)
-                dict_mf.partial_fit(this_data)
+                dict_mf.partial_fit(data_array)
             if self.trace_folder is not None:
                 t1 = (time.time() - t0) + results['timings'][-1]
                 results['timings'].append(t1)
                 json.dump(results,
                           open(join(self.trace_folder, 'results.json'), 'w+'))
-
-                if record % 1 == 0:
-                    components = dict_mf.components_.copy()
-                    _normalize_and_flip(components)
+                if record % 4 == 0:
+                    self.components_[:] = dict_mf.components_
+                    _normalize_and_flip(self.components_)
 
                     self.masker_.inverse_transform(
-                        components).to_filename(join(self.trace_folder,
-                                                           'record_%s.nii.gz' % record))
+                        self.components_).to_filename(join(self.trace_folder,
+                                                           "record_"
+                                                           "%s.nii.gz"
+                                                           % record))
 
-        self.components_ = dict_mf.components_.copy()
+        self.components_[:] = dict_mf.components_
         _normalize_and_flip(self.components_)
         return self
 

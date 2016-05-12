@@ -30,7 +30,8 @@ def main():
                                           n_subjects=2000)
     mask = hcp_dataset.mask
     if raw:
-        mapping = json.load(open(join(data_dir, '/HCP_unmasked/mapping.json'), 'r'))
+        mapping = json.load(
+            open(join(data_dir, 'HCP_unmasked/mapping.json'), 'r'))
         func_filenames = sorted(list(mapping.values()))
         func_filenames = func_filenames[:-8]
     else:
@@ -49,9 +50,12 @@ def main():
 
     Parallel(n_jobs=n_jobs, verbose=10)(delayed(run)(idx, reduction, alpha,
                                                      mask, raw, n_components,
-                                                     init, func_filenames) for idx, (reduction, alpha)
-                                        in enumerate(itertools.product(reduction_list, alpha_list)))
+                                                     init, func_filenames) for
+                                        idx, (reduction, alpha)
+                                        in enumerate(
+        itertools.product(reduction_list, alpha_list)))
     # run(0, 12, 1e-2, mask, raw, n_components, init, func_filenames)
+
 
 def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
     trace_folder = expanduser('~/output/modl/hcp/experiment_%i' % idx)
@@ -101,6 +105,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
                   threshold=0)
     plt.savefig(join(trace_folder, 'components.pdf'))
     show()
+
 
 if __name__ == '__main__':
     main()

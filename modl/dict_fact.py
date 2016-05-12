@@ -84,6 +84,7 @@ class DictMF(BaseEstimator):
                  n_samples=None,
                  # Generic parameters
                  max_n_iter=0,
+                 n_epochs=1,
                  random_state=None,
                  verbose=0,
                  backend='c',
@@ -117,6 +118,8 @@ class DictMF(BaseEstimator):
         self.callback = callback
 
         self.projection = projection
+
+        self.n_epochs = n_epochs
 
     @property
     def components_(self):
@@ -256,8 +259,8 @@ class DictMF(BaseEstimator):
             while self.n_iter_ + self.batch_size - 1 < self.max_n_iter:
                 self.partial_fit(X, check_input=False)
         else:
-            # Default to one pass
-            self.partial_fit(X)
+            for _ in range(self.n_epochs):
+                self.partial_fit(X)
 
     def _refit(self, X):
         """Use X and Q to learn a code P"""
@@ -408,8 +411,11 @@ class DictMF(BaseEstimator):
         else:
             D_range = np.arange(self.n_components)
 
-        this_X = np.empty((1, len_subset), order='F')
-
+        if self.sparse_:
+            this_X = np.empty((1, len_subset), order='F')
+        else:
+            this_X = np.empty((self.batch_size, len_subset), order='F')
+            full_X = np.empty((self.batch_size, n_cols), order='F')
         if self.backend == 'c':
             # Init various arrays for efficiency
             D_subset = np.empty((self.n_components, len_subset),
@@ -435,9 +441,12 @@ class DictMF(BaseEstimator):
                 if self.n_iter_ - old_n_iter >= new_verbose_iter_:
                     print("Iteration %i" % self.n_iter_)
                     new_verbose_iter_ += n_rows // self.verbose
+                    self._callback()
 
             row_batch = row_range[batch]
-            if 0 < self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
+            len_batch = row_batch.shape[0]
+
+            if 0 < self.max_n_iter <= self.n_iter_ + len_batch - 1:
                 return
             if self.sparse_:
                 if self.backend == 'c':
@@ -465,7 +474,7 @@ class DictMF(BaseEstimator):
                                               D_subset,
                                               code_temp,
                                               G_temp,
-                                              this_X,  # use this_X as X_temp
+                                              this_X,
                                               w_temp,
                                               subset_mask,
                                               dict_subset,
@@ -494,8 +503,8 @@ class DictMF(BaseEstimator):
                 else:
                     subset = subset_range
 
-                full_X = np.asfortranarray(X[row_batch])
-                this_X = full_X[:, subset]
+                full_X[:len_batch] = X[row_batch]
+                this_X[:len_batch] = full_X[:len_batch, subset]
 
                 if self.backend == 'c':
                     _update_code(this_X,
@@ -565,17 +574,22 @@ class DictMF(BaseEstimator):
         sample_subset: ndarray (batch_size),
             Sample indices of this_X within X
         """
-        batch_size, _ = this_X.shape
+        len_batch, _ = sample_subset.shape
+
+        if len_batch != self.batch_size:
+            this_X = this_X[:len_batch]
+            full_X = full_X[:len_batch]
+
         _, n_cols = self.D_.shape
 
         D_subset = self.D_[:, subset]
 
-        self.counter_[0] += batch_size
+        self.counter_[0] += len_batch
 
         if self.var_red == 'weight_based':
-            self.counter_[subset + 1] += batch_size
+            self.counter_[subset + 1] += len_batch
             w = np.zeros(len(subset) + 1)
-            _get_weights(w, subset, self.counter_, batch_size,
+            _get_weights(w, subset, self.counter_, len_batch,
                          self.learning_rate, self.offset)
             w_A = w[0]
             w_B = w[1:]
@@ -588,14 +602,14 @@ class DictMF(BaseEstimator):
                                      sym_pos=True, overwrite_a=True,
                                      check_finite=False)
             self.A_ *= 1 - w_A
-            self.A_ += this_code.dot(this_code.T) * w_A / batch_size
+            self.A_ += this_code.dot(this_code.T) * w_A / len_batch
             self.B_[:, subset] *= 1 - w_B
-            self.B_[:, subset] += this_code.dot(this_X) * w_B / batch_size
+            self.B_[:, subset] += this_code.dot(this_X) * w_B / len_batch
 
         else:  # self.var_red in ['none', 'code_only', 'sample_based']
             this_X *= self.reduction
             Dx = np.dot(D_subset, this_X.T)
-            w = _get_simple_weights(subset, self.counter_, batch_size,
+            w = _get_simple_weights(subset, self.counter_, len_batch,
                                     self.learning_rate, self.offset)
             if w != 1:
                 self.multiplier_[0] *= 1 - w
@@ -624,13 +638,13 @@ class DictMF(BaseEstimator):
                                      sym_pos=True, overwrite_a=True,
                                      check_finite=False)
 
-            self.A_ += this_code.dot(this_code.T) * w_norm / batch_size
+            self.A_ += this_code.dot(this_code.T) * w_norm / len_batch
 
             if self.var_red == 'sample_based':
-                self.B_ += this_code.dot(full_X) * w_norm / batch_size
+                self.B_ += this_code.dot(full_X) * w_norm / len_batch
             else:
                 self.B_[:, subset] += this_code.dot(
-                    this_X) * w_norm / batch_size
+                    this_X) * w_norm / len_batch
 
         self.code_[sample_subset] = this_code.T
 

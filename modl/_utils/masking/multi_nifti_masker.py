@@ -8,6 +8,7 @@ import collections
 import itertools
 import warnings
 
+import numpy as np
 from nilearn import _utils
 from nilearn import image
 from nilearn import masking
@@ -301,3 +302,14 @@ class MultiNiftiMasker(NiftiMasker, CacheMixin):
             return self.transform_single_imgs(imgs, shelve=shelve)
         return self.transform_imgs(imgs, confounds, n_jobs=self.n_jobs,
                                    shelve=shelve)
+
+    def inverse_transform(self, X):
+        self._check_fitted()
+        img = masking.unmask(X, self.mask_img_)
+        # Be robust again memmapping that will create read-only arrays in
+        # internal structures of the header: remove the memmaped array
+        try:
+            img._header._structarr = np.array(img._header._structarr).copy()
+        except:
+            pass
+        return img

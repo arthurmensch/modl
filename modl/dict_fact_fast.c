@@ -3286,7 +3286,7 @@ static PyObject *__pyx_pf_4modl_14dict_fact_fast_4_update_code_sparse_batch(CYTH
 
 static PyObject *__pyx_pw_4modl_14dict_fact_fast_7_update_code(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
 static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx_v_this_X, __Pyx_memviewslice __pyx_v_subset, __Pyx_memviewslice __pyx_v_sample_subset, double __pyx_v_alpha, double __pyx_v_learning_rate, double __pyx_v_offset, long __pyx_v_var_red, CYTHON_UNUSED long __pyx_v_projection, double __pyx_v_reduction, __Pyx_memviewslice __pyx_v_D_, __Pyx_memviewslice __pyx_v_code_, __Pyx_memviewslice __pyx_v_A_, __Pyx_memviewslice __pyx_v_B_, __Pyx_memviewslice __pyx_v_G_, __Pyx_memviewslice __pyx_v_beta_, __Pyx_memviewslice __pyx_v_multiplier_, __Pyx_memviewslice __pyx_v_counter_, __Pyx_memviewslice __pyx_v_row_counter_, __Pyx_memviewslice __pyx_v_full_X, __Pyx_memviewslice __pyx_v_D_subset, __Pyx_memviewslice __pyx_v_code_temp, __Pyx_memviewslice __pyx_v_G_temp, __Pyx_memviewslice __pyx_v_w_temp, CYTHON_UNUSED int __pyx_skip_dispatch) {
-  int __pyx_v_batch_size;
+  int __pyx_v_len_batch;
   int __pyx_v_len_subset;
   int __pyx_v_n_components;
   int __pyx_v_n_cols;
@@ -3408,15 +3408,15 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
   /* "modl/dict_fact_fast.pyx":210
  * 
  *     """
- *     cdef int batch_size = this_X.shape[0]             # <<<<<<<<<<<<<<
+ *     cdef int len_batch = sample_subset.shape[0]             # <<<<<<<<<<<<<<
  *     cdef int len_subset = subset.shape[0]
  *     cdef int n_components = D_.shape[0]
  */
-  __pyx_v_batch_size = (__pyx_v_this_X.shape[0]);
+  __pyx_v_len_batch = (__pyx_v_sample_subset.shape[0]);
 
   /* "modl/dict_fact_fast.pyx":211
  *     """
- *     cdef int batch_size = this_X.shape[0]
+ *     cdef int len_batch = sample_subset.shape[0]
  *     cdef int len_subset = subset.shape[0]             # <<<<<<<<<<<<<<
  *     cdef int n_components = D_.shape[0]
  *     cdef int n_cols = D_.shape[1]
@@ -3424,7 +3424,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
   __pyx_v_len_subset = (__pyx_v_subset.shape[0]);
 
   /* "modl/dict_fact_fast.pyx":212
- *     cdef int batch_size = this_X.shape[0]
+ *     cdef int len_batch = sample_subset.shape[0]
  *     cdef int len_subset = subset.shape[0]
  *     cdef int n_components = D_.shape[0]             # <<<<<<<<<<<<<<
  *     cdef int n_cols = D_.shape[1]
@@ -3595,7 +3595,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *         for k in range(n_components):
  *             D_subset[k, jj] = D_[k, j]             # <<<<<<<<<<<<<<
  * 
- *     counter_[0] += batch_size
+ *     counter_[0] += len_batch
  */
       __pyx_t_24 = __pyx_v_k;
       __pyx_t_25 = __pyx_v_j;
@@ -3608,15 +3608,15 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
   /* "modl/dict_fact_fast.pyx":235
  *             D_subset[k, jj] = D_[k, j]
  * 
- *     counter_[0] += batch_size             # <<<<<<<<<<<<<<
+ *     counter_[0] += len_batch             # <<<<<<<<<<<<<<
  * 
  *     if var_red == 3: # weight_based
  */
   __pyx_t_28 = 0;
-  *((long *) ( /* dim=0 */ (__pyx_v_counter_.data + __pyx_t_28 * __pyx_v_counter_.strides[0]) )) += __pyx_v_batch_size;
+  *((long *) ( /* dim=0 */ (__pyx_v_counter_.data + __pyx_t_28 * __pyx_v_counter_.strides[0]) )) += __pyx_v_len_batch;
 
   /* "modl/dict_fact_fast.pyx":237
- *     counter_[0] += batch_size
+ *     counter_[0] += len_batch
  * 
  *     if var_red == 3: # weight_based             # <<<<<<<<<<<<<<
  *         for jj in range(len_subset):
@@ -3630,7 +3630,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *     if var_red == 3: # weight_based
  *         for jj in range(len_subset):             # <<<<<<<<<<<<<<
  *             j = subset[jj]
- *             counter_[j + 1] += batch_size
+ *             counter_[j + 1] += len_batch
  */
     __pyx_t_19 = __pyx_v_len_subset;
     for (__pyx_t_20 = 0; __pyx_t_20 < __pyx_t_19; __pyx_t_20+=1) {
@@ -3640,8 +3640,8 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *     if var_red == 3: # weight_based
  *         for jj in range(len_subset):
  *             j = subset[jj]             # <<<<<<<<<<<<<<
- *             counter_[j + 1] += batch_size
- *         _get_weights(w_temp, subset, counter_, batch_size,
+ *             counter_[j + 1] += len_batch
+ *         _get_weights(w_temp, subset, counter_, len_batch,
  */
       __pyx_t_30 = __pyx_v_jj;
       __pyx_v_j = (*((int *) ( /* dim=0 */ (__pyx_v_subset.data + __pyx_t_30 * __pyx_v_subset.strides[0]) )));
@@ -3649,31 +3649,31 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
       /* "modl/dict_fact_fast.pyx":240
  *         for jj in range(len_subset):
  *             j = subset[jj]
- *             counter_[j + 1] += batch_size             # <<<<<<<<<<<<<<
- *         _get_weights(w_temp, subset, counter_, batch_size,
+ *             counter_[j + 1] += len_batch             # <<<<<<<<<<<<<<
+ *         _get_weights(w_temp, subset, counter_, len_batch,
  *              learning_rate, offset)
  */
       __pyx_t_31 = (__pyx_v_j + 1);
-      *((long *) ( /* dim=0 */ (__pyx_v_counter_.data + __pyx_t_31 * __pyx_v_counter_.strides[0]) )) += __pyx_v_batch_size;
+      *((long *) ( /* dim=0 */ (__pyx_v_counter_.data + __pyx_t_31 * __pyx_v_counter_.strides[0]) )) += __pyx_v_len_batch;
     }
 
     /* "modl/dict_fact_fast.pyx":241
  *             j = subset[jj]
- *             counter_[j + 1] += batch_size
- *         _get_weights(w_temp, subset, counter_, batch_size,             # <<<<<<<<<<<<<<
+ *             counter_[j + 1] += len_batch
+ *         _get_weights(w_temp, subset, counter_, len_batch,             # <<<<<<<<<<<<<<
  *              learning_rate, offset)
  * 
  */
-    __pyx_f_4modl_14dict_fact_fast__get_weights(__pyx_v_w_temp, __pyx_v_subset, __pyx_v_counter_, __pyx_v_batch_size, __pyx_v_learning_rate, __pyx_v_offset, 0);
+    __pyx_f_4modl_14dict_fact_fast__get_weights(__pyx_v_w_temp, __pyx_v_subset, __pyx_v_counter_, __pyx_v_len_batch, __pyx_v_learning_rate, __pyx_v_offset, 0);
 
     /* "modl/dict_fact_fast.pyx":245
  * 
  *         # P_temp = np.dot(D_subset, this_X.T)
  *         dgemm(&NTRANS, &TRANS,             # <<<<<<<<<<<<<<
- *               &n_components, &batch_size, &len_subset,
+ *               &n_components, &len_batch, &len_subset,
  *               &oned,
  */
-    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_batch_size), (&__pyx_v_len_subset), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_batch_size), (&__pyx_v_4modl_14dict_fact_fast_zerod), __pyx_v_this_code_ptr, (&__pyx_v_n_components));
+    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_len_batch), (&__pyx_v_len_subset), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_len_batch), (&__pyx_v_4modl_14dict_fact_fast_zerod), __pyx_v_this_code_ptr, (&__pyx_v_n_components));
 
     /* "modl/dict_fact_fast.pyx":255
  * 
@@ -3700,7 +3700,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *         for p in range(n_components):
  *             G_temp[p, p] += alpha / reduction             # <<<<<<<<<<<<<<
  * 
- *         dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
+ *         dposv(&UP, &n_components, &len_batch, this_G_ptr, &n_components,
  */
       __pyx_t_32 = __pyx_v_p;
       __pyx_t_33 = __pyx_v_p;
@@ -3710,11 +3710,11 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
     /* "modl/dict_fact_fast.pyx":266
  *             G_temp[p, p] += alpha / reduction
  * 
- *         dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,             # <<<<<<<<<<<<<<
+ *         dposv(&UP, &n_components, &len_batch, this_G_ptr, &n_components,             # <<<<<<<<<<<<<<
  *               this_code_ptr, &n_components,
  *               &info)
  */
-    __pyx_f_5scipy_6linalg_13cython_lapack_dposv((&__pyx_v_4modl_14dict_fact_fast_UP), (&__pyx_v_n_components), (&__pyx_v_batch_size), __pyx_v_this_G_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_info));
+    __pyx_f_5scipy_6linalg_13cython_lapack_dposv((&__pyx_v_4modl_14dict_fact_fast_UP), (&__pyx_v_n_components), (&__pyx_v_len_batch), __pyx_v_this_G_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_info));
 
     /* "modl/dict_fact_fast.pyx":269
  *               this_code_ptr, &n_components,
@@ -3731,7 +3731,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *         if info != 0:
  *             raise ValueError             # <<<<<<<<<<<<<<
  * 
- *         wdbatch = w_temp[0] / batch_size
+ *         wdbatch = w_temp[0] / len_batch
  */
       __Pyx_Raise(__pyx_builtin_ValueError, 0, 0, 0);
       {__pyx_filename = __pyx_f[0]; __pyx_lineno = 270; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -3748,16 +3748,16 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
     /* "modl/dict_fact_fast.pyx":272
  *             raise ValueError
  * 
- *         wdbatch = w_temp[0] / batch_size             # <<<<<<<<<<<<<<
+ *         wdbatch = w_temp[0] / len_batch             # <<<<<<<<<<<<<<
  *         one_m_w = 1 - w_temp[0]
  *         # A_ *= 1 - w_A
  */
     __pyx_t_34 = 0;
-    __pyx_v_wdbatch = ((*((double *) ( /* dim=0 */ (__pyx_v_w_temp.data + __pyx_t_34 * __pyx_v_w_temp.strides[0]) ))) / __pyx_v_batch_size);
+    __pyx_v_wdbatch = ((*((double *) ( /* dim=0 */ (__pyx_v_w_temp.data + __pyx_t_34 * __pyx_v_w_temp.strides[0]) ))) / __pyx_v_len_batch);
 
     /* "modl/dict_fact_fast.pyx":273
  * 
- *         wdbatch = w_temp[0] / batch_size
+ *         wdbatch = w_temp[0] / len_batch
  *         one_m_w = 1 - w_temp[0]             # <<<<<<<<<<<<<<
  *         # A_ *= 1 - w_A
  *         # A_ += this_code.dot(this_code.T) * w_A / batch_size
@@ -3769,10 +3769,10 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *         # A_ *= 1 - w_A
  *         # A_ += this_code.dot(this_code.T) * w_A / batch_size
  *         dgemm(&NTRANS, &TRANS,             # <<<<<<<<<<<<<<
- *               &n_components, &n_components, &batch_size,
+ *               &n_components, &n_components, &len_batch,
  *               &wdbatch,
  */
-    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_n_components), (&__pyx_v_batch_size), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_one_m_w), __pyx_v_A_ptr, (&__pyx_v_n_components));
+    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_n_components), (&__pyx_v_len_batch), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_one_m_w), __pyx_v_A_ptr, (&__pyx_v_n_components));
 
     /* "modl/dict_fact_fast.pyx":287
  *         # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
@@ -3800,7 +3800,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *             j = subset[jj]
  *             for k in range(n_components):             # <<<<<<<<<<<<<<
  *                 D_subset[k, jj] = B_[k, j] * (1 - w_temp[jj + 1])
- *             for ii in range(batch_size):
+ *             for ii in range(len_batch):
  */
       __pyx_t_22 = __pyx_v_n_components;
       for (__pyx_t_23 = 0; __pyx_t_23 < __pyx_t_22; __pyx_t_23+=1) {
@@ -3810,8 +3810,8 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *             j = subset[jj]
  *             for k in range(n_components):
  *                 D_subset[k, jj] = B_[k, j] * (1 - w_temp[jj + 1])             # <<<<<<<<<<<<<<
- *             for ii in range(batch_size):
- *                 this_X[ii, jj] *= w_temp[jj + 1] / batch_size
+ *             for ii in range(len_batch):
+ *                 this_X[ii, jj] *= w_temp[jj + 1] / len_batch
  */
         __pyx_t_37 = __pyx_v_k;
         __pyx_t_38 = __pyx_v_j;
@@ -3824,36 +3824,36 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
       /* "modl/dict_fact_fast.pyx":291
  *             for k in range(n_components):
  *                 D_subset[k, jj] = B_[k, j] * (1 - w_temp[jj + 1])
- *             for ii in range(batch_size):             # <<<<<<<<<<<<<<
- *                 this_X[ii, jj] *= w_temp[jj + 1] / batch_size
+ *             for ii in range(len_batch):             # <<<<<<<<<<<<<<
+ *                 this_X[ii, jj] *= w_temp[jj + 1] / len_batch
  *         dgemm(&NTRANS, &NTRANS,
  */
-      __pyx_t_22 = __pyx_v_batch_size;
+      __pyx_t_22 = __pyx_v_len_batch;
       for (__pyx_t_23 = 0; __pyx_t_23 < __pyx_t_22; __pyx_t_23+=1) {
         __pyx_v_ii = __pyx_t_23;
 
         /* "modl/dict_fact_fast.pyx":292
  *                 D_subset[k, jj] = B_[k, j] * (1 - w_temp[jj + 1])
- *             for ii in range(batch_size):
- *                 this_X[ii, jj] *= w_temp[jj + 1] / batch_size             # <<<<<<<<<<<<<<
+ *             for ii in range(len_batch):
+ *                 this_X[ii, jj] *= w_temp[jj + 1] / len_batch             # <<<<<<<<<<<<<<
  *         dgemm(&NTRANS, &NTRANS,
- *               &n_components, &len_subset, &batch_size,
+ *               &n_components, &len_subset, &len_batch,
  */
         __pyx_t_42 = (__pyx_v_jj + 1);
         __pyx_t_43 = __pyx_v_ii;
         __pyx_t_44 = __pyx_v_jj;
-        *((double *) ( /* dim=1 */ (( /* dim=0 */ ((char *) (((double *) __pyx_v_this_X.data) + __pyx_t_43)) ) + __pyx_t_44 * __pyx_v_this_X.strides[1]) )) *= ((*((double *) ( /* dim=0 */ (__pyx_v_w_temp.data + __pyx_t_42 * __pyx_v_w_temp.strides[0]) ))) / __pyx_v_batch_size);
+        *((double *) ( /* dim=1 */ (( /* dim=0 */ ((char *) (((double *) __pyx_v_this_X.data) + __pyx_t_43)) ) + __pyx_t_44 * __pyx_v_this_X.strides[1]) )) *= ((*((double *) ( /* dim=0 */ (__pyx_v_w_temp.data + __pyx_t_42 * __pyx_v_w_temp.strides[0]) ))) / __pyx_v_len_batch);
       }
     }
 
     /* "modl/dict_fact_fast.pyx":293
- *             for ii in range(batch_size):
- *                 this_X[ii, jj] *= w_temp[jj + 1] / batch_size
+ *             for ii in range(len_batch):
+ *                 this_X[ii, jj] *= w_temp[jj + 1] / len_batch
  *         dgemm(&NTRANS, &NTRANS,             # <<<<<<<<<<<<<<
- *               &n_components, &len_subset, &batch_size,
+ *               &n_components, &len_subset, &len_batch,
  *               &oned,
  */
-    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_n_components), (&__pyx_v_len_subset), (&__pyx_v_batch_size), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_batch_size), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components));
+    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_n_components), (&__pyx_v_len_subset), (&__pyx_v_len_batch), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_len_batch), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components));
 
     /* "modl/dict_fact_fast.pyx":300
  *               &oned,
@@ -3892,7 +3892,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *             for k in range(n_components):
  *                 B_[k, j] = D_subset[k, jj]             # <<<<<<<<<<<<<<
  *     else:
- *         for ii in range(batch_size):
+ *         for ii in range(len_batch):
  */
         __pyx_t_46 = __pyx_v_k;
         __pyx_t_47 = __pyx_v_jj;
@@ -3903,7 +3903,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
     }
 
     /* "modl/dict_fact_fast.pyx":237
- *     counter_[0] += batch_size
+ *     counter_[0] += len_batch
  * 
  *     if var_red == 3: # weight_based             # <<<<<<<<<<<<<<
  *         for jj in range(len_subset):
@@ -3915,18 +3915,18 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
   /* "modl/dict_fact_fast.pyx":305
  *                 B_[k, j] = D_subset[k, jj]
  *     else:
- *         for ii in range(batch_size):             # <<<<<<<<<<<<<<
+ *         for ii in range(len_batch):             # <<<<<<<<<<<<<<
  *             for jj in range(len_subset):
  *                 this_X[ii, jj] *= reduction
  */
   /*else*/ {
-    __pyx_t_19 = __pyx_v_batch_size;
+    __pyx_t_19 = __pyx_v_len_batch;
     for (__pyx_t_20 = 0; __pyx_t_20 < __pyx_t_19; __pyx_t_20+=1) {
       __pyx_v_ii = __pyx_t_20;
 
       /* "modl/dict_fact_fast.pyx":306
  *     else:
- *         for ii in range(batch_size):
+ *         for ii in range(len_batch):
  *             for jj in range(len_subset):             # <<<<<<<<<<<<<<
  *                 this_X[ii, jj] *= reduction
  * 
@@ -3936,7 +3936,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
         __pyx_v_jj = __pyx_t_23;
 
         /* "modl/dict_fact_fast.pyx":307
- *         for ii in range(batch_size):
+ *         for ii in range(len_batch):
  *             for jj in range(len_subset):
  *                 this_X[ii, jj] *= reduction             # <<<<<<<<<<<<<<
  * 
@@ -3952,19 +3952,19 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  * 
  *         # P_temp = np.dot(D_subset, this_X.T)
  *         dgemm(&NTRANS, &TRANS,             # <<<<<<<<<<<<<<
- *               &n_components, &batch_size, &len_subset,
+ *               &n_components, &len_batch, &len_subset,
  *               &oned,
  */
-    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_batch_size), (&__pyx_v_len_subset), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_batch_size), (&__pyx_v_4modl_14dict_fact_fast_zerod), __pyx_v_this_code_ptr, (&__pyx_v_n_components));
+    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_len_batch), (&__pyx_v_len_subset), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_len_batch), (&__pyx_v_4modl_14dict_fact_fast_zerod), __pyx_v_this_code_ptr, (&__pyx_v_n_components));
 
     /* "modl/dict_fact_fast.pyx":319
  *               )
  * 
- *         w = _get_simple_weights(subset, counter_, batch_size,             # <<<<<<<<<<<<<<
+ *         w = _get_simple_weights(subset, counter_, len_batch,             # <<<<<<<<<<<<<<
  *                                 learning_rate, offset)
  * 
  */
-    __pyx_v_w = __pyx_f_4modl_14dict_fact_fast__get_simple_weights(__pyx_v_subset, __pyx_v_counter_, __pyx_v_batch_size, __pyx_v_learning_rate, __pyx_v_offset, 0);
+    __pyx_v_w = __pyx_f_4modl_14dict_fact_fast__get_simple_weights(__pyx_v_subset, __pyx_v_counter_, __pyx_v_len_batch, __pyx_v_learning_rate, __pyx_v_offset, 0);
 
     /* "modl/dict_fact_fast.pyx":322
  *                                 learning_rate, offset)
@@ -4057,7 +4057,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *             G_temp[p, p] += alpha
  * 
  *         if var_red != 1:             # <<<<<<<<<<<<<<
- *             for ii in range(batch_size):
+ *             for ii in range(len_batch):
  *                 i = sample_subset[ii]
  */
     __pyx_t_29 = ((__pyx_v_var_red != 1) != 0);
@@ -4066,17 +4066,17 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
       /* "modl/dict_fact_fast.pyx":333
  * 
  *         if var_red != 1:
- *             for ii in range(batch_size):             # <<<<<<<<<<<<<<
+ *             for ii in range(len_batch):             # <<<<<<<<<<<<<<
  *                 i = sample_subset[ii]
  *                 row_counter_[i] += 1
  */
-      __pyx_t_19 = __pyx_v_batch_size;
+      __pyx_t_19 = __pyx_v_len_batch;
       for (__pyx_t_20 = 0; __pyx_t_20 < __pyx_t_19; __pyx_t_20+=1) {
         __pyx_v_ii = __pyx_t_20;
 
         /* "modl/dict_fact_fast.pyx":334
  *         if var_red != 1:
- *             for ii in range(batch_size):
+ *             for ii in range(len_batch):
  *                 i = sample_subset[ii]             # <<<<<<<<<<<<<<
  *                 row_counter_[i] += 1
  *                 w = pow(row_counter_[i], -learning_rate)
@@ -4085,7 +4085,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
         __pyx_v_i = (*((long *) ( /* dim=0 */ (__pyx_v_sample_subset.data + __pyx_t_60 * __pyx_v_sample_subset.strides[0]) )));
 
         /* "modl/dict_fact_fast.pyx":335
- *             for ii in range(batch_size):
+ *             for ii in range(len_batch):
  *                 i = sample_subset[ii]
  *                 row_counter_[i] += 1             # <<<<<<<<<<<<<<
  *                 w = pow(row_counter_[i], -learning_rate)
@@ -4131,7 +4131,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *                     beta_[i, p] *= 1 - w
  *                     beta_[i, p] += code_temp[p, ii] * w             # <<<<<<<<<<<<<<
  *                     code_temp[p, ii] = beta_[i, p]
- *         dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
+ *         dposv(&UP, &n_components, &len_batch, this_G_ptr, &n_components,
  */
           __pyx_t_65 = __pyx_v_p;
           __pyx_t_66 = __pyx_v_ii;
@@ -4143,7 +4143,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *                     beta_[i, p] *= 1 - w
  *                     beta_[i, p] += code_temp[p, ii] * w
  *                     code_temp[p, ii] = beta_[i, p]             # <<<<<<<<<<<<<<
- *         dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
+ *         dposv(&UP, &n_components, &len_batch, this_G_ptr, &n_components,
  *               this_code_ptr, &n_components,
  */
           __pyx_t_69 = __pyx_v_i;
@@ -4158,7 +4158,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *             G_temp[p, p] += alpha
  * 
  *         if var_red != 1:             # <<<<<<<<<<<<<<
- *             for ii in range(batch_size):
+ *             for ii in range(len_batch):
  *                 i = sample_subset[ii]
  */
     }
@@ -4166,11 +4166,11 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
     /* "modl/dict_fact_fast.pyx":341
  *                     beta_[i, p] += code_temp[p, ii] * w
  *                     code_temp[p, ii] = beta_[i, p]
- *         dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,             # <<<<<<<<<<<<<<
+ *         dposv(&UP, &n_components, &len_batch, this_G_ptr, &n_components,             # <<<<<<<<<<<<<<
  *               this_code_ptr, &n_components,
  *               &info)
  */
-    __pyx_f_5scipy_6linalg_13cython_lapack_dposv((&__pyx_v_4modl_14dict_fact_fast_UP), (&__pyx_v_n_components), (&__pyx_v_batch_size), __pyx_v_this_G_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_info));
+    __pyx_f_5scipy_6linalg_13cython_lapack_dposv((&__pyx_v_4modl_14dict_fact_fast_UP), (&__pyx_v_n_components), (&__pyx_v_len_batch), __pyx_v_this_G_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_info));
 
     /* "modl/dict_fact_fast.pyx":344
  *               this_code_ptr, &n_components,
@@ -4187,7 +4187,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *         if info != 0:
  *             raise ValueError             # <<<<<<<<<<<<<<
  * 
- *         wdbatch = w_norm / batch_size
+ *         wdbatch = w_norm / len_batch
  */
       __Pyx_Raise(__pyx_builtin_ValueError, 0, 0, 0);
       {__pyx_filename = __pyx_f[0]; __pyx_lineno = 345; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
@@ -4204,20 +4204,20 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
     /* "modl/dict_fact_fast.pyx":347
  *             raise ValueError
  * 
- *         wdbatch = w_norm / batch_size             # <<<<<<<<<<<<<<
+ *         wdbatch = w_norm / len_batch             # <<<<<<<<<<<<<<
  *         dgemm(&NTRANS, &TRANS,
- *               &n_components, &n_components, &batch_size,
+ *               &n_components, &n_components, &len_batch,
  */
-    __pyx_v_wdbatch = (__pyx_v_w_norm / __pyx_v_batch_size);
+    __pyx_v_wdbatch = (__pyx_v_w_norm / __pyx_v_len_batch);
 
     /* "modl/dict_fact_fast.pyx":348
  * 
- *         wdbatch = w_norm / batch_size
+ *         wdbatch = w_norm / len_batch
  *         dgemm(&NTRANS, &TRANS,             # <<<<<<<<<<<<<<
- *               &n_components, &n_components, &batch_size,
+ *               &n_components, &n_components, &len_batch,
  *               &wdbatch,
  */
-    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_n_components), (&__pyx_v_batch_size), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_A_ptr, (&__pyx_v_n_components));
+    __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_TRANS), (&__pyx_v_n_components), (&__pyx_v_n_components), (&__pyx_v_len_batch), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_code_ptr, (&__pyx_v_n_components), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_A_ptr, (&__pyx_v_n_components));
 
     /* "modl/dict_fact_fast.pyx":357
  *               )
@@ -4233,10 +4233,10 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *         if var_red == 4:
  *             # self.B_ += this_code.dot(X) * w_norm / batch_size
  *             dgemm(&NTRANS, &NTRANS,             # <<<<<<<<<<<<<<
- *               &n_components, &n_cols, &batch_size,
+ *               &n_components, &n_cols, &len_batch,
  *               &wdbatch,
  */
-      __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_n_components), (&__pyx_v_n_cols), (&__pyx_v_batch_size), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_full_X_ptr, (&__pyx_v_batch_size), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_B_ptr, (&__pyx_v_n_components));
+      __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_n_components), (&__pyx_v_n_cols), (&__pyx_v_len_batch), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_full_X_ptr, (&__pyx_v_len_batch), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_B_ptr, (&__pyx_v_n_components));
 
       /* "modl/dict_fact_fast.pyx":357
  *               )
@@ -4286,7 +4286,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *                 for k in range(n_components):
  *                     D_subset[k, jj] = B_[k, j]             # <<<<<<<<<<<<<<
  *             dgemm(&NTRANS, &NTRANS,
- *                   &n_components, &len_subset, &batch_size,
+ *                   &n_components, &len_subset, &len_batch,
  */
           __pyx_t_74 = __pyx_v_k;
           __pyx_t_75 = __pyx_v_j;
@@ -4300,10 +4300,10 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *                 for k in range(n_components):
  *                     D_subset[k, jj] = B_[k, j]
  *             dgemm(&NTRANS, &NTRANS,             # <<<<<<<<<<<<<<
- *                   &n_components, &len_subset, &batch_size,
+ *                   &n_components, &len_subset, &len_batch,
  *                   &wdbatch,
  */
-      __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_n_components), (&__pyx_v_len_subset), (&__pyx_v_batch_size), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_batch_size), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components));
+      __pyx_f_5scipy_6linalg_11cython_blas_dgemm((&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_4modl_14dict_fact_fast_NTRANS), (&__pyx_v_n_components), (&__pyx_v_len_subset), (&__pyx_v_len_batch), (&__pyx_v_wdbatch), __pyx_v_this_code_ptr, (&__pyx_v_n_components), __pyx_v_this_X_ptr, (&__pyx_v_len_batch), (&__pyx_v_4modl_14dict_fact_fast_oned), __pyx_v_D_subset_ptr, (&__pyx_v_n_components));
 
       /* "modl/dict_fact_fast.pyx":380
  *                   &oned,
@@ -4342,7 +4342,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
  *                 for k in range(n_components):
  *                     B_[k, j] = D_subset[k, jj]             # <<<<<<<<<<<<<<
  * 
- *     for ii in range(batch_size):
+ *     for ii in range(len_batch):
  */
           __pyx_t_79 = __pyx_v_k;
           __pyx_t_80 = __pyx_v_jj;
@@ -4359,17 +4359,17 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
   /* "modl/dict_fact_fast.pyx":385
  *                     B_[k, j] = D_subset[k, jj]
  * 
- *     for ii in range(batch_size):             # <<<<<<<<<<<<<<
+ *     for ii in range(len_batch):             # <<<<<<<<<<<<<<
  *         i = sample_subset[ii]
  *         for k in range(n_components):
  */
-  __pyx_t_19 = __pyx_v_batch_size;
+  __pyx_t_19 = __pyx_v_len_batch;
   for (__pyx_t_20 = 0; __pyx_t_20 < __pyx_t_19; __pyx_t_20+=1) {
     __pyx_v_ii = __pyx_t_20;
 
     /* "modl/dict_fact_fast.pyx":386
  * 
- *     for ii in range(batch_size):
+ *     for ii in range(len_batch):
  *         i = sample_subset[ii]             # <<<<<<<<<<<<<<
  *         for k in range(n_components):
  *             code_[i, k] = code_temp[k, ii]
@@ -4378,7 +4378,7 @@ static void __pyx_f_4modl_14dict_fact_fast__update_code(__Pyx_memviewslice __pyx
     __pyx_v_i = (*((long *) ( /* dim=0 */ (__pyx_v_sample_subset.data + __pyx_t_83 * __pyx_v_sample_subset.strides[0]) )));
 
     /* "modl/dict_fact_fast.pyx":387
- *     for ii in range(batch_size):
+ *     for ii in range(len_batch):
  *         i = sample_subset[ii]
  *         for k in range(n_components):             # <<<<<<<<<<<<<<
  *             code_[i, k] = code_temp[k, ii]

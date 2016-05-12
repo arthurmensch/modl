@@ -63,6 +63,7 @@ class DictCompleter(DictMF):
                  projection='partial',
                  fit_intercept=False, dict_init=None, l1_ratio=0,
                  max_n_iter=0,
+                 n_epochs=1,
                  random_state=None, verbose=0, backend='c', debug=False,
                  detrend=False,
                  crop=None,

@@ -4,7 +4,6 @@
 # cython: wraparound=False
 
 from libc.math cimport pow
-cimport numpy as np
 
 from scipy.linalg.cython_lapack cimport dposv
 from scipy.linalg.cython_blas cimport dgemm, dger
@@ -207,7 +206,7 @@ cpdef void _update_code(double[::1, :] this_X,
     weights: Temporary array. Holds the update weights
 
     """
-    cdef int batch_size = this_X.shape[0]
+    cdef int len_batch = sample_subset.shape[0]
     cdef int len_subset = subset.shape[0]
     cdef int n_components = D_.shape[0]
     cdef int n_cols = D_.shape[1]
@@ -232,21 +231,21 @@ cpdef void _update_code(double[::1, :] this_X,
         for k in range(n_components):
             D_subset[k, jj] = D_[k, j]
 
-    counter_[0] += batch_size
+    counter_[0] += len_batch
 
     if var_red == 3: # weight_based
         for jj in range(len_subset):
             j = subset[jj]
-            counter_[j + 1] += batch_size
-        _get_weights(w_temp, subset, counter_, batch_size,
+            counter_[j + 1] += len_batch
+        _get_weights(w_temp, subset, counter_, len_batch,
              learning_rate, offset)
 
         # P_temp = np.dot(D_subset, this_X.T)
         dgemm(&NTRANS, &TRANS,
-              &n_components, &batch_size, &len_subset,
+              &n_components, &len_batch, &len_subset,
               &oned,
               D_subset_ptr, &n_components,
-              this_X_ptr, &batch_size,
+              this_X_ptr, &len_batch,
               &zerod,
               this_code_ptr, &n_components
               )
@@ -263,18 +262,18 @@ cpdef void _update_code(double[::1, :] this_X,
         for p in range(n_components):
             G_temp[p, p] += alpha / reduction
 
-        dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
+        dposv(&UP, &n_components, &len_batch, this_G_ptr, &n_components,
               this_code_ptr, &n_components,
               &info)
         if info != 0:
             raise ValueError
 
-        wdbatch = w_temp[0] / batch_size
+        wdbatch = w_temp[0] / len_batch
         one_m_w = 1 - w_temp[0]
         # A_ *= 1 - w_A
         # A_ += this_code.dot(this_code.T) * w_A / batch_size
         dgemm(&NTRANS, &TRANS,
-              &n_components, &n_components, &batch_size,
+              &n_components, &n_components, &len_batch,
               &wdbatch,
               this_code_ptr, &n_components,
               this_code_ptr, &n_components,
@@ -288,13 +287,13 @@ cpdef void _update_code(double[::1, :] this_X,
             j = subset[jj]
             for k in range(n_components):
                 D_subset[k, jj] = B_[k, j] * (1 - w_temp[jj + 1])
-            for ii in range(batch_size):
-                this_X[ii, jj] *= w_temp[jj + 1] / batch_size
+            for ii in range(len_batch):
+                this_X[ii, jj] *= w_temp[jj + 1] / len_batch
         dgemm(&NTRANS, &NTRANS,
-              &n_components, &len_subset, &batch_size,
+              &n_components, &len_subset, &len_batch,
               &oned,
               this_code_ptr, &n_components,
-              this_X_ptr, &batch_size,
+              this_X_ptr, &len_batch,
               &oned,
               D_subset_ptr, &n_components)
         for jj in range(len_subset):
@@ -302,21 +301,21 @@ cpdef void _update_code(double[::1, :] this_X,
             for k in range(n_components):
                 B_[k, j] = D_subset[k, jj]
     else:
-        for ii in range(batch_size):
+        for ii in range(len_batch):
             for jj in range(len_subset):
                 this_X[ii, jj] *= reduction
 
         # P_temp = np.dot(D_subset, this_X.T)
         dgemm(&NTRANS, &TRANS,
-              &n_components, &batch_size, &len_subset,
+              &n_components, &len_batch, &len_subset,
               &oned,
               D_subset_ptr, &n_components,
-              this_X_ptr, &batch_size,
+              this_X_ptr, &len_batch,
               &zerod,
               this_code_ptr, &n_components
               )
 
-        w = _get_simple_weights(subset, counter_, batch_size,
+        w = _get_simple_weights(subset, counter_, len_batch,
                                 learning_rate, offset)
 
         if w != 1:
@@ -330,7 +329,7 @@ cpdef void _update_code(double[::1, :] this_X,
             G_temp[p, p] += alpha
 
         if var_red != 1:
-            for ii in range(batch_size):
+            for ii in range(len_batch):
                 i = sample_subset[ii]
                 row_counter_[i] += 1
                 w = pow(row_counter_[i], -learning_rate)
@@ -338,15 +337,15 @@ cpdef void _update_code(double[::1, :] this_X,
                     beta_[i, p] *= 1 - w
                     beta_[i, p] += code_temp[p, ii] * w
                     code_temp[p, ii] = beta_[i, p]
-        dposv(&UP, &n_components, &batch_size, this_G_ptr, &n_components,
+        dposv(&UP, &n_components, &len_batch, this_G_ptr, &n_components,
               this_code_ptr, &n_components,
               &info)
         if info != 0:
             raise ValueError
 
-        wdbatch = w_norm / batch_size
+        wdbatch = w_norm / len_batch
         dgemm(&NTRANS, &TRANS,
-              &n_components, &n_components, &batch_size,
+              &n_components, &n_components, &len_batch,
               &wdbatch,
               this_code_ptr, &n_components,
               this_code_ptr, &n_components,
@@ -357,10 +356,10 @@ cpdef void _update_code(double[::1, :] this_X,
         if var_red == 4:
             # self.B_ += this_code.dot(X) * w_norm / batch_size
             dgemm(&NTRANS, &NTRANS,
-              &n_components, &n_cols, &batch_size,
+              &n_components, &n_cols, &len_batch,
               &wdbatch,
               this_code_ptr, &n_components,
-              full_X_ptr, &batch_size,
+              full_X_ptr, &len_batch,
               &oned,
               B_ptr, &n_components
               )
@@ -371,10 +370,10 @@ cpdef void _update_code(double[::1, :] this_X,
                 for k in range(n_components):
                     D_subset[k, jj] = B_[k, j]
             dgemm(&NTRANS, &NTRANS,
-                  &n_components, &len_subset, &batch_size,
+                  &n_components, &len_subset, &len_batch,
                   &wdbatch,
                   this_code_ptr, &n_components,
-                  this_X_ptr, &batch_size,
+                  this_X_ptr, &len_batch,
                   &oned,
                   D_subset_ptr, &n_components)
             for jj in range(len_subset):
@@ -382,7 +381,7 @@ cpdef void _update_code(double[::1, :] this_X,
                 for k in range(n_components):
                     B_[k, j] = D_subset[k, jj]
 
-    for ii in range(batch_size):
+    for ii in range(len_batch):
         i = sample_subset[ii]
         for k in range(n_components):
             code_[i, k] = code_temp[k, ii]

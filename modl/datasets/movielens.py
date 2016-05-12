@@ -2,8 +2,9 @@
 # License: BSD
 import os
 
+import joblib
+import sklearn.externals.joblib as skjoblib
 from sklearn.datasets.base import get_data_home as _get_data_home
-from sklearn.externals import joblib
 
 
 def get_data_home():
@@ -27,14 +28,13 @@ def load_movielens(version):
         raise ValueError("Dowload dataset using 'make download-movielens%s' at"
                          " project root." % version)
 
-    X = joblib.load(path)
+    X = skjoblib.load(path)
     return X
 
 def load_netflix():
     data_home = get_data_home()
-
     path = os.path.join(data_home, "nf_prize", "X_tr.pkl")
-    X = joblib.load(path)
-    probe = os.path.join(data_home, "nf_prize", "X_te.pkl")
-    X = joblib.load(path)
-    return X
+    X_tr = joblib.load(path)
+    path = os.path.join(data_home, "nf_prize", "X_te.pkl")
+    X_te = joblib.load(path)
+    return X_tr, X_te
