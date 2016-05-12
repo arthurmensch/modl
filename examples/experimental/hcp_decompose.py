@@ -8,6 +8,8 @@ import time
 from os.path import expanduser, join
 
 from nilearn.datasets import fetch_atlas_smith_2009
+from nilearn.image import index_img
+from nilearn.plotting import plot_stat_map
 from sklearn.externals.joblib import Parallel, delayed
 
 from modl import datasets
@@ -17,36 +19,39 @@ from modl.spca_fmri import SpcaFmri
 def main():
     # Apply our decomposition estimator with reduction
     n_components = 70
-    n_jobs = 20
+    n_jobs = 15
     raw = True
     init = True
 
-    hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data',
+    # data_dir = '/storage/data'
+    data_dir = expanduser('~/data')
+
+    hcp_dataset = datasets.fetch_hcp_rest(data_dir=data_dir,
                                           n_subjects=2000)
     mask = hcp_dataset.mask
     if raw:
-        mapping = json.load(open('/storage/data/HCP_unmasked/mapping.json', 'r'))
+        mapping = json.load(open(join(data_dir, '/HCP_unmasked/mapping.json'), 'r'))
         func_filenames = sorted(list(mapping.values()))
-        func_filenames = func_filenames[:1]
+        func_filenames = func_filenames[:-8]
     else:
-        hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data',
-                                              n_subjects=2000)
-
-        func_filenames = hcp_dataset.func # list of 4D nifti files for each subject
+        # list of 4D nifti files for each subject
+        func_filenames = hcp_dataset.func
+        # Flatten it
+        func_filenames = [(record for record in subject)
+                          for subject in func_filenames]
 
         # print basic information on the dataset
         print('First functional nifti image (4D) is at: %s' %
               hcp_dataset.func[0])  # 4D data
 
-    reduction_list = [1, 2, 4, 8, 16]
+    reduction_list = [1, 2, 4, 8, 12]
     alpha_list = [1e-2, 1e-3, 1e-4]
 
-    reduction_list = [1]
-    alpha_list = [1e-2]
-
-    Parallel(n_jobs=n_jobs, verbose=10)(delayed(run)(idx, reduction, alpha, mask, raw, n_components, init, func_filenames) for idx, (reduction, alpha)
+    Parallel(n_jobs=n_jobs, verbose=10)(delayed(run)(idx, reduction, alpha,
+                                                     mask, raw, n_components,
+                                                     init, func_filenames) for idx, (reduction, alpha)
                                         in enumerate(itertools.product(reduction_list, alpha_list)))
-
+    # run(0, 12, 1e-2, mask, raw, n_components, init, func_filenames)
 
 def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
     trace_folder = expanduser('~/output/modl/hcp/experiment_%i' % idx)
@@ -56,6 +61,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
         pass
     dict_fact = SpcaFmri(mask=mask,
                          smoothing_fwhm=3,
+                         batch_size=50,
                          shelve=not raw,
                          n_components=n_components,
                          dict_init=fetch_atlas_smith_2009().rsn70 if
@@ -66,7 +72,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
                          n_epochs=1,
                          backend='c',
                          memory=expanduser("~/nilearn_cache"), memory_level=2,
-                         verbose=4,
+                         verbose=5,
                          n_jobs=1,
                          trace_folder=trace_folder
                          )
@@ -82,12 +88,18 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
     components_img.to_filename(join(trace_folder, 'components_final.nii.gz'))
     print('[Example] Run in %.2f s' % t1)
     # Show components from both methods using 4D plotting tools
+    import matplotlib.pyplot as plt
     from nilearn.plotting import plot_prob_atlas, show
 
     print('[Example] Displaying')
-
+    fig, axes = plt.subplots(2, 1)
     plot_prob_atlas(components_img, view_type="filled_contours",
-                    title="Reduced sparse PCA", colorbar=False)
+                    axes=axes[0])
+    plot_stat_map(index_img(components_img, 0),
+                  axes=axes[1],
+                  colorbar=False,
+                  threshold=0)
+    plt.savefig(join(trace_folder, 'components.pdf'))
     show()
 
 if __name__ == '__main__':

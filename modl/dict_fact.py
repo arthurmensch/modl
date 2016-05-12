@@ -204,7 +204,6 @@ class DictMF(BaseEstimator):
         self.counter_ = np.zeros(n_cols + 1, dtype='int')
 
         self.n_iter_ = 0
-        self.n_verbose_call_ = 0
 
         if self.var_red != 'weight_based':
             self.G_ = self.D_.dot(self.D_.T).T
@@ -385,6 +384,12 @@ class DictMF(BaseEstimator):
 
         n_rows, n_cols = X.shape
 
+        new_verbose_iter_ = 0
+        old_n_iter = self.n_iter_
+
+        if self.callback is not None:
+            self.callback(self)
+
         if sample_subset is None:
             sample_subset = np.arange(n_rows, dtype='int')
 
@@ -426,6 +431,11 @@ class DictMF(BaseEstimator):
                 dict_subset_lim = np.zeros(1, dtype='i4')
         subset_range = np.arange(n_cols, dtype='i4')
         for batch in batches:
+            if self.verbose:
+                if self.n_iter_ - old_n_iter >= new_verbose_iter_:
+                    print("Iteration %i" % self.n_iter_)
+                    new_verbose_iter_ += n_rows // self.verbose
+
             row_batch = row_range[batch]
             if 0 < self.max_n_iter <= self.n_iter_ + len(row_batch) - 1:
                 return
@@ -539,13 +549,6 @@ class DictMF(BaseEstimator):
             else:
                 self._update_dict_slow(dict_subset, D_range)
             self.n_iter_ += len(row_batch)
-
-            if self.verbose and self.n_iter_ // ceil(
-                    int(self.n_samples_ / self.verbose)) == self.n_verbose_call_:
-                print("Iteration %i" % self.n_iter_)
-                self.n_verbose_call_ += 1
-                if self.callback is not None:
-                    self.callback(self)
 
     def _update_code_slow(self, this_X,
                           subset,

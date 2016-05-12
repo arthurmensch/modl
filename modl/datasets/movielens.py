@@ -29,3 +29,12 @@ def load_movielens(version):
 
     X = joblib.load(path)
     return X
+
+def load_netflix():
+    data_home = get_data_home()
+
+    path = os.path.join(data_home, "nf_prize", "X_tr.pkl")
+    X = joblib.load(path)
+    probe = os.path.join(data_home, "nf_prize", "X_te.pkl")
+    X = joblib.load(path)
+    return X

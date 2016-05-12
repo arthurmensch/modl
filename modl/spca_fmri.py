@@ -243,6 +243,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                 dict_mf.partial_fit(this_data,
                                     sample_subset=offset + np.arange(this_data.shape[0]))
             else:
+                print(this_data)
                 dict_mf.partial_fit(this_data)
             if self.trace_folder is not None:
                 t1 = (time.time() - t0) + results['timings'][-1]

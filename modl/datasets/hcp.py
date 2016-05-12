@@ -82,7 +82,6 @@ def fetch_hcp_rest(data_dir, n_subjects=40):
                 subject_func.append(filename)
         func.append(subject_func)
 
-    print('len ids', len(ids))
     results = {'func': func, 'meta': meta,
                'mask': mask,
                'description': "'Human connectome project",
