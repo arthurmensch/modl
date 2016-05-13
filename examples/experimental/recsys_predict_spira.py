@@ -28,7 +28,7 @@ def sqnorm(M):
 
 
 class Callback(object):
-    def __init__(self, X_tr, X_te, refit=False, record_tr=False):
+    def __init__(self, X_tr, X_te, refit=False, record_train=False):
         self.X_tr = X_tr
         self.X_te = X_te
         self.obj = []
@@ -37,6 +37,7 @@ class Callback(object):
         self.start_time = time.clock()
         self.test_time = 0
         self.refit = refit
+        self.record_train = record_train
 
     def __call__(self, mf):
         test_time = time.clock()
