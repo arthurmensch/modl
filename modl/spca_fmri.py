@@ -250,7 +250,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                     data_array[:this_n_samples] = this_data.get()
                 else:
                     data_array[:this_n_samples] = self.masker_.transform(
-                        this_data[0],
+                        this_data[0],   
                         confounds=this_data[1])
             if self.trace_folder is not None:
                 t0 = time.time()
