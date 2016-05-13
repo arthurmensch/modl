@@ -258,7 +258,8 @@ def shelved_filter_and_mask(masker, imgs, params,
                             shelve=False,
                             squeeze=False):
     func = masker._cache(squeezed_filter_and_mask,
-                         ignore=['verbose', 'memory', 'memory_level', 'copy'])
+                         ignore=['verbose', 'memory', 'memory_level', 'copy'],
+                         mmap_mode='r')
     if shelve:
         func = func.call_and_shelve
     return func(imgs, masker.mask_img_, params,

@@ -244,7 +244,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                 print('Streaming record %s' % record)
             if raw:
                 data_array[:this_n_samples] = np.load(this_data,
-                                                      mmap_mode=None)
+                                                      mmap_mode='r')
             else:
                 if self.shelve:
                     data_array[:this_n_samples] = this_data.get()
@@ -257,7 +257,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             if self.var_red:
                 dict_mf.partial_fit(data_array[:this_n_samples],
                                     sample_subset=offset + sample_subset_range[
-                                                           :this_n_samples])
+                                                           :this_n_samples],
+                                    check_input=False)
             else:
                 dict_mf.partial_fit(data_array)
             if self.trace_folder is not None:

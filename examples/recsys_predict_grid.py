@@ -24,7 +24,7 @@ class Callback(object):
         self.X_te = X_te
         self.obj = []
         self.rmse = []
-        self.rmse_tr = []
+        # self.rmse_tr = []
         self.times = []
         self.q = []
         self.start_time = time.clock()
@@ -39,12 +39,12 @@ class Callback(object):
 
         X_pred = mf.predict(self.X_te)
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
-        print(rmse)
-        X_pred = mf.predict(self.X_tr)
-        rmse_tr = np.sqrt(np.mean((X_pred.data - self.X_tr.data) ** 2))
+        print('Train RMSE', rmse)
+        # X_pred = mf.predict(self.X_tr)
+        # rmse_tr = np.sqrt(np.mean((X_pred.data - self.X_tr.data) ** 2))
 
         self.rmse.append(rmse)
-        self.rmse_tr.append(rmse_tr)
+        # self.rmse_tr.append(rmse_tr)
         self.q.append(mf.D_[1, :10].copy())
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
@@ -57,7 +57,7 @@ def main(n_jobs):
     json.dump(alphas, open(expanduser('~/scores.json'), 'w+'))
 
 def single_run(alpha):
-    mf = DictCompleter(n_components=30, alpha=alpha, verbose=0,
+    mf = DictCompleter(n_components=30, alpha=alpha, verbose=10,
                        batch_size=4000, detrend=True,
                        offset=0,
                        fit_intercept=True,
@@ -74,8 +74,8 @@ def single_run(alpha):
 
     X_tr = X_tr.tocsr()
     X_te = X_te.tocsr()
-    # cb = Callback(X_tr, X_te)
-    # mf.set_params(callback=cb)
+    cb = Callback(X_tr, X_te)
+    mf.set_params(callback=cb)
     t0 = time.time()
     mf.fit(X_tr)
     score = mf.score(X_te)
