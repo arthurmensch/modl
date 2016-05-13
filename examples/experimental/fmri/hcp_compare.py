@@ -2,7 +2,6 @@
 # License: BSD
 # Adapted from nilearn example
 import itertools
-import json
 import os
 import time
 from os.path import expanduser, join
@@ -12,7 +11,7 @@ from nilearn.image import index_img
 from nilearn.plotting import plot_stat_map
 from sklearn.externals.joblib import Parallel, delayed
 
-from modl import datasets
+from modl.datasets.hcp import get_hcp_data
 from modl.spca_fmri import SpcaFmri
 
 
@@ -23,27 +22,9 @@ def main():
     raw = True
     init = True
 
-    # data_dir = '/storage/data'
     data_dir = expanduser('~/data')
 
-    hcp_dataset = datasets.fetch_hcp_rest(data_dir=data_dir,
-                                          n_subjects=2000)
-    mask = hcp_dataset.mask
-    if raw:
-        mapping = json.load(
-            open(join(data_dir, 'HCP_unmasked/mapping.json'), 'r'))
-        func_filenames = sorted(list(mapping.values()))
-        func_filenames = func_filenames[:-8]
-    else:
-        # list of 4D nifti files for each subject
-        func_filenames = hcp_dataset.func
-        # Flatten it
-        func_filenames = [(record for record in subject)
-                          for subject in func_filenames]
-
-        # print basic information on the dataset
-        print('First functional nifti image (4D) is at: %s' %
-              hcp_dataset.func[0])  # 4D data
+    func_filenames, mask = get_hcp_data(data_dir, raw)
 
     reduction_list = [1, 2, 4, 8, 12]
     alpha_list = [1e-2, 1e-3, 1e-4]

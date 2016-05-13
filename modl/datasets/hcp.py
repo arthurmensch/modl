@@ -11,6 +11,8 @@ from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
+from modl import datasets
+
 
 def _fetch_hcp_behavioral_data(resource_dir):
     exc_vars_file = os.path.join(resource_dir, 'excluded_scores.txt')
@@ -126,3 +128,25 @@ def _single_mask(masker, metadata, data_dir, dest_data_dir):
     origin = dict(array=dest_file + '.npy', **metadata)
     with open(join(dest_dir, 'origin.json'), 'w+') as f:
         json.dump(origin, f)
+
+
+def get_hcp_data(data_dir, raw):
+    hcp_dataset = datasets.fetch_hcp_rest(data_dir=data_dir,
+                                          n_subjects=2000)
+    mask = hcp_dataset.mask
+    if raw:
+        mapping = json.load(
+            open(join(data_dir, 'HCP_unmasked/mapping.json'), 'r'))
+        func_filenames = sorted(list(mapping.values()))
+        func_filenames = func_filenames[:-8]
+    else:
+        # list of 4D nifti files for each subject
+        func_filenames = hcp_dataset.func
+        # Flatten it
+        func_filenames = [(record for record in subject)
+                          for subject in func_filenames]
+
+        # print basic information on the dataset
+        print('First functional nifti image (4D) is at: %s' %
+              hcp_dataset.func[0])  # 4D data
+    return mask, func_filenames

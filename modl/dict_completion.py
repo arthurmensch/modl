@@ -58,7 +58,8 @@ class DictCompleter(DictMF):
             Learned dictionary
     """
 
-    def __init__(self, alpha=1.0, n_components=30, learning_rate=1.,
+    def __init__(self, alpha=1.0, beta=1.0,
+                 n_components=30, learning_rate=1.,
                  batch_size=1, offset=0,
                  projection='partial',
                  fit_intercept=False, dict_init=None, l1_ratio=0,
@@ -92,6 +93,7 @@ class DictCompleter(DictMF):
                          backend=backend,
                          debug=debug,
                          callback=callback)
+        self.beta = beta
         self.detrend = detrend
         self.crop = crop
 
@@ -108,6 +110,7 @@ class DictCompleter(DictMF):
 
         if self.detrend:
             X, self.row_mean_, self.col_mean_ = csr_center_data(X,
+                                                                beta=self.beta,
                                                                 inplace=False)
         DictMF.fit(self, X)
 
@@ -147,7 +150,7 @@ class DictCompleter(DictMF):
         return rmse(X, X_pred)
 
 
-def csr_center_data(X, inplace=False):
+def csr_center_data(X, beta, inplace=False):
     """Row and column centering from csr matrices
 
     Parameters
@@ -174,14 +177,16 @@ def csr_center_data(X, inplace=False):
     n_m = X.getnnz(axis=0)
     n_u[n_u == 0] = 1
     n_m[n_m == 0] = 1
-    for i in range(2):
-        w_u = X.sum(axis=1).A[:, 0] / n_u
-        for i, (left, right) in enumerate(zip(X.indptr[:-1], X.indptr[1:])):
-            X.data[left:right] -= w_u[i]
-        w_m = X.sum(axis=0).A[0] / n_m
-        X.data -= w_m.take(X.indices, mode='clip')
-        acc_u += w_u
-        acc_m += w_m
+
+    average_rating = np.mean(X.data)
+
+    w_u = (X.sum(axis=1).A[:, 0] + average_rating * beta) / (n_u + beta)
+    for i, (left, right) in enumerate(zip(X.indptr[:-1], X.indptr[1:])):
+        X.data[left:right] -= w_u[i]
+    w_m = X.sum(axis=0).A[0] / (n_m + beta)
+    X.data -= w_m.take(X.indices, mode='clip')
+    acc_u += w_u
+    acc_m += w_m
 
     return X, acc_u, acc_m
 

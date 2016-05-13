@@ -63,6 +63,7 @@ class Callback(object):
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
 
+
 def compare_learning_rate(version='100k', n_jobs=1, random_state=0):
     if version in ['100k', '1m', '10m']:
         X = load_movielens(version)
@@ -133,7 +134,7 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
         X_tr = load(expanduser('~/spira_data/nf_prize/X_tr.pkl'))
         X_te = load(expanduser('~/spira_data/nf_prize/X_te.pkl'))
 
-    cd_mf = ExplicitMF(n_components=60, max_iter=50, alpha=.1, normalize=True,
+    cd_mf = ExplicitMF(n_components=30, max_iter=50, alpha=.1, normalize=True,
                        verbose=1, )
     dl_mf = DictCompleter(n_components=30, n_epochs=20, alpha=1.17, verbose=5,
                           batch_size=10000, detrend=True,
@@ -141,7 +142,7 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
                           random_state=0,
                           learning_rate=.75,
                           backend='c')
-    dl_mf_partial = DictCompleter(n_components=60, n_epochs=20, alpha=1.17,
+    dl_mf_partial = DictCompleter(n_components=30, n_epochs=20, alpha=1.17,
                                   verbose=2,
                                   batch_size=10000, detrend=True,
                                   fit_intercept=True,
@@ -191,11 +192,13 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
                     batch_size=dl_params[version]['batch_size'])
             if version != 'netflix':
                 cv = ShuffleSplit(n_iter=3, train_size=0.66, random_state=0)
-                mf_scores = Parallel(n_jobs=n_jobs, verbose=10, max_nbytes=None)(
+                mf_scores = Parallel(n_jobs=n_jobs, verbose=10,
+                                     max_nbytes=None)(
                     delayed(single_fit)(mf, alpha, X_tr, cv) for alpha in
                     alphas)
             else:
-                mf_scores = Parallel(n_jobs=n_jobs, verbose=10, max_nbytes=None)(
+                mf_scores = Parallel(n_jobs=n_jobs, verbose=10,
+                                     max_nbytes=None)(
                     delayed(single_fit)(mf, alpha, X_tr, X_te,
                                         nested=False) for alpha in alphas)
             mf_scores = np.array(mf_scores).mean(axis=1)
