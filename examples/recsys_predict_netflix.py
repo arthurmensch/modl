@@ -28,7 +28,7 @@ def sqnorm(M):
 
 
 class Callback(object):
-    def __init__(self, X_tr, X_te, refit=False):
+    def __init__(self, X_tr, X_te, refit=False, record_tr=False):
         self.X_tr = X_tr
         self.X_te = X_te
         self.obj = []
@@ -48,14 +48,15 @@ class Callback(object):
                     mf._refit_code(self.X_tr_c_)
             else:
                 mf._refit_code(self.X_tr)
-        X_pred = mf.predict(self.X_tr)
-        loss = sqnorm(X_pred.data - self.X_tr.data) / 2
-        regul = mf.alpha * (sqnorm(mf.code_))  # + sqnorm(mf.Q_))
-        self.obj.append(loss + regul)
+        if self.record_tr:
+            X_pred = mf.predict(self.X_tr)
+            loss = sqnorm(X_pred.data - self.X_tr.data) / 2
+            regul = mf.alpha * (sqnorm(mf.code_))  # + sqnorm(mf.Q_))
+            self.obj.append(loss + regul)
 
         X_pred = mf.predict(self.X_te)
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
-        print(rmse)
+        print('Train RMSE', rmse)
         self.rmse.append(rmse)
 
         self.test_time += time.clock() - test_time
@@ -157,7 +158,7 @@ def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    alphas = np.logspace(-2, 1, 10)
+    alphas = np.logspace(-4, 2, 15)
     mf_list = [dl_mf_partial]
     dict_id = {cd_mf: 'cd', dl_mf: 'dl', dl_mf_partial: 'dl_partial'}
     names = {'cd': 'Coordinate descent', 'dl': 'Proposed online masked MF',
@@ -394,7 +395,7 @@ def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
 if __name__ == '__main__':
     # compare_learning_rate('netflix', n_jobs=10)
     # plot_learning_rate()
-    main('netflix', n_jobs=1, cross_val=False)
+    main('netflix', n_jobs=15, cross_val=True)
     # main('100k', n_jobs=1, cross_val=False)
     # main('1m', cross_val=True, n_jobs=15, random_state=0)
     # main('10m', n_jobs=15, cross_val=True, random_state=0)
