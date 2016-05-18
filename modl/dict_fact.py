@@ -11,8 +11,9 @@ from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
-from .dict_fact_fast import _update_dict, _update_code, _get_weights, \
-    _get_simple_weights, _update_code_sparse_batch, dict_learning_fast
+from .dict_fact_fast import _get_weights, \
+    _get_simple_weights, dict_learning_sparse, \
+    dict_learning_dense
 
 
 class DictMF(BaseEstimator):
@@ -192,7 +193,7 @@ class DictMF(BaseEstimator):
                 U = self.random_state_.randn(
                     n_cols,
                     self.n_components - 1,
-                    )
+                )
                 Q, _ = np.linalg.qr(U)
                 self.D_[1:] = Q.T
             else:
@@ -436,51 +437,93 @@ class DictMF(BaseEstimator):
 
         self.random_state_.shuffle(row_range)
 
-        if self.sparse_ and self.backend == 'c':
+        if self.backend == 'c':
             random_seed = self.random_state_.randint(np.iinfo(np.uint32).max)
-            dict_learning_fast(X.data, X.indices,
-                               X.indptr,
-                               n_rows,
-                               n_cols,
-                               row_range,
-                               sample_subset,
-                               self.batch_size,
-                               self.alpha,
-                               self.learning_rate,
-                               self.offset,
-                               self.fit_intercept,
-                               self.l1_ratio,
-                               self._get_var_red(),
-                               self._get_projection(),
-                               self.reduction,
-                               self.D_,
-                               self.code_,
-                               self.A_,
-                               self.B_,
-                               self.G_,
-                               self.beta_,
-                               self.multiplier_,
-                               self.counter_,
-                               self.row_counter_,
-                               self._D_subset,
-                               self._code_temp,
-                               self._G_temp,
-                               self._this_X,
-                               self._w_temp,
-                               self._subset_mask,
-                               self._dict_subset,
-                               self._dict_subset_lim,
-                               self._this_sample_subset,
-                               self._dummy_2d_float,
-                               self._R,
-                               self._D_range,
-                               self._norm_temp,
-                               self._proj_temp,
-                               random_seed,
-                               self.verbose,
-                               self.n_iter_,
-                               self._callback,
-                               )
+            if self.sparse_:
+                dict_learning_sparse(X.data, X.indices,
+                                     X.indptr,
+                                     n_rows,
+                                     n_cols,
+                                     row_range,
+                                     sample_subset,
+                                     self.batch_size,
+                                     self.alpha,
+                                     self.learning_rate,
+                                     self.offset,
+                                     self.fit_intercept,
+                                     self.l1_ratio,
+                                     self._get_var_red(),
+                                     self._get_projection(),
+                                     self.reduction,
+                                     self.D_,
+                                     self.code_,
+                                     self.A_,
+                                     self.B_,
+                                     self.G_,
+                                     self.beta_,
+                                     self.multiplier_,
+                                     self.counter_,
+                                     self.row_counter_,
+                                     self._D_subset,
+                                     self._code_temp,
+                                     self._G_temp,
+                                     self._this_X,
+                                     self._w_temp,
+                                     self._subset_mask,
+                                     self._dict_subset,
+                                     self._dict_subset_lim,
+                                     self._this_sample_subset,
+                                     self._dummy_2d_float,
+                                     self._R,
+                                     self._D_range,
+                                     self._norm_temp,
+                                     self._proj_temp,
+                                     random_seed,
+                                     self.verbose,
+                                     self.n_iter_,
+                                     self._callback,
+                                     )
+            else:
+                dict_learning_dense(X,
+                                    row_range,
+                                    sample_subset,
+                                    self.batch_size,
+                                    self.alpha,
+                                    self.learning_rate,
+                                    self.offset,
+                                    self.fit_intercept,
+                                    self.l1_ratio,
+                                    self._get_var_red(),
+                                    self._get_projection(),
+                                    self.reduction,
+                                    self.D_,
+                                    self.code_,
+                                    self.A_,
+                                    self.B_,
+                                    self.G_,
+                                    self.beta_,
+                                    self.multiplier_,
+                                    self.counter_,
+                                    self.row_counter_,
+                                    self._D_subset,
+                                    self._code_temp,
+                                    self._G_temp,
+                                    self._this_X,
+                                    self._full_X,
+                                    self._w_temp,
+                                    self._subset_range,
+                                    self._len_subset,
+                                    self._this_sample_subset,
+                                    self._R,
+                                    self._D_range,
+                                    self._norm_temp,
+                                    self._proj_temp,
+                                    random_seed,
+                                    self.verbose,
+                                    self.n_iter_,
+                                    self._callback,
+                                    )
+
         else:
             new_verbose_iter_ = 0
             old_n_iter = self.n_iter_[0]
@@ -502,59 +545,21 @@ class DictMF(BaseEstimator):
                 if 0 < self.max_n_iter <= self.n_iter_[0] + len_batch - 1:
                     return
                 if self.sparse_:
-                    if self.backend == 'c':
-                        _update_code_sparse_batch(X.data, X.indices,
-                                                  X.indptr,
-                                                  n_rows,
-                                                  n_cols,
-                                                  row_batch,
-                                                  self._this_sample_subset[
-                                                  :len_batch],
-                                                  self.alpha,
-                                                  self.learning_rate,
-                                                  self.offset,
-                                                  self._get_var_red(),
-                                                  self._get_projection(),
-                                                  self.reduction,
-                                                  self.D_,
-                                                  self.code_,
-                                                  self.A_,
-                                                  self.B_,
-                                                  self.G_,
-                                                  self.beta_,
-                                                  self.multiplier_,
-                                                  self.counter_,
-                                                  self.row_counter_,
-                                                  self._D_subset,
-                                                  self._code_temp,
-                                                  self._G_temp,
-                                                  self._this_X,
-                                                  self._w_temp,
-                                                  self._subset_mask,
-                                                  self._dict_subset,
-                                                  self._dict_subset_lim,
-                                                  self._dummy_2d_float,
-                                                  )
-                        # This is hackish, but np.where becomes a
-                        # bottleneck for low batch size otherwise
-                        dict_subset = self._dict_subset[
-                                      :self._dict_subset_lim[0]]
-                    else:
-                        for j in row_batch:
-                            subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
-                            self._this_X[0, :subset.shape[0]] = X.data[
-                                                                X.indptr[j]:
-                                                                X.indptr[
-                                                                    j + 1]]
-                            self._update_code_slow(
-                                self._this_X[:, :subset.shape[0]],
-                                subset,
-                                sample_subset[j:j + 1])
-                        dict_subset = np.concatenate([X.indices[
-                                                      X.indptr[j]:X.indptr[
-                                                          j + 1]]
-                                                      for j in row_batch])
-                        dict_subset = np.unique(dict_subset)
+                    for j in row_batch:
+                        subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
+                        self._this_X[0, :subset.shape[0]] = X.data[
+                                                            X.indptr[j]:
+                                                            X.indptr[
+                                                                j + 1]]
+                        self._update_code_slow(
+                            self._this_X[:, :subset.shape[0]],
+                            subset,
+                            sample_subset[j:j + 1])
+                    dict_subset = np.concatenate([X.indices[
+                                                  X.indptr[j]:X.indptr[
+                                                      j + 1]]
+                                                  for j in row_batch])
+                    dict_subset = np.unique(dict_subset)
                 # End if self.sparse_
                 else:
                     if self.reduction != 1:
@@ -566,57 +571,16 @@ class DictMF(BaseEstimator):
                     self._full_X[:len_batch] = X[row_batch]
                     self._this_X[:len_batch] = self._full_X[:len_batch, subset]
 
-                    if self.backend == 'c':
-                        _update_code(self._this_X,
-                                     subset,
-                                     self._this_sample_subset[:len_batch],
-                                     self.alpha,
-                                     self.learning_rate,
-                                     self.offset,
-                                     self._get_var_red(),
-                                     self._get_projection(),
-                                     self.reduction,
-                                     self.D_,
-                                     self.code_,
-                                     self.A_,
-                                     self.B_,
-                                     self.G_,
-                                     self.beta_,
-                                     self.multiplier_,
-                                     self.counter_,
-                                     self.row_counter_,
-                                     self._full_X,
-                                     self._D_subset,
-                                     self._code_temp,
-                                     self._G_temp,
-                                     self._w_temp)
-                    else:
-                        self._update_code_slow(self._this_X,
-                                               subset,
-                                               sample_subset[row_batch],
-                                               full_X=self._full_X)
+                    self._update_code_slow(self._this_X,
+                                           subset,
+                                           sample_subset[row_batch],
+                                           full_X=self._full_X)
                     dict_subset = subset
                 # End else
                 self._reset_stat()
                 self.random_state_.shuffle(self._D_range)
                 # Dictionary update
-                if self.backend == 'c':
-                    _update_dict(self.D_,
-                                 dict_subset,
-                                 self.fit_intercept,
-                                 self.l1_ratio,
-                                 self._get_projection(),
-                                 self._get_var_red(),
-                                 self.A_,
-                                 self.B_,
-                                 self.G_,
-                                 self._D_range,
-                                 self._R,
-                                 self._D_subset,
-                                 self._norm_temp,
-                                 self._proj_temp)
-                else:
-                    self._update_dict_slow(dict_subset, self._D_range)
+                self._update_dict_slow(dict_subset, self._D_range)
                 self.n_iter_[0] += len(row_batch)
 
     def _update_code_slow(self, this_X,

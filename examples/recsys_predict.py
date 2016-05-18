@@ -3,8 +3,9 @@
 import time
 
 import numpy as np
-from modl.datasets.movielens import load_netflix
 
+from modl._utils.cross_validation import train_test_split
+from modl.datasets.recsys import load_movielens
 from modl.dict_completion import DictCompleter
 
 def sqnorm(M):
@@ -49,10 +50,9 @@ mf = DictCompleter(n_components=30, alpha=.001, beta=100, verbose=3,
                    backend='c')
 
 # Need to download from spira
-# X = load_movielens('10m')
-# X_tr, X_te = train_test_split(X, train_size=0.75,
-#                               random_state=random_state)
-X_tr, X_te = load_netflix()
+X = load_movielens('10m')
+X_tr, X_te = train_test_split(X, train_size=0.75,
+                              random_state=random_state)
 
 X_tr = X_tr.tocsr()
 X_te = X_te.tocsr()
@@ -64,19 +64,20 @@ print('Final test RMSE:', mf.score(X_te))
 print('Time : %.2f s' % (time.time() - t0))
 
 
-# plt.figure()
-# plt.plot(cb.times, cb.rmse, label='Test')
-# plt.plot(cb.times, cb.rmse_tr, label='Train')
-#
-# plt.legend()
-# plt.xlabel("CPU time")
-# plt.xscale("log")
-# plt.ylabel("RMSE")
-# plt.title('Prediction scores')
-#
-# plt.figure()
-# plt.plot(np.arange(len(cb.q)), cb.q)
-# plt.xlabel('Time (relative)')
-# plt.ylabel('Feature value')
-# plt.title('Dictionary trajectory')
-# plt.show()
+import matplotlib.pyplot as plt
+plt.figure()
+plt.plot(cb.times, cb.rmse, label='Test')
+plt.plot(cb.times, cb.rmse_tr, label='Train')
+
+plt.legend()
+plt.xlabel("CPU time")
+plt.xscale("log")
+plt.ylabel("RMSE")
+plt.title('Prediction scores')
+
+plt.figure()
+plt.plot(np.arange(len(cb.q)), cb.q)
+plt.xlabel('Time (relative)')
+plt.ylabel('Feature value')
+plt.title('Dictionary trajectory')
+plt.show()

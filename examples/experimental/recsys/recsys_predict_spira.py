@@ -10,14 +10,14 @@ from os.path import expanduser, join
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn.apionly as sns
-from joblib import load, Parallel, delayed
+from joblib import Parallel, delayed
 from matplotlib import gridspec
 from sklearn import clone
 from spira.impl.matrix_fact import ExplicitMF
 
-from modl._utils.cross_validation import train_test_split, ShuffleSplit, \
+from modl._utils.cross_validation import ShuffleSplit, \
     cross_val_score
-from modl.datasets.recsys import load_movielens
+from modl.datasets.recsys import get_recsys_data
 from modl.dict_completion import DictCompleter, csr_center_data
 
 trace_dir = expanduser('~/output/modl/recsys_spira')
@@ -131,7 +131,7 @@ class Callback(object):
 
 
 def compare_learning_rate(dataset='100k', n_jobs=1, random_state=0):
-    X_tr, X_te = prepare_data(random_state, dataset)
+    X_tr, X_te = get_recsys_data(random_state, dataset)
     mf = copy.deepcopy(estimator_grid['dl_partial'])
 
     hyperparams = _get_hyperparams()
@@ -157,7 +157,7 @@ def compare_learning_rate(dataset='100k', n_jobs=1, random_state=0):
 def single_learning_rate(mf, learning_rate, X_tr, X_te):
     mf = clone(mf)
     mf.set_params(learning_rate=learning_rate)
-    cb = Callback(X_tr, X_te, refit=True)
+    cb = Callback(X_tr, X_te, refit=False)
     mf.set_params(callback=cb)
     mf.fit(X_tr)
     return dict(time=cb.times,
@@ -169,7 +169,7 @@ def cross_val(dataset='100k',
               n_jobs=1):
     results = copy.deepcopy(estimator_grid)
 
-    X_te, X_tr = prepare_data(dataset, random_state)
+    X_te, X_tr = get_recsys_data(dataset, random_state)
 
     subdir = 'cross_val'
     output_dir = expanduser(join(trace_dir, subdir))
@@ -231,19 +231,6 @@ def cross_val(dataset='100k',
         json.dump(results, f)
 
 
-def prepare_data(dataset, random_state):
-    if dataset in ['100k', '1m', '10m']:
-        X = load_movielens(dataset)
-        X_tr, X_te = train_test_split(X, train_size=0.75,
-                                      random_state=random_state)
-        X_tr = X_tr.tocsr()
-        X_te = X_te.tocsr()
-    elif dataset is 'netflix':
-        X_tr = load(expanduser('~/spira_data/nf_prize/X_tr.pkl'))
-        X_te = load(expanduser('~/spira_data/nf_prize/X_te.pkl'))
-    return X_te, X_tr
-
-
 def benchmark(dataset='100k',
               random_state=0,
               n_jobs=1):
@@ -252,7 +239,7 @@ def benchmark(dataset='100k',
     hyperparams = _get_hyperparams()
     cvparams = _get_cvparams()
 
-    X_te, X_tr = prepare_data(dataset, random_state)
+    X_te, X_tr = get_recsys_data(dataset, random_state)
 
     subdir = 'benches'
     output_dir = expanduser(join(trace_dir, subdir))
@@ -466,10 +453,10 @@ def plot_benchs():
 
 
 if __name__ == '__main__':
-    # cross_val('1m', n_jobs=15)
-    benchmark('1m', n_jobs=15)
-    # cross_val('10m', n_jobs=15)
-    # benchmark('10m', n_jobs=15)
+    cross_val('1m', n_jobs=15)
+    benchmark('1m', n_jobs=3)
+    cross_val('10m', n_jobs=15)
+    benchmark('10m', n_jobs=3)
+    cross_val('netflix', n_jobs=15)
+    benchmark('netflix', n_jobs=3)
     plot_benchs()
-    # main('10m', n_jobs=15, cross_val=True)
-    # main('netflix', n_jobs=15, cross_val=True)

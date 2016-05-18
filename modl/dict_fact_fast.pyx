@@ -46,6 +46,13 @@ cdef void _shuffle(long[:] arr, UINT32_t* random_state):
         j = rand_int(i + 1, random_state)
         arr[i], arr[j] = arr[j], arr[i]
 
+cdef void _shuffle_int(int[:] arr, UINT32_t* random_state):
+    cdef int len_arr = arr.shape[0]
+    cdef int i, j
+    for i in range(len_arr -1, 0, -1):
+        j = rand_int(i + 1, random_state)
+        arr[i], arr[j] = arr[j], arr[i]
+
 cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
     cdef int len_subset = subset.shape[0]
@@ -555,7 +562,7 @@ cpdef void _predict(double[:] X_data,
             data[ii] = dot
 
 
-def dict_learning_fast(double[:] X_data, int[:] X_indices,
+def dict_learning_sparse(double[:] X_data, int[:] X_indices,
                     int[:] X_indptr, long n_rows, long n_cols,
                     long[:] row_range,
                     long[:] sample_subset,
@@ -606,6 +613,8 @@ def dict_learning_fast(double[:] X_data, int[:] X_indices,
     cdef long old_n_iter = n_iter_[0]
     cdef long new_verbose_iter_ = 0
 
+    cdef int i, ii
+
     for i in range(n_batches):
         if verbose and n_iter_[0] - old_n_iter >= new_verbose_iter_:
             print("Iteration %i" % n_iter_[0])
@@ -653,6 +662,129 @@ def dict_learning_fast(double[:] X_data, int[:] X_indices,
         _shuffle(_D_range, &random_seed)
         _update_dict(D_,
                      _dict_subset[:_dict_subset_lim[0]],
+                     fit_intercept,
+                     l1_ratio,
+                     projection,
+                     var_red,
+                     A_,
+                     B_,
+                     G_,
+                     _D_range,
+                     _R,
+                     _D_subset,
+                     _norm_temp,
+                     _proj_temp)
+        n_iter_[0] += len_batch
+
+
+def dict_learning_dense(double[:, ::1] X,
+                    long[:] row_range,
+                    long[:] sample_subset,
+                    long batch_size,
+                    double alpha,
+                    double learning_rate,
+                    double offset,
+                    bint fit_intercept,
+                    double l1_ratio,
+                    long var_red,
+                    long projection,
+                    double reduction,
+                    double[::1, :] D_,
+                    double[:, ::1] code_,
+                    double[::1, :] A_,
+                    double[::1, :] B_,
+                    double[::1, :] G_,
+                    double[::1, :] beta_,
+                    double[:] multiplier_,
+                    long[:] counter_,
+                    long[:] row_counter_,
+                    double[::1, :] _D_subset,
+                    double[::1, :] _code_temp,
+                    double[::1, :] _G_temp,
+                    double[::1, :] _this_X,
+                    double[::1, :] _full_X,
+                    double[:] _w_temp,
+                    int[:] _subset_range,
+                    long _len_subset,
+                    long[:] _this_sample_subset,
+                    double[::1, :] _R,
+                    long[:] _D_range,
+                    double[:] _norm_temp,
+                    double[:] _proj_temp,
+                    UINT32_t random_seed,
+                    long verbose,
+                    long[:] n_iter_,
+                    _callback):
+
+    cdef int len_row_range = row_range.shape[0]
+    cdef long[:] row_batch
+    cdef int n_batches = int(ceil(len_row_range / batch_size))
+    cdef int start = 0
+    cdef int stop = 0
+    cdef int len_batch = 0
+
+    cdef int n_rows = X.shape[0]
+    cdef int n_cols = X.shape[1]
+
+    cdef long old_n_iter = n_iter_[0]
+    cdef long new_verbose_iter_ = 0
+
+    cdef int i, ii, jj, j
+
+    cdef int[:] subset
+
+    for i in range(n_batches):
+        if verbose and n_iter_[0] - old_n_iter >= new_verbose_iter_:
+            print("Iteration %i" % n_iter_[0])
+            new_verbose_iter_ += n_rows // verbose
+            _callback()
+        start = i * batch_size
+        stop = start + batch_size
+        if stop > len_row_range:
+            stop = len_row_range
+        len_batch = stop - start
+        row_batch = row_range[start:stop]
+
+        if reduction != 1:
+            _shuffle_int(_subset_range, &random_seed)
+            subset = _subset_range[:_len_subset]
+        else:
+            subset = _subset_range
+
+        for ii in range(len_batch):
+            if var_red == 4:
+                for jj in range(n_cols):
+                    _full_X[ii, jj] = X[row_batch[ii], jj]
+            for jj in range(_len_subset):
+                j = subset[jj]
+                _this_X[ii, jj] = X[row_batch[ii], j]
+            _this_sample_subset[ii] = sample_subset[row_batch[ii]]
+        _update_code(_this_X,
+                     subset,
+                     _this_sample_subset[:len_batch],
+                     alpha,
+                     learning_rate,
+                     offset,
+                     var_red,
+                     projection,
+                     reduction,
+                     D_,
+                     code_,
+                     A_,
+                     B_,
+                     G_,
+                     beta_,
+                     multiplier_,
+                     counter_,
+                     row_counter_,
+                     _full_X,
+                     _D_subset,
+                     _code_temp,
+                     _G_temp,
+                     _w_temp)
+        _shuffle(_D_range, &random_seed)
+        _update_dict(D_,
+                     subset,
                      fit_intercept,
                      l1_ratio,
                      projection,

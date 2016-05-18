@@ -131,15 +131,15 @@ def _single_mask(masker, metadata, data_dir, dest_data_dir):
 
 
 def get_hcp_data(data_dir, raw):
-    hcp_dataset = datasets.fetch_hcp_rest(data_dir=data_dir,
-                                          n_subjects=2000)
-    mask = hcp_dataset.mask
     if raw:
+        mask = join(data_dir, 'HCP_extra/mask_img.nii.gz')
         mapping = json.load(
             open(join(data_dir, 'HCP_unmasked/mapping.json'), 'r'))
         func_filenames = sorted(list(mapping.values()))
-        func_filenames = func_filenames[:-8]
     else:
+        hcp_dataset = datasets.fetch_hcp_rest(data_dir=data_dir,
+                                              n_subjects=2000)
+        mask = hcp_dataset.mask
         # list of 4D nifti files for each subject
         func_filenames = hcp_dataset.func
         # Flatten it

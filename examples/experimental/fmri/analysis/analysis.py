@@ -75,7 +75,7 @@ def analyse_dir(output_dir, X, masker):
                                       'record_*.nii.gz'),
                        key=lambda t: int(t[7:-7]))
     timings = []
-    for filename in filenames[::10]:
+    for filename in filenames[::reduction]:
         record = int(filename[7:-7])
         timing = results['timings'][record]
         print('Record %i' % record)
@@ -112,7 +112,7 @@ def main(output_dir, n_jobs):
 
     test_data = func_filenames[(-n_test_records * 2)::2]
 
-    n_samples, n_voxels = np.load(test_data[0], mmap_mode='r').shape
+    n_samples, n_voxels = np.load(test_data[-1], mmap_mode='r').shape
     X = np.empty((n_test_records * n_samples, n_voxels))
 
     for i, this_data in enumerate(test_data):

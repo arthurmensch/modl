@@ -24,7 +24,7 @@ init = True
 
 dict_fact = SpcaFmri(mask=mask,
                      smoothing_fwhm=3,
-                     shelve=raw,
+                     shelve=not raw,
                      n_components=n_components,
                      dict_init=fetch_atlas_smith_2009().rsn70 if init else None,
                      reduction=12,

@@ -34,7 +34,6 @@ def main():
                                         idx, (reduction, alpha)
                                         in enumerate(
         itertools.product(reduction_list, alpha_list)))
-    # run(0, 12, 1e-2, n_components, init, func_filenames)
 
 
 def run(idx, reduction, alpha, n_components, init, func_filenames):
@@ -73,7 +72,7 @@ def run(idx, reduction, alpha, n_components, init, func_filenames):
     print('[Example] Run in %.2f s' % t1)
     # Show components from both methods using 4D plotting tools
     import matplotlib.pyplot as plt
-    from nilearn.plotting import plot_prob_atlas, show
+    from nilearn.plotting import plot_prob_atlas
 
     print('[Example] Displaying')
     fig, axes = plt.subplots(2, 1)
@@ -84,7 +83,6 @@ def run(idx, reduction, alpha, n_components, init, func_filenames):
                   colorbar=False,
                   threshold=0)
     plt.savefig(join(trace_folder, 'components.pdf'))
-    show()
 
 
 if __name__ == '__main__':

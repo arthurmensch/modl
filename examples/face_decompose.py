@@ -145,5 +145,4 @@ axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
 axes[1].set_xlabel('Sparsity')
 axes[0].set_xscale('log')
 
-
 plt.show()
