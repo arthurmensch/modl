@@ -67,9 +67,14 @@ def analyse_dir(output_dir, X, masker):
     objectives = []
     l1l2s = []
     analysis = {}
+    if os._exists(join(output_dir, 'analysis.json')):
+        return
+    try:
+        with open(join(output_dir, 'results.json'), 'r') as f:
+            results = json.load(f)
+    except IOError:
+        return
 
-    with open(join(output_dir, 'results.json'), 'r') as f:
-        results = json.load(f)
     reduction = int(results['reduction'])
     filenames = sorted(fnmatch.filter(output_files,
                                       'record_*.nii.gz'),
@@ -119,10 +124,10 @@ def main(output_dir, n_jobs):
         X[i * n_samples:(i + 1) * n_samples] = np.load(this_data,
                                                        mmap_mode='r')
 
-    Parallel(n_jobs=n_jobs, verbose=1)(
+    Parallel(n_jobs=n_jobs, verbose=1, temp_folder='/dev/shm')(
         delayed(analyse_dir)(dir_name, X, masker) for dir_name in dir_list)
 
 
 if __name__ == '__main__':
     output_dir = expanduser('~/output/modl/hcp_new')
-    main(output_dir, 15)
+    main(output_dir, 3)

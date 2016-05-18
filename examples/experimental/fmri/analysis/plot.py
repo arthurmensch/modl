@@ -25,8 +25,11 @@ def display_explained_variance_density(output_dir):
     results = []
     analyses = []
     for dir_name in dir_list:
-        analyses.append(json.load(open(join(dir_name, 'analysis.json'), 'r')))
-        results.append(json.load(open(join(dir_name, 'results.json'), 'r')))
+        try:
+            analyses.append(json.load(open(join(dir_name, 'analysis.json'), 'r')))
+            results.append(json.load(open(join(dir_name, 'results.json'), 'r')))
+        except IOError:
+            pass
     h_reductions = []
     ax = {}
     ylim = {1e-2: [2.475e8, 2.535e8], 1e-3: [2.37e8, 2.48e8],
@@ -39,14 +42,14 @@ def display_explained_variance_density(output_dir):
                            xy=(.65, .85),
                            fontsize=7,
                            xycoords='axes fraction')
-        ax[alpha].set_xlim([1, 100])
+        ax[alpha].set_xlim([1, 500])
         # ax[alpha].set_ylim(ylim[alpha])
 
         for tick in ax[alpha].xaxis.get_major_ticks():
             tick.label.set_fontsize(5)
         ax[alpha].set_xscale('log')
 
-        ax[alpha].set_xticks([.1, 1, 10, 100])
+        ax[alpha].set_xticks([1, 10, 100])
         ax[alpha].set_xticklabels(['.1 h', '1 h', '10 h', '100 h'])
 
         sns.despine(fig=fig, ax=ax[alpha])
@@ -85,14 +88,14 @@ def display_explained_variance_density(output_dir):
         print("%s %s" % (result['alpha'], result['reduction']))
         s, = ax[result[
             'alpha']].plot(
-            np.array(analysis['records']) / int(result['reduction']) / 20 + 0.01,
+            np.array(analysis['records']) / int(result['reduction']) + 0.01,
             analysis['objectives'],
             color=colormap_dict[int(result['reduction'])],
             linewidth=2,
             linestyle='--' if result[
                                   'reduction'] == 1 else '-',
             zorder=result['reduction'])
-        if result['alpha'] == 1e-4:
+        if result['alpha'] == 1e-2:
             h_reductions.append(
                 (s, '%.0f' % result['reduction']))
 

@@ -275,6 +275,7 @@ class DictMF(BaseEstimator):
                 self._dict_subset = np.zeros(self._len_subset, dtype='i4')
                 self._dict_subset_lim = np.zeros(1, dtype='i4')
         self._subset_range = np.arange(n_cols, dtype='i4')
+        self._subset_init = 0
 
     def _is_initialized(self):
         return hasattr(self, 'D_')
@@ -563,8 +564,16 @@ class DictMF(BaseEstimator):
                 # End if self.sparse_
                 else:
                     if self.reduction != 1:
-                        self.random_state_.shuffle(self._subset_range)
-                        subset = self._subset_range[:self._len_subset]
+                        subset_end = self._subset_init + self._len_subset
+                        if subset_end > n_cols:
+                            temp = self._subset_range[0:n_cols - self._subset_init]
+                            self._subset_range[0:n_cols - self._subset_init] = self._subset_range[self._subset_init:]
+                            self._subset_range[self._subset_init:] = temp
+                            self.random_state_.shuffle(self._subset_range[n_cols - self._subset_init:])
+                            self._subset_init = 0
+                        subset_end = self._subset_init  + self._len_subset
+                        subset = self._subset_range[self._subset_init:subset_end]
+                        self._subset_init = subset_end
                     else:
                         subset = self._subset_range
 

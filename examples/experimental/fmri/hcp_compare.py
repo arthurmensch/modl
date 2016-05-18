@@ -18,7 +18,7 @@ from modl.spca_fmri import SpcaFmri
 def main():
     # Apply our decomposition estimator with reduction
     n_components = 70
-    n_jobs = 15
+    n_jobs = 2
     raw = True
     init = True
 
@@ -26,8 +26,10 @@ def main():
 
     mask, func_filenames = get_hcp_data(data_dir, raw)
 
-    reduction_list = [1, 2, 4, 8, 12]
-    alpha_list = [1e-2, 1e-3, 1e-4]
+    # reduction_list = [1, 2, 4, 8, 12]
+    # alpha_list = [1e-2, 1e-3, 1e-4]
+    reduction_list = [8]
+    alpha_list = [1e-2, 1e-3]
 
     Parallel(n_jobs=n_jobs, verbose=10)(delayed(run)(idx, reduction, alpha,
                                                      mask, raw, n_components,
@@ -39,7 +41,7 @@ def main():
 
 
 def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
-    trace_folder = expanduser('~/output/modl/hcp_new/experiment_%i' % idx)
+    trace_folder = expanduser('~/output/modl/hcp_new_2/experiment_%i' % idx)
     try:
         os.makedirs(trace_folder)
     except OSError:
