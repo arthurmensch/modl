@@ -13,7 +13,7 @@ from sklearn.utils import check_random_state, gen_batches, check_array
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import _get_weights, \
     _get_simple_weights, dict_learning_sparse, \
-    dict_learning_dense
+    dict_learning_dense, _update_subset
 
 
 class DictMF(BaseEstimator):
@@ -77,6 +77,7 @@ class DictMF(BaseEstimator):
                  reduction=1,
                  var_red='weight_based',
                  projection='partial',
+                 replacement=False,
                  fit_intercept=False,
                  # Dict parameter
                  dict_init=None,
@@ -106,6 +107,7 @@ class DictMF(BaseEstimator):
         self.n_components = n_components
 
         self.var_red = var_red
+        self.replacement = replacement
 
         self.n_samples = n_samples
         self.max_n_iter = max_n_iter
@@ -275,7 +277,8 @@ class DictMF(BaseEstimator):
                 self._dict_subset = np.zeros(self._len_subset, dtype='i4')
                 self._dict_subset_lim = np.zeros(1, dtype='i4')
         self._subset_range = np.arange(n_cols, dtype='i4')
-        self._subset_init = 0
+        self._temp_subset = np.empty(n_cols, dtype='i4')
+        self._subset_lim = np.zeros(2, dtype='i4')
 
     def _is_initialized(self):
         return hasattr(self, 'D_')
@@ -563,20 +566,15 @@ class DictMF(BaseEstimator):
                     dict_subset = np.unique(dict_subset)
                 # End if self.sparse_
                 else:
-                    if self.reduction != 1:
-                        subset_end = self._subset_init + self._len_subset
-                        if subset_end > n_cols:
-                            temp = self._subset_range[0:n_cols - self._subset_init]
-                            self._subset_range[0:n_cols - self._subset_init] = self._subset_range[self._subset_init:]
-                            self._subset_range[self._subset_init:] = temp
-                            self.random_state_.shuffle(self._subset_range[n_cols - self._subset_init:])
-                            self._subset_init = 0
-                        subset_end = self._subset_init  + self._len_subset
-                        subset = self._subset_range[self._subset_init:subset_end]
-                        self._subset_init = subset_end
-                    else:
-                        subset = self._subset_range
-
+                    _update_subset(self.replacement,
+                                   self._len_subset,
+                                   self._subset_range,
+                                   self._subset_lim,
+                                   self._temp_subset,
+                                   self.random_state_)
+                    subset = self._subset_range[
+                             self._subset_lim[0]:self._subset_lim[1]]
+                    print(self._subset_lim)
                     self._full_X[:len_batch] = X[row_batch]
                     self._this_X[:len_batch] = self._full_X[:len_batch, subset]
 

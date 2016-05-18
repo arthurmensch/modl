@@ -3,6 +3,7 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
+cimport numpy as np
 ctypedef np.uint32_t UINT32_t
 
 cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
@@ -88,3 +89,10 @@ cpdef void _predict(double[:] X_data,
              int[:] X_indptr,
              double[:, ::1] P,
              double[::1, :] Q)
+
+cpdef void _update_subset(bint replacement,
+                   long _len_subset,
+                   int[:] _subset_range,
+                   int[:] _subset_lim,
+                   int[:] _temp_subset,
+                   UINT32_t random_seed)

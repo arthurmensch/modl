@@ -798,3 +798,32 @@ def dict_learning_dense(double[:, ::1] X,
                      _norm_temp,
                      _proj_temp)
         n_iter_[0] += len_batch
+
+
+cpdef void _update_subset(bint replacement,
+                   long _len_subset,
+                   int[:] _subset_range,
+                   int[:] _subset_lim,
+                   int[:] _temp_subset,
+                   UINT32_t random_seed):
+    n_cols = _subset_range.shape[0]
+    if replacement:
+        _shuffle_int(_subset_range, &random_seed)
+        _subset_lim[0] = 0
+        _subset_lim[1] = _len_subset
+    else:
+        if _len_subset != n_cols:
+            _subset_lim[0] = _subset_lim[1]
+            remainder = n_cols - _subset_lim[0]
+            if remainder == 0:
+                _shuffle_int(_subset_range[remainder:], &random_seed)
+                _subset_lim[0] = 0
+            elif remainder < _len_subset:
+                _temp_subset[:remainder] = _subset_range[0:remainder]
+                _subset_range[0:remainder] = _subset_range[
+                                             _subset_lim[0]:]
+                _subset_range[_subset_lim[0]:] = _temp_subset[
+                                                 :remainder]
+                _shuffle_int(_subset_range[remainder:], &random_seed)
+                _subset_lim[0] = 0
+            _subset_lim[1] = _subset_lim[0] + _len_subset
