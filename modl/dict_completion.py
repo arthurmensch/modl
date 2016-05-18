@@ -178,15 +178,16 @@ def csr_center_data(X, beta, inplace=False):
     n_u[n_u == 0] = 1
     n_m[n_m == 0] = 1
 
-    average_rating = np.mean(X.data)
+    for _ in range(2):
+        average_rating = np.mean(X.data)
 
-    w_u = (X.sum(axis=1).A[:, 0] + average_rating * beta) / (n_u + beta)
-    for i, (left, right) in enumerate(zip(X.indptr[:-1], X.indptr[1:])):
-        X.data[left:right] -= w_u[i]
-    w_m = X.sum(axis=0).A[0] / (n_m + beta)
-    X.data -= w_m.take(X.indices, mode='clip')
-    acc_u += w_u
-    acc_m += w_m
+        w_u = (X.sum(axis=1).A[:, 0] + average_rating * beta) / (n_u + beta)
+        for i, (left, right) in enumerate(zip(X.indptr[:-1], X.indptr[1:])):
+            X.data[left:right] -= w_u[i]
+        w_m = X.sum(axis=0).A[0] / (n_m + beta)
+        X.data -= w_m.take(X.indices, mode='clip')
+        acc_u += w_u
+        acc_m += w_m
 
     return X, acc_u, acc_m
 

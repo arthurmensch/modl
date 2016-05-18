@@ -8,34 +8,23 @@ from os.path import expanduser
 import numpy as np
 from nilearn.datasets import fetch_atlas_smith_2009
 
-from modl import datasets
-from modl._utils.masking import DummyMasker
 from modl._utils.system.mkl import num_threads
+from modl.datasets.hcp import get_hcp_data
 from modl.spca_fmri import SpcaFmri
 
-hcp_dataset = datasets.fetch_hcp_rest(data_dir='/storage/data', n_subjects=1)
-mask = '/storage/data/HCP_mask/mask_img.nii.gz'
+mask, func_filenames = get_hcp_data(data_dir='/storage/data')
 
-func_filenames = hcp_dataset.func  # list of 4D nifti files for each subject
-
-# print basic information on the dataset
-print('First functional nifti image (4D) is at: %s' %
-      hcp_dataset.func[0])  # 4D data
+func_filenames = func_filenames[:2]
 
 # Apply our decomposition estimator with reduction
 n_components = 70
 n_jobs = 20
-dummy = True
+raw = True
 init = True
-
-if dummy:
-    mask = DummyMasker(data_dir='/storage/data/HCP_unmasked',
-                       mask_img=mask,
-                       mmap_mode=None)
 
 dict_fact = SpcaFmri(mask=mask,
                      smoothing_fwhm=3,
-                     shelve=not dummy,
+                     shelve=raw,
                      n_components=n_components,
                      dict_init=fetch_atlas_smith_2009().rsn70 if init else None,
                      reduction=12,
@@ -52,7 +41,7 @@ timings = np.zeros(20)
 for n_jobs in range(1, 21):
     with num_threads(n_jobs):
         t0 = time.time()
-        dict_fact.fit(func_filenames)
+        dict_fact.fit(func_filenames, raw=raw)
         timings[n_jobs - 1] = time.time() - t0
 
 print(timings)

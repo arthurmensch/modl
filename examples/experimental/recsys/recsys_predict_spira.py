@@ -27,11 +27,13 @@ estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30,
                          'name': 'Coordinate descent'},
                   'dl': {'estimator': DictCompleter(n_components=30,
                                                     detrend=True,
+                                                    projection='full',
                                                     fit_intercept=True,
                                                     backend='c'),
                          'name': 'Proposed online masked MF'},
                   'dl_partial': {'estimator': DictCompleter(n_components=30,
                                                             detrend=True,
+                                                            projection='partial',
                                                             fit_intercept=True,
                                                             backend='c'),
                                  'name': 'Proposed algorithm'
@@ -45,11 +47,14 @@ def _get_hyperparams():
                           "10m": dict(max_iter=200),
                           "netflix": dict(max_iter=200)},
                    'dl': {
-                       '100k': dict(learning_rate=0.8, n_epochs=20, batch_size=6),
-                       '1m': dict(learning_rate=0.8, n_epochs=20, batch_size=60),
-                       '10m': dict(learning_rate=0.8, n_epochs=20, batch_size=600),
-                       'netflix': dict(learning_rate=0.8, n_epochs=5,
-                                       batch_size=1000)}}
+                       '100k': dict(learning_rate=0.9, n_epochs=20,
+                                    batch_size=10),
+                       '1m': dict(learning_rate=0.9, n_epochs=20,
+                                  batch_size=60),
+                       '10m': dict(learning_rate=0.9, n_epochs=20,
+                                   batch_size=600),
+                       'netflix': dict(learning_rate=0.9, n_epochs=5,
+                                       batch_size=4000)}}
     hyperparams['dl_partial'] = hyperparams['dl']
     return hyperparams
 
@@ -72,8 +77,9 @@ def _get_cvparams():
     # Replace hard-coded cv params by parameters learned by CV
     for version in ['100k', '1m', '10m', 'netflix']:
         try:
-            with open(join(trace_dir, 'cross_val', 'results_%s.json' % version),
-                      'r') as f:
+            with open(
+                    join(trace_dir, 'cross_val', 'results_%s.json' % version),
+                    'r') as f:
                 results = json.load(f)
         except IOError:
             continue
@@ -81,8 +87,11 @@ def _get_cvparams():
             cvparams[idx][version] = results[idx]['best_param']
     return cvparams
 
+
 alphas = np.logspace(-4, 2, 15)
-betas = np.logspace(-1, 2, 4)
+betas = [0]
+# Optional : cross val biases on intercept
+# betas = np.logspace(-1, 2, 4)
 
 
 def sqnorm(M):
@@ -148,7 +157,7 @@ def compare_learning_rate(dataset='100k', n_jobs=1, random_state=0):
 def single_learning_rate(mf, learning_rate, X_tr, X_te):
     mf = clone(mf)
     mf.set_params(learning_rate=learning_rate)
-    cb = Callback(X_tr, X_te, refit=False)
+    cb = Callback(X_tr, X_te, refit=True)
     mf.set_params(callback=cb)
     mf.fit(X_tr)
     return dict(time=cb.times,
@@ -173,6 +182,10 @@ def cross_val(dataset='100k',
     for idx in results.keys():
         mf = results[idx]['estimator']
         mf.set_params(**hyperparams[idx][dataset])
+        if idx in ['dl', 'dl_partial']:
+            mf.set_params(n_epochs=8)
+        else:
+            mf.set_params(max_iter=50)
         mf.set_params(random_state=random_state)
         if idx in ['dl', 'dl_partial']:
             param_grid = [dict(alpha=alpha, beta=beta) for alpha in alphas
@@ -279,6 +292,7 @@ def single_fit_bench(mf, X_tr, X_te):
 def single_fit_nested(mf, X_tr, cv, params):
     mf = clone(mf)
     mf.set_params(**params)
+    mf.set_params(verbose=3)
     score = cross_val_score(mf, X_tr, cv)
     return score, params
 
@@ -388,7 +402,7 @@ def plot_benchs():
     names = {'dl_partial': 'Proposed \n(partial projection)',
              'dl': 'Proposed \n(full projection)',
              'cd': 'Coordinate descent'}
-    for i, version in enumerate(['100k', '10m', 'netflix']):
+    for i, version in enumerate(['1m', '10m', 'netflix']):
         try:
             with open(join(output_dir, 'results_%s.json' % version), 'r') as f:
                 results = json.load(f)
@@ -435,7 +449,7 @@ def plot_benchs():
         ax_time.set_xscale('log')
         ax_time.set_ylim(ylims[version])
         ax_time.set_xlim(xlims[version])
-        if version == '100k':
+        if version == '1m':
             ax_time.set_xticks([.1, 1, 10])
             ax_time.set_xticklabels(['0.1 s', '1 s', '10 s'])
         elif version == '10m':
@@ -452,8 +466,10 @@ def plot_benchs():
 
 
 if __name__ == '__main__':
-    cross_val('1m', n_jobs=15)
+    # cross_val('1m', n_jobs=15)
     benchmark('1m', n_jobs=15)
+    # cross_val('10m', n_jobs=15)
+    # benchmark('10m', n_jobs=15)
     plot_benchs()
     # main('10m', n_jobs=15, cross_val=True)
     # main('netflix', n_jobs=15, cross_val=True)
