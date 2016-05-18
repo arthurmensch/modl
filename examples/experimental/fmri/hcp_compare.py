@@ -24,7 +24,7 @@ def main():
 
     data_dir = expanduser('~/data')
 
-    func_filenames, mask = get_hcp_data(data_dir, raw)
+    mask, func_filenames = get_hcp_data(data_dir, raw)
 
     reduction_list = [1, 2, 4, 8, 12]
     alpha_list = [1e-2, 1e-3, 1e-4]
@@ -39,14 +39,14 @@ def main():
 
 
 def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
-    trace_folder = expanduser('~/output/modl/hcp/experiment_%i' % idx)
+    trace_folder = expanduser('~/output/modl/hcp_new/experiment_%i' % idx)
     try:
         os.makedirs(trace_folder)
     except OSError:
         pass
     dict_fact = SpcaFmri(mask=mask,
                          smoothing_fwhm=3,
-                         batch_size=100,
+                         batch_size=40,
                          shelve=not raw,
                          n_components=n_components,
                          dict_init=fetch_atlas_smith_2009().rsn70 if
@@ -54,7 +54,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
                          reduction=reduction,
                          alpha=alpha,
                          random_state=0,
-                         n_epochs=1,
+                         n_epochs=2,
                          backend='c',
                          memory=expanduser("~/nilearn_cache"), memory_level=2,
                          verbose=5,

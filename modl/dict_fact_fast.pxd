@@ -3,6 +3,8 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
+ctypedef np.uint32_t UINT32_t
+
 cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset)
 
@@ -34,7 +36,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double[::1, :] D_subset,
                                      double[::1, :] code_temp,
                                      double[::1, :] G_temp,
-                                     double[::1, :] X_temp,
+                                     double[::1, :] _this_X,
                                      double[:] w_temp,
                                      char[:] subset_mask,
                                      int[:] dict_subset,
@@ -42,7 +44,7 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double[::1, :] dummy_2d_float,
                                      ) except *
 
-cpdef void _update_code(double[::1, :] X,
+cpdef void _update_code(double[::1, :] this_X,
                         int[:] subset,
                         long[:] sample_subset,
                         double alpha,
@@ -60,11 +62,11 @@ cpdef void _update_code(double[::1, :] X,
                         double[:] multiplier_,
                         long[:] counter_,
                         long[:] row_counter_,
+                        double[::1, :] full_X,
                         double[::1, :] D_subset,
-                        double[::1, :] this_X,
-                        double[::1, :] this_code,
-                        double[::1, :] this_G,
-                        double[:] w_arr) except *
+                        double[::1, :] code_temp,
+                        double[::1, :] G_temp,
+                        double[:] w_temp) except *
 
 cpdef void _update_dict(double[::1, :] D_,
                   int[:] dict_subset,
@@ -72,14 +74,14 @@ cpdef void _update_dict(double[::1, :] D_,
                   double l1_ratio,
                   long projection,
                   long var_red,
-                  long[:] D_range,
                   double[::1, :] A_,
                   double[::1, :] B_,
                   double[::1, :] G_,
-                  double[::1, :] R,
-                  double[::1, :] D_subset,
-                  double[:] norm,
-                  double[:] buffer)
+                  long[:] _D_range,
+                  double[::1, :] _R,
+                  double[::1, :] _D_subset,
+                  double[:] _norm_temp,
+                  double[:] _proj_temp)
 
 cpdef void _predict(double[:] X_data,
              int[:] X_indices,

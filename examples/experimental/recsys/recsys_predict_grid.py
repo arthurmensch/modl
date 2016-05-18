@@ -9,9 +9,10 @@ from os.path import expanduser, join
 import numpy as np
 from joblib import Parallel
 from joblib import delayed
+from modl.datasets.movielens import load_netflix, load_movielens
+from sklearn.utils import check_random_state
 
 from modl._utils.cross_validation import train_test_split
-from modl.datasets.movielens import load_netflix, load_movielens
 from modl.dict_completion import DictCompleter
 
 
@@ -37,8 +38,8 @@ class Callback(object):
 
         X_pred = mf.predict(self.X_te)
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
-        self.iters.append(mf.n_iter_)
-        print('Train RMSE', rmse)
+        self.iters.append(int(mf.n_iter_[0]))
+        print('Test RMSE', rmse)
 
         self.rmse.append(rmse)
         self.test_time += time.clock() - test_time
@@ -46,6 +47,7 @@ class Callback(object):
 
 
 learning_rate = 0.8
+n_components = 30
 output_dir = expanduser('~/output/modl/recsys')
 
 
@@ -65,7 +67,8 @@ def main(dataset, n_jobs):
 
     n_random_states = len(random_states)
     n_epochs = 5 if dataset == 'netflix' else 10
-    res = Parallel(n_jobs=n_jobs * 2)(delayed(single_run)(output_folder,
+
+    res = Parallel(n_jobs=n_jobs)(delayed(single_run)(output_folder,
                                                       dataset,
                                                       idx, alpha,
                                                       beta,
@@ -76,6 +79,8 @@ def main(dataset, n_jobs):
                                   idx, (alpha, beta, random_state)
                                   in enumerate(
         itertools.product(alphas, betas, random_states)))
+
+
     cv_scores, alphas, betas = zip(*res)
     cv_scores = np.array(cv_scores)
     alphas = np.array(alphas)
@@ -101,7 +106,7 @@ def main(dataset, n_jobs):
     best_alpha = alphas[argbest]
     best_beta = betas[argbest]
 
-    n_epochs = 5 if dataset == 'netflix' else 20
+    n_epochs = 10 if dataset == 'netflix' else 20
     res = Parallel(n_jobs=n_jobs)(delayed(single_run)(output_folder,
                                                       dataset,
                                                       idx,
@@ -145,12 +150,18 @@ def single_run(output_folder,
     else:
         X_tr, X_te = load_netflix()
 
-    batch_size = 1000 if dataset == 'netflix' else X_tr.shape[0] // 100
+    batch_size = 5000 if dataset == 'netflix' else X_tr.shape[0] // 100
 
-    mf = DictCompleter(n_components=30, alpha=alpha, verbose=4,
+    rng = check_random_state(random_state)
+    dict_init = rng.randint(2, size=(n_components, X_tr.shape[1]))
+    dict_init *= 2
+    dict_init -= 1
+    dict_init[0] = 1
+    mf = DictCompleter(n_components=n_components, alpha=alpha, verbose=6,
                        beta=beta,
                        batch_size=batch_size, detrend=True,
                        offset=0,
+                       dict_init=dict_init,
                        fit_intercept=True,
                        projection='partial',
                        random_state=random_state,
@@ -196,7 +207,7 @@ def single_run(output_folder,
         return score, alpha, beta, cb.times, cb.rmse, cb.iters
 
 
-def simple(dataset, alpha):
+def simple(dataset, alpha, beta):
     output_folder = join(output_dir, dataset, 'simple')
 
     if not os.path.exists(output_folder):
@@ -206,7 +217,8 @@ def simple(dataset, alpha):
                dataset,
                0,
                alpha,
-               20,
+               beta,
+               5,
                random_split=0,
                random_state=0,
                bench=True)
@@ -230,8 +242,9 @@ def plot(dataset):
 
 
 if __name__ == '__main__':
-    main('100k', 15)
-    main('1m', 15)
-    main('10m', 15)
-    # main('netflix', 14)
+    main('100k', 2)
+    # main('1m', 15)
+    # main('10m', 15)
+    # simple('netflix', 0.001, 100)
+    # main('netflix', 15)
     # plot('netflix')

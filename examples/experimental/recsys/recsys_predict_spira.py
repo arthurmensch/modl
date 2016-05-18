@@ -1,6 +1,6 @@
 # Author: Mathieu Blondel, Arthur Mensch
 # License: BSD
-import datetime
+import copy
 import json
 import os
 import time
@@ -13,13 +13,76 @@ import seaborn.apionly as sns
 from joblib import load, Parallel, delayed
 from matplotlib import gridspec
 from sklearn import clone
-from spira.datasets import load_movielens
-from spira.impl.dict_fact import csr_center_data
 from spira.impl.matrix_fact import ExplicitMF
 
 from modl._utils.cross_validation import train_test_split, ShuffleSplit, \
     cross_val_score
-from modl.dict_completion import DictCompleter
+from modl.datasets.recsys import load_movielens
+from modl.dict_completion import DictCompleter, csr_center_data
+
+trace_dir = expanduser('~/output/modl/recsys_spira')
+
+estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30,
+                                                 normalize=True),
+                         'name': 'Coordinate descent'},
+                  'dl': {'estimator': DictCompleter(n_components=30,
+                                                    detrend=True,
+                                                    fit_intercept=True,
+                                                    backend='c'),
+                         'name': 'Proposed online masked MF'},
+                  'dl_partial': {'estimator': DictCompleter(n_components=30,
+                                                            detrend=True,
+                                                            fit_intercept=True,
+                                                            backend='c'),
+                                 'name': 'Proposed algorithm'
+                                         ' (with partial projection)'}
+                  }
+
+
+def _get_hyperparams():
+    hyperparams = {'cd': {'100k': dict(max_iter=200),
+                          "1m": dict(max_iter=200),
+                          "10m": dict(max_iter=200),
+                          "netflix": dict(max_iter=200)},
+                   'dl': {
+                       '100k': dict(learning_rate=0.8, n_epochs=20, batch_size=6),
+                       '1m': dict(learning_rate=0.8, n_epochs=20, batch_size=60),
+                       '10m': dict(learning_rate=0.8, n_epochs=20, batch_size=600),
+                       'netflix': dict(learning_rate=0.8, n_epochs=5,
+                                       batch_size=1000)}}
+    hyperparams['dl_partial'] = hyperparams['dl']
+    return hyperparams
+
+
+def _get_cvparams():
+    cvparams = {'cd': {'100k': dict(alpha=.1),
+                       '1m': dict(alpha=.03),
+                       '10m': dict(alpha=.04),
+                       'netflix': dict(alpha=.1)},
+                'dl': {'100k': dict(alpha=.1),
+                       '1m': dict(alpha=.03),
+                       '10m': dict(alpha=.04),
+                       'netflix': dict(alpha=.1)},
+                'dl_partial': {'100k': dict(alpha=.1),
+                               '1m': dict(alpha=.03),
+                               '10m': dict(alpha=.04),
+                               'netflix': dict(alpha=.1)}
+                }
+
+    # Replace hard-coded cv params by parameters learned by CV
+    for version in ['100k', '1m', '10m', 'netflix']:
+        try:
+            with open(join(trace_dir, 'cross_val', 'results_%s.json' % version),
+                      'r') as f:
+                results = json.load(f)
+        except IOError:
+            continue
+        for idx in cvparams.keys():
+            cvparams[idx][version] = results[idx]['best_param']
+    return cvparams
+
+alphas = np.logspace(-4, 2, 15)
+betas = np.logspace(-1, 2, 4)
 
 
 def sqnorm(M):
@@ -28,7 +91,7 @@ def sqnorm(M):
 
 
 class Callback(object):
-    def __init__(self, X_tr, X_te, refit=False, record_train=False):
+    def __init__(self, X_tr, X_te, refit=False):
         self.X_tr = X_tr
         self.X_te = X_te
         self.obj = []
@@ -37,56 +100,37 @@ class Callback(object):
         self.start_time = time.clock()
         self.test_time = 0
         self.refit = refit
-        self.record_train = record_train
 
     def __call__(self, mf):
         test_time = time.clock()
         if self.refit:
             if mf.normalize:
                 if not hasattr(self, 'X_tr_c_'):
-                    self.X_tr_c_, _, _ = csr_center_data(self.X_tr)
+                    self.X_tr_c_, _, _ = csr_center_data(self.X_tr, mf.beta)
                 else:
                     mf._refit_code(self.X_tr_c_)
             else:
                 mf._refit_code(self.X_tr)
-        if self.record_tr:
-            X_pred = mf.predict(self.X_tr)
-            loss = sqnorm(X_pred.data - self.X_tr.data) / 2
-            regul = mf.alpha * (sqnorm(mf.code_))  # + sqnorm(mf.Q_))
-            self.obj.append(loss + regul)
 
         X_pred = mf.predict(self.X_te)
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
-        print('Train RMSE', rmse)
+        print('Train RMSE : ', rmse)
         self.rmse.append(rmse)
 
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
 
 
-def compare_learning_rate(version='100k', n_jobs=1, random_state=0):
-    if version in ['100k', '1m', '10m']:
-        X = load_movielens(version)
-        X_tr, X_te = train_test_split(X, train_size=0.75,
-                                      random_state=random_state)
-        X_tr = X_tr.tocsr()
-        X_te = X_te.tocsr()
-    elif version is 'netflix':
-        X_tr = load(expanduser('~/spira_data/nf_prize/X_tr.pkl'))
-        X_te = load(expanduser('~/spira_data/nf_prize/X_te.pkl'))
-    mf = DictCompleter(n_components=30, n_epochs=20 if version == '10m' else 7,
-                       alpha=0.1373823795883263 if version == '10m' else 0.16681005372000587,
-                       verbose=5,
-                       batch_size=600 if version == '10m' else 4000,
-                       detrend=True,
-                       fit_intercept=True,
-                       random_state=0,
-                       learning_rate=.75,
-                       backend='c')
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H'
-                                                 '-%M-%S')
-    subdir = 'learning_rate'
-    output_dir = expanduser(join('~/output/recommender/', timestamp, subdir))
+def compare_learning_rate(dataset='100k', n_jobs=1, random_state=0):
+    X_tr, X_te = prepare_data(random_state, dataset)
+    mf = copy.deepcopy(estimator_grid['dl_partial'])
+
+    hyperparams = _get_hyperparams()
+    cvparams = _get_cvparams()
+
+    mf.set_params(**hyperparams['dl_partial'][dataset])
+    mf.set_params(**cvparams['dl_partial'][dataset])
+    output_dir = join(trace_dir, 'learning_rate')
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -97,7 +141,7 @@ def compare_learning_rate(version='100k', n_jobs=1, random_state=0):
 
     for i, learning_rate in enumerate(np.linspace(0.5, 1, 10)):
         results[learning_rate] = par_res[i]
-    with open(join(output_dir, 'results_%s.json' % version), 'w+') as f:
+    with open(join(output_dir, 'results_%s.json' % dataset), 'w+') as f:
         json.dump(results, f)
 
 
@@ -111,138 +155,145 @@ def single_learning_rate(mf, learning_rate, X_tr, X_te):
                 rmse=cb.rmse)
 
 
-def main(version='100k', n_jobs=1, random_state=0, cross_val=False):
-    dl_params = {}
-    dl_params['100k'] = dict(learning_rate=1, batch_size=10, offset=0, alpha=1)
-    dl_params['1m'] = dict(learning_rate=.75, batch_size=60, offset=0,
-                           alpha=.8)
-    dl_params['10m'] = dict(learning_rate=.75, batch_size=600, offset=0,
-                            alpha=3)
-    dl_params['netflix'] = dict(learning_rate=.8, batch_size=4000, offset=0,
-                                alpha=0.0016)
-    cd_params = {'100k': dict(alpha=.1), '1m': dict(alpha=.03),
-                 '10m': dict(alpha=.04),
-                 'netflix': dict(alpha=.1)}
+def cross_val(dataset='100k',
+              random_state=0,
+              n_jobs=1):
+    results = copy.deepcopy(estimator_grid)
 
-    if version in ['100k', '1m', '10m']:
-        X = load_movielens(version)
+    X_te, X_tr = prepare_data(dataset, random_state)
+
+    subdir = 'cross_val'
+    output_dir = expanduser(join(trace_dir, subdir))
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    hyperparams = _get_hyperparams()
+
+    for idx in results.keys():
+        mf = results[idx]['estimator']
+        mf.set_params(**hyperparams[idx][dataset])
+        mf.set_params(random_state=random_state)
+        if idx in ['dl', 'dl_partial']:
+            param_grid = [dict(alpha=alpha, beta=beta) for alpha in alphas
+                          for beta in betas]
+        else:
+            param_grid = [dict(alpha=alpha) for alpha in alphas]
+
+        mf.verbose = 0
+        mf.alpha = 0
+        if idx in ['dl', 'dl_partial']:
+            mf.beta = 0
+        if dataset == 'netflix':
+            # We don't perform nested cross val here
+            res = Parallel(n_jobs=n_jobs,
+                           verbose=10,
+                           max_nbytes=None)(
+                delayed(single_fit)(mf, X_tr, X_te,
+                                    params) for params in param_grid)
+        else:
+            cv = ShuffleSplit(n_iter=3,
+                              train_size=0.66,
+                              random_state=0)
+            res = Parallel(n_jobs=n_jobs,
+                           verbose=10,
+                           max_nbytes=None)(
+                delayed(single_fit_nested)(mf, X_tr, cv, params)
+                for params in
+                param_grid)
+        scores, params = zip(*res)
+        scores = np.array(scores).mean(axis=1)
+        best_score_arg = scores.argmin()
+        best_param = params[best_score_arg]
+        best_score = scores[best_score_arg]
+
+        results[idx]['params'] = params
+        results[idx]['scores'] = scores.tolist()
+
+        results[idx]['best_param'] = best_param
+        results[idx]['best_score'] = best_score
+        results[idx].pop('estimator')
+
+    with open(join(output_dir, 'results_%s.json' % dataset), 'w+') as f:
+        json.dump(results, f)
+
+
+def prepare_data(dataset, random_state):
+    if dataset in ['100k', '1m', '10m']:
+        X = load_movielens(dataset)
         X_tr, X_te = train_test_split(X, train_size=0.75,
                                       random_state=random_state)
         X_tr = X_tr.tocsr()
         X_te = X_te.tocsr()
-    elif version is 'netflix':
+    elif dataset is 'netflix':
         X_tr = load(expanduser('~/spira_data/nf_prize/X_tr.pkl'))
         X_te = load(expanduser('~/spira_data/nf_prize/X_te.pkl'))
+    return X_te, X_tr
 
-    cd_mf = ExplicitMF(n_components=30, max_iter=50, alpha=.1, normalize=True,
-                       verbose=1, )
-    dl_mf = DictCompleter(n_components=30, n_epochs=20, alpha=1.17, verbose=5,
-                          batch_size=10000, detrend=True,
-                          fit_intercept=True,
-                          random_state=0,
-                          learning_rate=.75,
-                          backend='c')
-    dl_mf_partial = DictCompleter(n_components=30, n_epochs=20, alpha=1.17,
-                                  verbose=2,
-                                  batch_size=10000, detrend=True,
-                                  fit_intercept=True,
-                                  random_state=0,
-                                  learning_rate=.75,
-                                  backend='c')
 
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H'
-                                                 '-%M-%S')
-    if cross_val:
-        subdir = 'benches_ncv'
-    else:
-        subdir = 'benches'
-    output_dir = expanduser(join('~/output/recommender/', timestamp, subdir))
+def benchmark(dataset='100k',
+              random_state=0,
+              n_jobs=1):
+    results = copy.deepcopy(estimator_grid)
+
+    hyperparams = _get_hyperparams()
+    cvparams = _get_cvparams()
+
+    X_te, X_tr = prepare_data(dataset, random_state)
+
+    subdir = 'benches'
+    output_dir = expanduser(join(trace_dir, subdir))
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    alphas = np.logspace(-4, 2, 15)
-    mf_list = [dl_mf_partial]
-    dict_id = {cd_mf: 'cd', dl_mf: 'dl', dl_mf_partial: 'dl_partial'}
-    names = {'cd': 'Coordinate descent', 'dl': 'Proposed online masked MF',
-             'dl_partial': 'Proposed algorithm (with partial projection)'}
+    indices = sorted(results.keys())
+    for idx in indices:
+        mf = results[idx]['estimator']
+        mf.set_params(**hyperparams[idx][dataset])
+        mf.set_params(**cvparams[idx][dataset])
+        mf.set_params(random_state=random_state)
+    res = Parallel(n_jobs=n_jobs,
+                   max_nbytes=None)(
+        delayed(single_fit_bench)(results[idx]['estimator'],
+                                  X_tr, X_te)
+        for idx in indices)
+    times, rmses = zip(*res)
+    for time, rmse, idx in zip(times, rmses, indices):
+        results[idx]['timings'] = time
+        results[idx]['rmse'] = rmse
+        results[idx].pop('estimator')
 
-    if os.path.exists(join(output_dir, 'results_%s_%s.json' % (version,
-                                                               random_state))):
-        with open(join(output_dir, 'results_%s_%s.json' % (version,
-                                                           random_state)),
-                  'r') as f:
-            results = json.load(f)
-    else:
-        results = {}
-
-    for mf in mf_list:
-        results[dict_id[mf]] = {}
-        if not cross_val:
-            if isinstance(mf, DictCompleter):
-                mf.set_params(
-                    learning_rate=dl_params[version]['learning_rate'],
-                    batch_size=dl_params[version]['batch_size'],
-                    alpha=dl_params[version]['alpha'])
-            else:
-                mf.set_params(alpha=cd_params[version]['alpha'])
-        else:
-            if isinstance(mf, DictCompleter):
-                mf.set_params(
-                    learning_rate=dl_params[version]['learning_rate'],
-                    batch_size=dl_params[version]['batch_size'])
-            if version != 'netflix':
-                cv = ShuffleSplit(n_iter=3, train_size=0.66, random_state=0)
-                mf_scores = Parallel(n_jobs=n_jobs, verbose=10,
-                                     max_nbytes=None)(
-                    delayed(single_fit)(mf, alpha, X_tr, cv) for alpha in
-                    alphas)
-            else:
-                mf_scores = Parallel(n_jobs=n_jobs, verbose=10,
-                                     max_nbytes=None)(
-                    delayed(single_fit)(mf, alpha, X_tr, X_te,
-                                        nested=False) for alpha in alphas)
-            mf_scores = np.array(mf_scores).mean(axis=1)
-            best_alpha_arg = mf_scores.argmin()
-            best_alpha = alphas[best_alpha_arg]
-            mf.set_params(alpha=best_alpha)
-
-        cb = Callback(X_tr, X_te, refit=False)
-        mf.set_params(callback=cb)
-        mf.fit(X_tr)
-        results[dict_id[mf]] = dict(name=names[dict_id[mf]],
-                                    time=cb.times,
-                                    rmse=cb.rmse)
-        if cross_val:
-            results[dict_id[mf]]['alphas'] = alphas.tolist()
-            results[dict_id[mf]]['cv_alpha'] = mf_scores.tolist()
-            results[dict_id[mf]]['best_alpha'] = mf.alpha
-
-        with open(join(output_dir, 'results_%s_%s.json' % (version,
-                                                           random_state)),
-                  'w+') as f:
-            json.dump(results, f)
-
-        print('Done')
+    with open(join(output_dir, 'results_%s.json' % dataset), 'w+') as f:
+        json.dump(results, f)
 
 
-def single_fit(mf, alpha, X_tr, cv, nested=True):
-    mf_cv = clone(mf)
-    if isinstance(mf_cv, DictCompleter):
-        mf_cv.set_params(n_epochs=2)
-    else:
-        mf_cv.set_params(max_iter=10)
-    mf_cv.set_params(alpha=alpha)
-    if nested:
-        score = cross_val_score(mf_cv, X_tr, cv)
-    else:
-        X_te = cv
-        mf_cv.fit(X_tr)
-        score = [mf_cv.score(X_te)]
-    return score
+def single_fit_bench(mf, X_tr, X_te):
+    mf = clone(mf)
+    cb = Callback(X_tr, X_te, refit=False)
+    mf.set_params(callback=cb, verbose=5)
+    mf.fit(X_tr)
+    return cb.times, cb.rmse
 
 
-def plot_learning_rate(
-        output_dir=expanduser('~/output/recommender/learning_rate')):
+def single_fit_nested(mf, X_tr, cv, params):
+    mf = clone(mf)
+    mf.set_params(**params)
+    score = cross_val_score(mf, X_tr, cv)
+    return score, params
+
+
+def single_fit(mf, X_tr, X_te, params):
+    mf = clone(mf)
+    mf.set_params(**params)
+    mf.fit(X_tr)
+    score = [mf.score(X_te)]
+    return score, params
+
+
+def plot_learning_rate():
+    output_dir = join(trace_dir, 'learning_rate')
+
     with open(join(output_dir, 'results_netflix.json'), 'r') as f:
         data_netflix = json.load(f)
     with open(join(output_dir, 'results_10m.json'), 'r') as f:
@@ -258,7 +309,6 @@ def plot_learning_rate(
         for j in range(len(this_data)):
             this_data['time'][j] -= this_data['time'][0] - min_time
     fig = plt.figure()
-    # fig.subplots_adjust(right=0.7)
     fig.subplots_adjust(bottom=0.33)
     fig.subplots_adjust(top=0.99)
     fig.subplots_adjust(right=0.98)
@@ -318,7 +368,9 @@ def plot_learning_rate(
     plt.savefig(expanduser('~/output/icml/learning_rate.pdf'))
 
 
-def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
+def plot_benchs():
+    output_dir = join(trace_dir, 'benches')
+
     fig = plt.figure()
 
     fig.subplots_adjust(right=.9)
@@ -336,9 +388,13 @@ def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
     names = {'dl_partial': 'Proposed \n(partial projection)',
              'dl': 'Proposed \n(full projection)',
              'cd': 'Coordinate descent'}
-    for i, version in enumerate(['1m', '10m', 'netflix']):
-        with open(join(output_dir, 'results_%s.json' % version), 'r') as f:
-            data = json.load(f)
+    for i, version in enumerate(['100k', '10m', 'netflix']):
+        try:
+            with open(join(output_dir, 'results_%s.json' % version), 'r') as f:
+                results = json.load(f)
+        except IOError:
+            continue
+
         ax_time = fig.add_subplot(gs[0, i])
         ax_time.grid()
         sns.despine(fig, ax_time)
@@ -346,7 +402,6 @@ def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
         ax_time.spines['left'].set_color((.6, .6, .6))
         ax_time.spines['bottom'].set_color((.6, .6, .6))
         ax_time.xaxis.set_tick_params(color=(.6, .6, .6), which='both')
-        # ax_time.tick_params(axis='x', which='major', pad=2)
         ax_time.yaxis.set_tick_params(color=(.6, .6, .6), which='both')
 
         for tick in ax_time.xaxis.get_major_ticks():
@@ -367,12 +422,12 @@ def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
                                         light=.7,
                                         reverse=False)
         color = {'dl_partial': palette[2], 'dl': palette[1], 'cd': palette[0]}
-        for estimator in sorted(OrderedDict(data).keys()):
-            this_data = data[estimator]
-            ax_time.plot(this_data['time'], this_data['rmse'],
-                         label=names[estimator], color=color[estimator],
+        for idx in sorted(OrderedDict(results).keys()):
+            this_result = results[idx]
+            ax_time.plot(this_result['timings'], this_result['rmse'],
+                         label=names[idx], color=color[idx],
                          linewidth=2,
-                         linestyle='-' if estimator != 'cd' else '--')
+                         linestyle='-' if idx != 'cd' else '--')
         if version == 'netflix':
             ax_time.legend(loc='upper left', bbox_to_anchor=(.65, 1.1),
                            numpoints=1,
@@ -380,7 +435,7 @@ def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
         ax_time.set_xscale('log')
         ax_time.set_ylim(ylims[version])
         ax_time.set_xlim(xlims[version])
-        if version == '1m':
+        if version == '100k':
             ax_time.set_xticks([.1, 1, 10])
             ax_time.set_xticklabels(['0.1 s', '1 s', '10 s'])
         elif version == '10m':
@@ -393,17 +448,12 @@ def plot_benchs(output_dir=expanduser('~/output/recommender/benches')):
             'MovieLens %s' % version.upper() if version != 'netflix' else 'Netflix (140M)',
             xy=(.5 if version != 'netflix' else .4, 1),
             xycoords='axes fraction', ha='center', va='bottom')
-    plt.savefig(expanduser('~/output/icml/rec_bench.pdf'))
+    plt.savefig(join(trace_dir, 'bench.pdf'))
 
 
 if __name__ == '__main__':
-    # compare_learning_rate('netflix', n_jobs=10)
-    # plot_learning_rate()
-    main('netflix', n_jobs=15, cross_val=True)
-    # main('100k', n_jobs=1, cross_val=False)
-    # main('1m', cross_val=True, n_jobs=15, random_state=0)
-    # main('10m', n_jobs=15, cross_val=True, random_state=0)
-    # for i in range(5):
-    #     main('1m', cross_val=True, n_jobs=15, random_state=i)
-    #     main('10m', n_jobs=15, random_state=i, cross_val=True)
+    cross_val('1m', n_jobs=15)
+    benchmark('1m', n_jobs=15)
     plot_benchs()
+    # main('10m', n_jobs=15, cross_val=True)
+    # main('netflix', n_jobs=15, cross_val=True)

@@ -107,11 +107,11 @@ estimator = DictMF(n_components=n_components, batch_size=10,
                    reduction=10,
                    l1_ratio=1,
                    alpha=0.001,
-                   max_n_iter=10000,
+                   max_n_iter=200000,
                    projection='partial',
-                   var_red='weight_based',
-                   backend='c',
-                   verbose=0,
+                   var_red='combo',
+                   backend='python',
+                   verbose=1,
                    learning_rate=.8,
                    offset=0,
                    random_state=2,
@@ -120,29 +120,30 @@ estimator.fit(data)
 train_time = (time.time() - t0)
 print("done in %0.3fs" % train_time)
 
-# import matplotlib.pyplot as plt
-# components_ = estimator.components_
-# plot_gallery('%s - Train time %.1fs' % (name, train_time),
-#              components_[:n_components])
-#
-# P = estimator.transform(data)
-# # plot_gallery('Original faces',
-# #              data[:n_components])
-# plot_gallery('Residual',
-#              data[:n_components] - P.T.dot(estimator.components_)[:n_components])
-# fig, axes = plt.subplots(3, 1, sharex=True)
-# axes[0].plot(cb.iter, cb.obj, label='P_')
-# axes[0].plot(cb.iter, cb.regul, label='regul_')
-# axes[0].plot(cb.iter, cb.regul_tr, label='regul')
-# axes[0].plot(cb.iter, cb.obj_tr, label='P')
-# axes[0].legend()
-#
-# axes[2].plot(cb.iter, cb.diff, label='beta_ variance')
-#
-# axes[0].set_xlabel('Function value')
-# axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
-# axes[1].set_xlabel('Sparsity')
-# axes[0].set_xscale('log')
-#
-#
-# plt.show()
+import matplotlib.pyplot as plt
+components_ = estimator.components_
+plot_gallery('%s - Train time %.1fs' % (name, train_time),
+             components_[:n_components])
+
+P = estimator.transform(data)
+# plot_gallery('Original faces',
+#              data[:n_components])
+plot_gallery('Residual',
+             data[:n_components] - P.T.dot(estimator.components_)[:n_components])
+fig, axes = plt.subplots(3, 1, sharex=True)
+axes[0].plot(cb.iter, cb.obj, label='P_')
+axes[0].plot(cb.iter, cb.regul, label='regul_')
+axes[0].plot(cb.iter, cb.regul_tr, label='regul')
+axes[0].plot(cb.iter, cb.obj_tr, label='P')
+axes[0].legend()
+
+axes[2].plot(cb.iter, cb.diff, label='beta_ variance')
+axes[2].set_xlabel('beta_ variance')
+
+axes[0].set_xlabel('Function value')
+axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
+axes[1].set_xlabel('Sparsity')
+axes[0].set_xscale('log')
+
+
+plt.show()

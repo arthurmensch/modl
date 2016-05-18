@@ -58,7 +58,7 @@ class DictCompleter(DictMF):
             Learned dictionary
     """
 
-    def __init__(self, alpha=1.0, beta=1.0,
+    def __init__(self, alpha=1.0, beta=.0,
                  n_components=30, learning_rate=1.,
                  batch_size=1, offset=0,
                  projection='partial',

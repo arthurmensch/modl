@@ -36,7 +36,8 @@ class Callback(object):
 
     def __call__(self, mf):
         test_time = time.clock()
-        code = mf.code_.T
+        # code = mf.code_.T
+        code = mf.transform(self.X_tr)
         loss = np.sum((self.X_tr - code.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(code ** 2)
         self.obj.append(loss.flat[0] + regul)
@@ -89,16 +90,15 @@ def main():
     print("Dataset consists of %d faces" % n_samples)
     data = faces_centered
 
-    res = Parallel(n_jobs=5, verbose=10)(
-        delayed(single_run)(n_components, var_red, full_projection, offset,
+    res = Parallel(n_jobs=3, verbose=10)(
+        delayed(single_run)(n_components, var_red, projection, offset,
                             learning_rate, reduction,
                             alpha,
                             data)
-        for full_projection in [False]
+        for projection in ['partial']
         for offset in [0]
-        for learning_rate in [.8]
-        for var_red, reduction in [('none', 5),
-                                   ('code_only', 5),
+        for learning_rate in [1]
+        for var_red, reduction in [('combo', 5),
                                    ('sample_based', 5),
                                    ('weight_based', 5),
                                    # ('two_epochs', 5),
@@ -109,7 +109,7 @@ def main():
     full_res_dict = []
     for cb, estimator in res:
         res_dict = {'var_red': estimator.var_red,
-                    'full_projection': estimator.full_projection,
+                    'projection': estimator.projection,
                     'learning_rate': estimator.learning_rate,
                     'offset': estimator.offset,
                     'reduction': estimator.reduction, 'alpha': estimator.alpha,
@@ -133,13 +133,16 @@ def main():
     axes[0].set_ylabel('Function value')
     axes[1].set_ylabel('Sparsity')
 
-    axes[2].set_xlabel('Time')
+    axes[0].set_xscale('log')
+    # axes[0].set_yscale('log')
+    axes[3].set_xlabel('Time')
+    axes[3].set_ylabel('|B|')
     # axes[2].legend()
     axes[2].set_ylabel('Dictionary value')
     plt.savefig('face_compare.pdf')
 
 
-def single_run(n_components, var_red, full_projection, offset, learning_rate,
+def single_run(n_components, var_red, projection, offset, learning_rate,
                reduction,
                alpha,
                data):
@@ -147,7 +150,7 @@ def single_run(n_components, var_red, full_projection, offset, learning_rate,
     estimator = DictMF(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
                        max_n_iter=20000,
-                       projection=full_projection,
+                       projection=projection,
                        var_red=var_red,
                        backend='python',
                        verbose=3,
