@@ -22,8 +22,7 @@ from modl.dict_completion import DictCompleter, csr_center_data
 
 trace_dir = expanduser('~/output/modl/recsys_spira')
 
-estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30,
-                                                 normalize=True),
+estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30),
                          'name': 'Coordinate descent'},
                   'dl': {'estimator': DictCompleter(n_components=30,
                                                     detrend=True,
@@ -47,13 +46,13 @@ def _get_hyperparams():
                           "10m": dict(max_iter=200),
                           "netflix": dict(max_iter=200)},
                    'dl': {
-                       '100k': dict(learning_rate=0.9, n_epochs=20,
+                       '100k': dict(learning_rate=0.9, n_epochs=30,
                                     batch_size=10),
-                       '1m': dict(learning_rate=0.9, n_epochs=20,
+                       '1m': dict(learning_rate=0.9, n_epochs=30,
                                   batch_size=60),
-                       '10m': dict(learning_rate=0.9, n_epochs=20,
+                       '10m': dict(learning_rate=0.9, n_epochs=30,
                                    batch_size=600),
-                       'netflix': dict(learning_rate=0.9, n_epochs=5,
+                       'netflix': dict(learning_rate=0.9, n_epochs=10,
                                        batch_size=4000)}}
     hyperparams['dl_partial'] = hyperparams['dl']
     return hyperparams
@@ -83,16 +82,17 @@ def _get_cvparams():
                 results = json.load(f)
         except IOError:
             continue
-        for idx in cvparams.keys():
+        for idx in estimator_grid.keys():
             cvparams[idx][version] = results[idx]['best_param']
     return cvparams
 
 
 alphas = np.logspace(-4, 2, 15)
 betas = [0]
+learning_rates = np.linspace(0.75, 1, 10)
+
 # Optional : cross val biases on intercept
 # betas = np.logspace(-1, 2, 4)
-
 
 def sqnorm(M):
     m = M.ravel()
@@ -123,40 +123,41 @@ class Callback(object):
 
         X_pred = mf.predict(self.X_te)
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
-        print('Train RMSE : ', rmse)
+        print('Test RMSE : ', rmse)
         self.rmse.append(rmse)
 
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
 
 
-def compare_learning_rate(dataset='100k', n_jobs=1, random_state=0):
-    X_tr, X_te = get_recsys_data(random_state, dataset)
-    mf = copy.deepcopy(estimator_grid['dl_partial'])
+def compare_learning_rate(version='100k', n_jobs=1, random_state=0):
+    X_tr, X_te = get_recsys_data(version, random_state)
+    mf = copy.deepcopy(estimator_grid['dl_partial']['estimator'])
 
     hyperparams = _get_hyperparams()
     cvparams = _get_cvparams()
 
-    mf.set_params(**hyperparams['dl_partial'][dataset])
-    mf.set_params(**cvparams['dl_partial'][dataset])
+    mf.set_params(**hyperparams['dl_partial'][version])
+    mf.set_params(**cvparams['dl_partial'][version])
+    mf.set_params(random_state=random_state)
     output_dir = join(trace_dir, 'learning_rate')
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     results = {}
-    par_res = Parallel(n_jobs=n_jobs, max_nbytes=None)(
+    res = Parallel(n_jobs=n_jobs, max_nbytes=None)(
         delayed(single_learning_rate)(mf, learning_rate, X_tr, X_te) for
-        learning_rate in np.linspace(0.5, 1, 10))
+        learning_rate in learning_rates)
 
-    for i, learning_rate in enumerate(np.linspace(0.5, 1, 10)):
-        results[learning_rate] = par_res[i]
-    with open(join(output_dir, 'results_%s.json' % dataset), 'w+') as f:
+    for i, learning_rate in enumerate(learning_rates):
+        results[learning_rate] = res[i]
+    with open(join(output_dir, 'results_%s.json' % version), 'w+') as f:
         json.dump(results, f)
 
 
 def single_learning_rate(mf, learning_rate, X_tr, X_te):
     mf = clone(mf)
-    mf.set_params(learning_rate=learning_rate)
+    mf.set_params(learning_rate=learning_rate, verbose=5)
     cb = Callback(X_tr, X_te, refit=False)
     mf.set_params(callback=cb)
     mf.fit(X_tr)
@@ -169,7 +170,7 @@ def cross_val(dataset='100k',
               n_jobs=1):
     results = copy.deepcopy(estimator_grid)
 
-    X_te, X_tr = get_recsys_data(dataset, random_state)
+    X_tr, X_te = get_recsys_data(dataset, random_state)
 
     subdir = 'cross_val'
     output_dir = expanduser(join(trace_dir, subdir))
@@ -239,7 +240,7 @@ def benchmark(dataset='100k',
     hyperparams = _get_hyperparams()
     cvparams = _get_cvparams()
 
-    X_te, X_tr = get_recsys_data(dataset, random_state)
+    X_tr, X_te = get_recsys_data(dataset, random_state)
 
     subdir = 'benches'
     output_dir = expanduser(join(trace_dir, subdir))
@@ -294,21 +295,6 @@ def single_fit(mf, X_tr, X_te, params):
 
 def plot_learning_rate():
     output_dir = join(trace_dir, 'learning_rate')
-
-    with open(join(output_dir, 'results_netflix.json'), 'r') as f:
-        data_netflix = json.load(f)
-    with open(join(output_dir, 'results_10m.json'), 'r') as f:
-        data_10m = json.load(f)
-    min_time = 400
-    for i, learning_rate in enumerate(
-            sorted(data_netflix.keys(), key=lambda t: float(t))):
-        this_data = data_netflix[learning_rate]
-        min_time = min(this_data['time'][0], min_time)
-    for i, learning_rate in enumerate(
-            sorted(data_netflix.keys(), key=lambda t: float(t))):
-        this_data = data_netflix[learning_rate]
-        for j in range(len(this_data)):
-            this_data['time'][j] -= this_data['time'][0] - min_time
     fig = plt.figure()
     fig.subplots_adjust(bottom=0.33)
     fig.subplots_adjust(top=0.99)
@@ -321,19 +307,21 @@ def plot_learning_rate():
     palette = sns.cubehelix_palette(10, start=0, rot=3, hue=1, dark=.3,
                                     light=.7,
                                     reverse=False)
-    for j, data in enumerate([data_10m, data_netflix]):
+
+    for j, version in enumerate(['10m', 'netflix']):
+        with open(join(output_dir, 'results_%s.json' % version), 'r') as f:
+            data = json.load(f)
         ax[j] = fig.add_subplot(gs[j])
-        # palette = sns.hls_palette(10, l=.4, s=.7)
-        for i, learning_rate in enumerate(
-                sorted(data.keys(), key=lambda t: float(t))):
-            if float(learning_rate) > .6:
-                this_data = data[learning_rate]
-                ax[j].plot(np.linspace(0., 20, len(this_data['rmse'])),
-                           this_data['rmse'],
-                           label='%.2f' % float(learning_rate),
-                           color=palette[i],
-                           zorder=int(100 * float(learning_rate)))
-                ax[j].set_xscale('log')
+        learning_rates = sorted(data, key=lambda t: float(t))
+        for i, learning_rate in enumerate(learning_rates):
+            this_data = data[str(learning_rate)]
+            n_epochs = _get_hyperparams()['dl_partial'][version]['n_epochs']
+            ax[j].plot(np.linspace(0, n_epochs, len(this_data['rmse'])),
+                       this_data['rmse'],
+                       label='%.2f' % float(learning_rate),
+                       color=palette[i],
+                       zorder=int(100 * float(learning_rate)))
+            ax[j].set_xscale('log')
         sns.despine(fig, ax)
 
         ax[j].spines['left'].set_color((.6, .6, .6))
@@ -353,12 +341,12 @@ def plot_learning_rate():
     ax[1].set_xticks([.1, 1, 10, 20])
     ax[1].set_xticklabels(['.1', '1', '10', '20'])
 
-    ax[0].annotate('MovieLens 10M', xy=(.95, .8), ha='right',
+    ax[0].annotate('MovieLens 10M', xy=(.95, .9), ha='right',
                    xycoords='axes fraction')
-    ax[1].annotate('Netflix', xy=(.95, .8), ha='right',
+    ax[1].annotate('Netflix', xy=(.95, .9), ha='right',
                    xycoords='axes fraction')
 
-    ax[0].set_ylim([0.795, 0.863])
+    ax[0].set_ylim([0.795, 0.877])
     ax[1].set_ylim([0.93, 0.983])
     ax[0].legend(ncol=4, loc='upper left', bbox_to_anchor=(0., -.13),
                  fontsize=6, numpoints=1, columnspacing=.3, frameon=False)
@@ -366,7 +354,8 @@ def plot_learning_rate():
                    xycoords='axes fraction')
     ltext = ax[0].get_legend().get_texts()
     plt.setp(ltext, fontsize=7)
-    plt.savefig(expanduser('~/output/icml/learning_rate.pdf'))
+
+    plt.savefig(join(trace_dir, 'learning_rate.pdf'))
 
 
 def plot_benchs():
@@ -375,16 +364,16 @@ def plot_benchs():
     fig = plt.figure()
 
     fig.subplots_adjust(right=.9)
-    fig.subplots_adjust(top=.915)
+    fig.subplots_adjust(top=.905)
     fig.subplots_adjust(bottom=.12)
-    fig.subplots_adjust(left=.08)
+    fig.subplots_adjust(left=.06)
     fig.set_figheight(fig.get_figheight() * 0.66)
     gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 1.5])
 
-    ylims = {'100k': [.90, .96], '1m': [.865, .915], '10m': [.795, .868],
-             'netflix': [.928, .99]}
+    ylims = {'100k': [.90, .96], '1m': [.865, .915], '10m': [.79, .868],
+             'netflix': [.927, .99]}
     xlims = {'100k': [0.0001, 10], '1m': [0.1, 15], '10m': [1, 200],
-             'netflix': [30, 4000]}
+             'netflix': [30, 2000]}
 
     names = {'dl_partial': 'Proposed \n(partial projection)',
              'dl': 'Proposed \n(full projection)',
@@ -416,7 +405,7 @@ def plot_benchs():
             ax_time.set_ylabel('RMSE on test set')
         if i == 2:
             ax_time.set_xlabel('CPU time')
-            ax_time.xaxis.set_label_coords(1.12, -0.045)
+            ax_time.xaxis.set_label_coords(1.14, -0.06)
 
         ax_time.grid()
         palette = sns.cubehelix_palette(3, start=0, rot=.5, hue=1, dark=.3,
@@ -459,4 +448,7 @@ if __name__ == '__main__':
     benchmark('10m', n_jobs=3)
     cross_val('netflix', n_jobs=15)
     benchmark('netflix', n_jobs=3)
+    compare_learning_rate('10m', n_jobs=3)
+    compare_learning_rate('netflix', n_jobs=10)
     plot_benchs()
+    plot_learning_rate()

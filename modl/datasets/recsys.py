@@ -54,4 +54,4 @@ def get_recsys_data(dataset, random_state):
     elif dataset is 'netflix':
         X_tr = load(expanduser('~/spira_data/nf_prize/X_tr.pkl'))
         X_te = load(expanduser('~/spira_data/nf_prize/X_te.pkl'))
-    return X_te, X_tr
+    return X_tr, X_te

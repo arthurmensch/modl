@@ -2,7 +2,7 @@
 Author: Arthur Mensch (2016)
 Dictionary learning with masked data
 """
-from math import ceil
+from math import floor
 
 import numpy as np
 import scipy.sparse as sp
@@ -245,7 +245,7 @@ class DictMF(BaseEstimator):
             self._len_subset = min(n_cols,
                                    self.batch_size * X.getnnz(axis=1).max())
         else:
-            self._len_subset = int(ceil(n_cols / self.reduction))
+            self._len_subset = int(floor(n_cols / self.reduction))
         if self.fit_intercept:
             self._D_range = np.arange(1, self.n_components)
         else:
@@ -276,9 +276,12 @@ class DictMF(BaseEstimator):
                 self._subset_mask = np.zeros(n_cols, dtype='i1')
                 self._dict_subset = np.zeros(self._len_subset, dtype='i4')
                 self._dict_subset_lim = np.zeros(1, dtype='i4')
-        self._subset_range = np.arange(n_cols, dtype='i4')
-        self._temp_subset = np.empty(n_cols, dtype='i4')
-        self._subset_lim = np.zeros(2, dtype='i4')
+        if not self.sparse_:
+            self._subset_range = np.arange(n_cols, dtype='i4')
+            if self.reduction >= 1:
+                self.random_state_.shuffle(self._subset_range)
+            self._temp_subset = np.empty(n_cols, dtype='i4')
+            self._subset_lim = np.zeros(2, dtype='i4')
 
     def _is_initialized(self):
         return hasattr(self, 'D_')
@@ -352,7 +355,7 @@ class DictMF(BaseEstimator):
         n_rows, n_cols = X.shape
         G = self.G_.copy()
         G.flat[::self.n_components + 1] += 2 * self.alpha
-        len_subset = int(ceil(n_cols / self.reduction))
+        len_subset = int(floor(n_cols / self.reduction))
         batches = gen_batches(len(X), self.batch_size)
         row_range = self.random_state_.permutation(n_rows)
         code = np.zeros((n_rows, self.n_components), order='C')
@@ -458,7 +461,6 @@ class DictMF(BaseEstimator):
                                      self.l1_ratio,
                                      self._get_var_red(),
                                      self._get_projection(),
-                                     self.reduction,
                                      self.D_,
                                      self.code_,
                                      self.A_,
@@ -499,7 +501,7 @@ class DictMF(BaseEstimator):
                                     self.l1_ratio,
                                     self._get_var_red(),
                                     self._get_projection(),
-                                    self.reduction,
+                                    self.replacement,
                                     self.D_,
                                     self.code_,
                                     self.A_,
@@ -515,8 +517,10 @@ class DictMF(BaseEstimator):
                                     self._this_X,
                                     self._full_X,
                                     self._w_temp,
-                                    self._subset_range,
                                     self._len_subset,
+                                    self._subset_range,
+                                    self._temp_subset,
+                                    self._subset_lim,
                                     self._this_sample_subset,
                                     self._R,
                                     self._D_range,
@@ -566,15 +570,17 @@ class DictMF(BaseEstimator):
                     dict_subset = np.unique(dict_subset)
                 # End if self.sparse_
                 else:
+                    random_seed = self.random_state_.randint(
+                        np.iinfo(np.uint32).max)
                     _update_subset(self.replacement,
                                    self._len_subset,
                                    self._subset_range,
                                    self._subset_lim,
                                    self._temp_subset,
-                                   self.random_state_)
+                                   random_seed)
                     subset = self._subset_range[
                              self._subset_lim[0]:self._subset_lim[1]]
-                    print(self._subset_lim)
+                    # print(self._subset_lim)
                     self._full_X[:len_batch] = X[row_batch]
                     self._this_X[:len_batch] = self._full_X[:len_batch, subset]
 
@@ -607,6 +613,8 @@ class DictMF(BaseEstimator):
         """
         len_batch = sample_subset.shape[0]
 
+        len_subset = subset.shape[0]
+
         if len_batch != self.batch_size:
             this_X = this_X[:len_batch]
             if full_X is not None:
@@ -618,6 +626,8 @@ class DictMF(BaseEstimator):
 
         self.counter_[0] += len_batch
 
+        reduction = n_cols / len_subset
+
         if self.var_red == 'weight_based':
             self.counter_[subset + 1] += len_batch
             w = np.zeros(len(subset) + 1)
@@ -627,7 +637,7 @@ class DictMF(BaseEstimator):
             w_B = w[1:]
             Dx = np.dot(D_subset, this_X.T)
             this_G = D_subset.dot(D_subset.T)
-            this_G.flat[::self.n_components + 1] += self.alpha / self.reduction
+            this_G.flat[::self.n_components + 1] += self.alpha / reduction
             this_beta = Dx
             this_code = linalg.solve(this_G,
                                      this_beta,
@@ -639,7 +649,7 @@ class DictMF(BaseEstimator):
             self.B_[:, subset] += this_code.dot(this_X) * w_B / len_batch
 
         elif self.var_red == 'combo':
-            this_X *= self.reduction
+            this_X *= reduction
             self.counter_[subset + 1] += len_batch
             Dx = np.dot(D_subset, this_X.T)
             w = np.zeros(len(subset) + 1)
@@ -671,10 +681,10 @@ class DictMF(BaseEstimator):
             self.A_ += this_code.dot(this_code.T) * w_A / len_batch
             self.B_[:, subset] *= 1 - w_B
             self.B_[:, subset] += this_code.dot(
-                this_X) * w_B / len_batch / self.reduction
+                this_X) * w_B / len_batch / reduction
 
         else:  # self.var_red in ['none', 'code_only', 'sample_based']
-            this_X *= self.reduction
+            this_X *= reduction
             Dx = np.dot(D_subset, this_X.T)
             w = _get_simple_weights(subset, self.counter_, len_batch,
                                     self.learning_rate, self.offset)

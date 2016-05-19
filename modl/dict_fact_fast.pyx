@@ -97,7 +97,6 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                                      double offset,
                                      long var_red,
                                      long projection,
-                                     double reduction,
                                      double[::1, :] D_,
                                      double[:, ::1] code_,
                                      double[::1, :] A_,
@@ -174,7 +173,6 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
                      offset,
                      var_red,
                      projection,
-                     reduction,
                      D_,
                      code_,
                      A_,
@@ -200,7 +198,6 @@ cpdef void _update_code(double[::1, :] this_X,
                         double offset,
                         long var_red,
                         long projection,
-                        double reduction,
                         double[::1, :] D_,
                         double[:, ::1] code_,
                         double[::1, :] A_,
@@ -258,6 +255,7 @@ cpdef void _update_code(double[::1, :] this_X,
     cdef double v
     cdef int last = 0
     cdef double one_m_w, w, wdbatch, w_norm
+    cdef double reduction = n_cols / len_subset
 
     for jj in range(len_subset):
         j = subset[jj]
@@ -265,6 +263,7 @@ cpdef void _update_code(double[::1, :] this_X,
             _D_subset[k, jj] = D_[k, j]
 
     counter_[0] += len_batch
+
 
     if var_red == 3: # weight_based
         for jj in range(len_subset):
@@ -574,7 +573,6 @@ def dict_learning_sparse(double[:] X_data, int[:] X_indices,
                     double l1_ratio,
                     long var_red,
                     long projection,
-                    double reduction,
                     double[::1, :] D_,
                     double[:, ::1] code_,
                     double[::1, :] A_,
@@ -639,7 +637,6 @@ def dict_learning_sparse(double[:] X_data, int[:] X_indices,
                                   offset,
                                   var_red,
                                   projection,
-                                  reduction,
                                   D_,
                                   code_,
                                   A_,
@@ -688,7 +685,7 @@ def dict_learning_dense(double[:, ::1] X,
                     double l1_ratio,
                     long var_red,
                     long projection,
-                    double reduction,
+                    bint replacement,
                     double[::1, :] D_,
                     double[:, ::1] code_,
                     double[::1, :] A_,
@@ -704,8 +701,10 @@ def dict_learning_dense(double[:, ::1] X,
                     double[::1, :] _this_X,
                     double[::1, :] _full_X,
                     double[:] _w_temp,
-                    int[:] _subset_range,
                     long _len_subset,
+                    int[:] _subset_range,
+                    int[:] _temp_subset,
+                    int[:] _subset_lim,
                     long[:] _this_sample_subset,
                     double[::1, :] _R,
                     long[:] _D_range,
@@ -745,11 +744,13 @@ def dict_learning_dense(double[:, ::1] X,
         len_batch = stop - start
         row_batch = row_range[start:stop]
 
-        if reduction != 1:
-            _shuffle_int(_subset_range, &random_seed)
-            subset = _subset_range[:_len_subset]
-        else:
-            subset = _subset_range
+        _update_subset(replacement,
+                       _len_subset,
+                       _subset_range,
+                       _subset_lim,
+                       _temp_subset,
+                       random_seed)
+        subset = _subset_range[_subset_lim[0]:_subset_lim[1]]
 
         for ii in range(len_batch):
             if var_red == 4:
@@ -767,7 +768,6 @@ def dict_learning_dense(double[:, ::1] X,
                      offset,
                      var_red,
                      projection,
-                     reduction,
                      D_,
                      code_,
                      A_,
@@ -816,14 +816,15 @@ cpdef void _update_subset(bint replacement,
             _subset_lim[0] = _subset_lim[1]
             remainder = n_cols - _subset_lim[0]
             if remainder == 0:
-                _shuffle_int(_subset_range[remainder:], &random_seed)
+                _shuffle_int(_subset_range, &random_seed)
                 _subset_lim[0] = 0
             elif remainder < _len_subset:
                 _temp_subset[:remainder] = _subset_range[0:remainder]
-                _subset_range[0:remainder] = _subset_range[
-                                             _subset_lim[0]:]
-                _subset_range[_subset_lim[0]:] = _temp_subset[
-                                                 :remainder]
+                _subset_range[0:remainder] = _subset_range[_subset_lim[0]:]
+                _subset_range[_subset_lim[0]:] = _temp_subset[:remainder]
                 _shuffle_int(_subset_range[remainder:], &random_seed)
                 _subset_lim[0] = 0
             _subset_lim[1] = _subset_lim[0] + _len_subset
+        else:
+            _subset_lim[0] = 0
+            _subset_lim[1] = n_cols

@@ -39,27 +39,10 @@ def train_test_split(X, train_size=0.75, random_state=None):
                       random_state=random_state)
     return next(cv.split(X))
 
-def cross_val_score(estimator, X, cv, metric=None):
+
+def cross_val_score(estimator, X, cv):
     scores = []
     for X_tr, X_te in cv.split(X):
         estimator.fit(X_tr)
-        if metric is None:
-            scores.append(estimator.score(X_te))
-        else:
-            s = []
-            X_pred = estimator.predict(X_te)
-            # FIXME: factorize this in the metric API.
-            for func in metric:
-                if func == "rmse":
-                    s.append(rmse(X_te, X_pred))
-                elif func == "precision":
-                    s.append(precision(X_te, X_pred))
-                elif func == "recall":
-                    s.append(recall(X_te, X_pred))
-                elif func == "f1_score":
-                    s.append(f1_score(X_te, X_pred))
-                else:
-                    raise ValueError("Unknown metric.")
-            scores.append(s)
-
+        scores.append(estimator.score(X_te))
     return np.array(scores)

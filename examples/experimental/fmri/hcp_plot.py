@@ -235,5 +235,5 @@ def display_explained_variance_density(output_dir):
 
 
 if __name__ == '__main__':
-    output_dir = expanduser('~/output/modl/hcp_new')
+    output_dir = expanduser('~/output/modl/hcp_no_replacement')
     display_explained_variance_density(output_dir)

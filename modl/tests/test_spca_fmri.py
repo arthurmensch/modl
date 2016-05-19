@@ -81,7 +81,7 @@ def test_sparse_pca(backend, var_red):
                           backend=backend,
                           var_red=var_red,
                           reduction=2 if var_red else 1,
-                          smoothing_fwhm=0., n_epochs=2, alpha=0.01)
+                          smoothing_fwhm=0., n_epochs=3, alpha=0.01)
     sparse_pca.fit(data)
     maps = sparse_pca.masker_. \
         inverse_transform(sparse_pca.components_).get_data()
