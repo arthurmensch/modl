@@ -22,14 +22,14 @@ from modl.dict_completion import DictCompleter, csr_center_data
 
 trace_dir = expanduser('~/output/modl/recsys_spira')
 
-estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30),
-                         'name': 'Coordinate descent'},
-                  'dl': {'estimator': DictCompleter(n_components=30,
-                                                    detrend=True,
-                                                    projection='full',
-                                                    fit_intercept=True,
-                                                    backend='c'),
-                         'name': 'Proposed online masked MF'},
+estimator_grid = {# 'cd': {'estimator': ExplicitMF(n_components=30),
+                  #       'name': 'Coordinate descent'},
+                  # 'dl': {'estimator': DictCompleter(n_components=30,
+                  #                                   detrend=True,
+                  #                                   projection='full',
+                  #                                   fit_intercept=True,
+                  #                                   backend='c'),
+                  #        'name': 'Proposed online masked MF'},
                   'dl_partial': {'estimator': DictCompleter(n_components=30,
                                                             detrend=True,
                                                             projection='partial',
@@ -442,13 +442,13 @@ def plot_benchs():
 
 
 if __name__ == '__main__':
-    cross_val('1m', n_jobs=15)
-    benchmark('1m', n_jobs=3)
-    cross_val('10m', n_jobs=15)
-    benchmark('10m', n_jobs=3)
-    cross_val('netflix', n_jobs=15)
-    benchmark('netflix', n_jobs=3)
-    compare_learning_rate('10m', n_jobs=3)
-    compare_learning_rate('netflix', n_jobs=10)
-    plot_benchs()
-    plot_learning_rate()
+    # cross_val('1m', n_jobs=16)
+    # benchmark('1m', n_jobs=4)
+    cross_val('10m', n_jobs=1)
+    # benchmark('10m', n_jobs=3)
+    # cross_val('netflix', n_jobs=15)
+    # benchmark('netflix', n_jobs=3)
+    # compare_learning_rate('10m', n_jobs=3)
+    # compare_learning_rate('netflix', n_jobs=10)
+    # plot_benchs()
+    # plot_learning_rate()

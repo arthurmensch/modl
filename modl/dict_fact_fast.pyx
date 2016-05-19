@@ -156,6 +156,8 @@ cpdef long _update_code_sparse_batch(double[:] X_data,
         i = row_batch[ii]
         subset = X_indices[X_indptr[i]:X_indptr[i + 1]]
         len_subset = subset.shape[0]
+        if len_subset == 0:
+            continue
         for jj in range(len_subset):
             idx_j = X_indptr[i] + jj
             _this_X[0, jj] = X_data[idx_j]
