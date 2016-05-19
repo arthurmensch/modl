@@ -13,7 +13,7 @@ from sklearn.utils import check_random_state, gen_batches, check_array
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import _get_weights, \
     _get_simple_weights, dict_learning_sparse, \
-    dict_learning_dense, _update_subset
+    dict_learning_dense, _update_subset, DictFactInternals, DictFactTemp
 
 
 class DictMF(BaseEstimator):
@@ -90,7 +90,6 @@ class DictMF(BaseEstimator):
                  random_state=None,
                  verbose=0,
                  backend='c',
-                 debug=False,
                  callback=None):
 
         self.fit_intercept = fit_intercept
@@ -116,7 +115,6 @@ class DictMF(BaseEstimator):
         self.verbose = verbose
 
         self.backend = backend
-        self.debug = debug
 
         self.callback = callback
 
@@ -128,170 +126,59 @@ class DictMF(BaseEstimator):
     def components_(self):
         return self.D_
 
-    def _get_var_red(self):
+    def _get_var_red(self, check=False):
         var_reds = {
             'none': 1,
             'code_only': 2,
             'weight_based': 3,
             'sample_based': 4,
+            'combo': 5
         }
+        if check and self.var_red not in var_reds.keys():
+            raise ValueError("var_red should be in {'none', 'code_only',"
+                             " 'weight_based', 'sample_based'},"
+                             " got %s" % self.var_red)
         return var_reds[self.var_red]
 
-    def _get_projection(self):
+    def _get_projection(self, check=False):
         projections = {
             'full': 1,
             'partial': 2,
         }
-        return projections[self.projection]
-
-    def _init(self, X):
-        """Initialize statistic and dictionary"""
-        if self.var_red not in ['none', 'code_only', 'weight_based',
-                                'sample_based', 'combo']:
-            raise ValueError("var_red should be in {'none', 'code_only',"
-                             " 'weight_based', 'sample_based'},"
-                             " got %s" % self.var_red)
-        if self.projection not in ['partial', 'full']:
+        if check and self.projection not in projections.keys():
             raise ValueError("projection should be in {'partial', 'full'},"
                              " got %s" % self.projection)
+        return projections[self.projection]
+
+    def _get_dict_init(self):
+        if self.dict_init.shape != (self.n_components,
+                                    self.n_cols):
+            raise ValueError(
+                'Initial dictionary and X shape mismatch: %r != %r' % (
+                    self.dict_init.shape,
+                    (self.n_components, self.n_cols)))
+
+        dict_init = check_array(self.dict_init, order='C',
+                                dtype='float', copy=True)
+
+        if self.fit_intercept:
+            if not (np.all(dict_init[0] == dict_init[0].mean())):
+                raise ValueError('When fitting intercept and providing '
+                                 'initial dictionary, first component of'
+                                 ' the dictionary should be '
+                                 'proportional to [1, ..., 1]')
+        return dict_init
+
+    def prepare(self, X):
+        if self._check_prepared():
+            warnings.warns('New preparation request : forgetting history')
 
         X = check_array(X, dtype='float', order='F', accept_sparse='csr')
+        self._internals = DictFactInternals(self, X)
+        self._temp = DictFactTemp(self)
 
-        self.sparse_ = sp.issparse(X)
-        if self.sparse_ and self.var_red != 'weight_based':
-            raise NotImplementedError("Sparse input can only be used with "
-                                      "var_red='weight_based', got %s" % self.var_red)
-
-        n_rows, n_cols = X.shape
-
-        if self.n_samples is not None:
-            self.n_samples_ = self.n_samples
-        else:
-            self.n_samples_ = n_rows
-
-        self.random_state_ = check_random_state(self.random_state)
-
-        # D dictionary
-        if self.dict_init is not None:
-            if self.dict_init.shape != (self.n_components, n_cols):
-                raise ValueError(
-                    'Initial dictionary and X shape mismatch: %r != %r' % (
-                        self.dict_init.shape,
-                        (self.n_components, n_cols)))
-            self.D_ = check_array(self.dict_init, order='C',
-                                  dtype='float', copy=True)
-            if self.fit_intercept:
-                if not (np.all(self.D_[0] == self.D_[0].mean())):
-                    raise ValueError('When fitting intercept and providing '
-                                     'initial dictionary, first component of'
-                                     ' the dictionary should be '
-                                     'proportional to [1, ..., 1]')
-                self.D_[0] = 1
-        else:
-            self.D_ = np.empty((self.n_components, n_cols), order='C')
-
-            if self.fit_intercept:
-                self.D_[0] = 1
-                U = self.random_state_.randn(
-                    n_cols,
-                    self.n_components - 1,
-                )
-                Q, _ = np.linalg.qr(U)
-                self.D_[1:] = Q.T
-            else:
-                self.D_[:] = self.random_state_.randn(
-                    self.n_components,
-                    n_cols)
-
-        self.D_ = np.asfortranarray(
-            enet_scale(self.D_, l1_ratio=self.l1_ratio, radius=1))
-
-        self.A_ = np.zeros((self.n_components, self.n_components),
-                           order='F')
-        self.B_ = np.zeros((self.n_components, n_cols), order="F")
-
-        self.counter_ = np.zeros(n_cols + 1, dtype='int')
-
-        self.n_iter_ = np.zeros(1, dtype='long')
-
-        if self.var_red != 'weight_based':
-            self.G_ = self.D_.dot(self.D_.T).T
-            self.multiplier_ = np.array([1.])
-
-        if self.var_red in ['code_only', 'sample_based', 'combo']:
-            self.row_counter_ = np.zeros(self.n_samples_, dtype='int')
-            self.beta_ = np.zeros((self.n_samples_, self.n_components),
-                                  order="F")
-
-        self.code_ = np.zeros((self.n_samples_, self.n_components))
-
-        if self.backend == 'c':
-            if not hasattr(self, 'row_counter_'):
-                self.row_counter_ = self._dummy_1d_int
-            if not hasattr(self, 'G_'):
-                self.G_ = self._dummy_2d_float
-            if not hasattr(self, 'beta_'):
-                self.beta_ = self._dummy_2d_float
-            if not hasattr(self, 'multiplier_'):
-                self.multiplier_ = self._dummy_1d_float
-
-        if self.debug:
-            self.loss_ = np.empty(self.max_n_iter)
-            self.loss_indep_ = 0.
-
-    def _init_arrays(self, X):
-        n_rows, n_cols = X.shape
-        if self.sparse_:
-            self._len_subset = min(n_cols,
-                                   self.batch_size * X.getnnz(axis=1).max())
-        else:
-            self._len_subset = int(floor(n_cols / self.reduction))
-        if self.fit_intercept:
-            self._D_range = np.arange(1, self.n_components)
-        else:
-            self._D_range = np.arange(self.n_components)
-        if self.sparse_:
-            self._this_X = np.empty((1, self._len_subset), order='F')
-        else:
-            self._this_X = np.empty((self.batch_size, self._len_subset),
-                                    order='F')
-            self._full_X = np.empty((self.batch_size, n_cols), order='F')
-        self._this_sample_subset = np.empty(self.batch_size, dtype='int')
-        if self.backend == 'c':
-            # Init various arrays for efficiency
-            self._D_subset = np.empty((self.n_components, self._len_subset),
-                                      order='F')
-            self._G_temp = np.empty((self.n_components, self.n_components),
-                                    order='F')
-            self._code_temp = np.empty((self.n_components, self.batch_size),
-                                       order='F')
-            self._w_temp = np.zeros(self._len_subset + 1)
-            self._R = np.empty((self.n_components, n_cols), order='F')
-            self._norm_temp = np.zeros(self.n_components)
-            if self.projection == 'full':
-                self._proj_temp = np.zeros(n_cols)
-            else:
-                self._proj_temp = np.zeros(self._len_subset)
-            if self.sparse_:
-                self._subset_mask = np.zeros(n_cols, dtype='i1')
-                self._dict_subset = np.zeros(self._len_subset, dtype='i4')
-                self._dict_subset_lim = np.zeros(1, dtype='i4')
-        if not self.sparse_:
-            self._subset_range = np.arange(n_cols, dtype='i4')
-            if self.reduction >= 1:
-                self.random_state_.shuffle(self._subset_range)
-            self._temp_subset = np.empty(n_cols, dtype='i4')
-            self._subset_lim = np.zeros(2, dtype='i4')
-
-    def _is_initialized(self):
-        return hasattr(self, 'D_')
-
-    def _reset_stat(self):
-        if (self.var_red in ['code_only, sample_based'] and
-                    self.multiplier_[0] < 1e-50):
-            self.A_ *= self.multiplier_[0]
-            self.B_ *= self.multiplier_[0]
-            self.multiplier_[0] = 1.
+    def _check_prepared(self):
+        return hasattr(self, '_internals')
 
     def fit(self, X, y=None):
         """Use X to learn a dictionary Q_. The algorithm cycles on X
@@ -420,11 +307,6 @@ class DictMF(BaseEstimator):
         """
         if self.backend not in ['python', 'c']:
             raise ValueError("Invalid backend %s" % self.backend)
-
-        if self.debug and self.backend == 'c':
-            raise NotImplementedError(
-                "Recording objective loss is only available"
-                "with backend == 'python'")
 
         if not self._is_initialized():
             self._init(X)
@@ -724,15 +606,6 @@ class DictMF(BaseEstimator):
                     this_X) * w_norm / len_batch
 
         self.code_[sample_subset] = this_code.T
-
-        if self.debug:
-            dict_loss = .5 * np.sum(
-                self.D_.dot(self.D_.T) * self.A_) - np.sum(
-                self.D_ * self.B_)
-            self.loss_indep_ *= (1 - w)
-            self.loss_indep_ += (.5 * np.sum(this_X ** 2) +
-                                 self.alpha * np.sum(this_code ** 2)) * w
-            self.loss_[self.n_iter_[0]] = self.loss_indep_ + dict_loss
 
     def _update_dict_slow(self, subset, D_range):
         """Update dictionary from statistic

@@ -3,13 +3,18 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
-from libc.math cimport pow
+from libc.math cimport pow, floor, fmin
 
 from scipy.linalg.cython_lapack cimport dposv
 from scipy.linalg.cython_blas cimport dgemm, dger
+from modl._utils.enet_proj import enet_scale
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 from libc.math cimport ceil
+
+import numpy as np
+import scipy.sparse as sp
+from sklearn.utils import check_random_state
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -19,6 +24,148 @@ cdef int one = 1
 cdef double zerod = 0
 cdef double oned = 1
 cdef double moned = -1
+
+cdef class DictFactTemp:
+        cdef public int len_subset
+        cdef public int[:] D_range
+        cdef public double[::1, :]this_X
+        cdef public double[::1, :] full_X
+        cdef public int[:] this_sample_subset
+        cdef public double[::1, :] D_subset
+        cdef public double[::1, :] G_temp
+        cdef public double[::1, :] code_temp
+        cdef public double[::1, :] w_temp
+        cdef public double[::1, :] R
+        cdef public double[:] norm_temp
+        cdef public double[:] proj_temp
+        cdef public bint[:] subset_mask
+        cdef public int[:] dict_subset
+        cdef public int dict_subset_lim
+        cdef public int[:] subset_range
+        cdef public int[:] temp_subset
+        cdef public int subset_start
+        cdef public int subset_end
+
+        def __init__(self, dict_fact):
+            cdef int n_cols = dict_fact.internals.n_cols
+            cdef bint sparse = dict_fact.internals.sparse
+
+            if dict_fact.fit_intercept:
+                self.D_range = np.arange(1, dict_fact.n_components)
+            else:
+                self.D_range = np.arange(dict_fact.n_components)
+            if sparse:
+                self.this_X = np.empty((1, n_cols), order='F')
+                self.subset_mask = np.zeros(n_cols, dtype='i1')
+                self.dict_subset = np.zeros(n_cols, dtype='i4')
+                self.dict_subset_lim = 1
+            else:
+                self.len_subset = int(floor(n_cols / dict_fact.reduction))
+                self.this_X = np.empty((dict_fact.batch_size,
+                                        self.len_subset),
+                                        order='F')
+                self.full_X = np.empty((dict_fact.batch_size, n_cols), order='F')
+                self.subset_range = np.arange(n_cols, dtype='i4')
+                self.temp_subset = np.empty(n_cols, dtype='i4')
+                self.subset_start = 0
+                self.subset_end = 0
+            self.this_sample_subset = np.empty(dict_fact.batch_size, dtype='int')
+            # Init various arrays for efficiency
+            self.D_subset = np.empty((dict_fact.n_components,
+                                      self.len_subset),
+                                      order='F')
+            self.G_temp = np.empty((dict_fact.n_components,
+                                    dict_fact.n_components),
+                                    order='F')
+            self.code_temp = np.empty((dict_fact.n_components,
+                                       dict_fact.batch_size),
+                                       order='F')
+            self.w_temp = np.zeros(self.len_subset + 1)
+            self.R = np.empty((dict_fact.n_components, n_cols), order='F')
+            self.norm_temp = np.zeros(dict_fact.n_components)
+
+            if dict_fact.projection == 'full':
+                self.proj_temp = np.zeros(n_cols)
+            else:
+                self.proj_temp = np.zeros(self.len_subset)
+
+    
+cdef class DictFactInternals:
+     cdef public double[::1, :] D
+     cdef public double[:, ::1] code
+     cdef public double[::1, :] A
+     cdef public double[::1, :] B
+     cdef public double[::1, :] G
+     cdef public double[::1, :] beta
+     cdef public double multiplier
+
+     cdef public bint sparse
+     cdef public int var_red
+     cdef public int projection
+     cdef public int n_cols
+     cdef public int n_samples
+
+     cdef public UINT32_t random_seed
+
+     def __init__(self, dict_fact, X):
+         self.sparse = sp.issparse(X)
+         self.var_red = dict_fact._get_var_red()
+         self.projection = dict_fact._get_projection()
+
+         n_samples, self.n_cols = X.shape
+
+         if dict_fact.n_samples is not None:
+             self.n_samples = dict_fact.n_samples
+         else:
+             self.n_samples = n_samples
+
+         random_state = check_random_state(dict_fact.random_state)
+
+         self.random_seed = random_state.randint(np.iinfo(np.uint32).max)
+
+         # D dictionary
+         if dict_fact.dict_init is not None:
+             self.D = dict_fact._get_dict_init()
+         else:
+             self.D = np.empty((dict_fact.n_components,
+                                 self.n_cols), order='C')
+
+             if dict_fact.fit_intercept:
+                 self.D[0, :] = 1
+                 U = random_state.randn(self.n_cols, dict_fact.n_components - 1)
+                 Q, _ = np.linalg.qr(U)
+                 self.D[1:, :] = Q.T
+             else:
+                 self.D[:] = random_state.randn(dict_fact.n_components,
+                                                self.n_cols)
+         self.D = np.asfortranarray(
+             enet_scale(self.D, l1_ratio=dict_fact.l1_ratio, radius=1))
+
+         self.A = np.zeros((dict_fact.n_components, dict_fact.n_components),
+                            order='F')
+         self.B = np.zeros((dict_fact.n_components, self.n_cols), order="F")
+
+         self.counter = np.zeros(self.n_cols + 1, dtype='int')
+
+         self.n_iter = 0
+
+         if dict_fact.var_red != 'weight_based':
+             self.G = self.D_.dot(self.D_.T).T
+             self.multiplier = 1
+
+         if dict_fact.var_red in ['code_only', 'sample_based', 'combo']:
+             self.row_counter = np.zeros(self.n_samples, dtype='int')
+             self.beta = np.zeros((self.n_samples, dict_fact.n_components),
+                                   order="F")
+
+         self.code = np.zeros((self.n_samples, dict_fact.n_components))
+
+     def reset(self):
+         if self.multiplier < 1e-50:
+             self.A *= self.multiplier
+             self.B *= self.multiplier
+             self.multiplier = 1.
+
 
 cdef enum:
     # Max value for our rand_r replacement (near the bottom).
