@@ -52,7 +52,7 @@ def _get_hyperparams():
                                   batch_size=60),
                        '10m': dict(learning_rate=0.9, n_epochs=30,
                                    batch_size=600),
-                       'netflix': dict(learning_rate=0.9, n_epochs=10,
+                       'netflix': dict(learning_rate=0.9, n_epochs=30,
                                        batch_size=4000)}}
     hyperparams['dl_partial'] = hyperparams['dl']
     return hyperparams
@@ -92,7 +92,7 @@ betas = [0]
 learning_rates = np.linspace(0.75, 1, 10)
 
 # Optional : cross val biases on intercept
-# betas = np.logspace(-1, 2, 4)
+betas = np.logspace(-1, 2, 4)
 
 def sqnorm(M):
     m = M.ravel()
@@ -447,8 +447,8 @@ if __name__ == '__main__':
     # cross_val('10m', n_jobs=15)
     # benchmark('10m', n_jobs=3)
     # cross_val('netflix', n_jobs=15)
-    # benchmark('netflix', n_jobs=3)
+    benchmark('netflix', n_jobs=1)
     # compare_learning_rate('10m', n_jobs=3)
     # compare_learning_rate('netflix', n_jobs=10)
     plot_benchs()
-    plot_learning_rate()
+    # plot_learning_rate()
