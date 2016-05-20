@@ -257,7 +257,7 @@ cpdef void _update_code(double[::1, :] this_X,
     cdef double v
     cdef int last = 0
     cdef double one_m_w, w, wdbatch, w_norm
-    cdef double reduction = n_cols / len_subset
+    cdef double reduction = float(n_cols) / len_subset
 
     for jj in range(len_subset):
         j = subset[jj]

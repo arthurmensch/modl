@@ -334,13 +334,13 @@ class DictMF(BaseEstimator):
             Code obtained projecting X on the dictionary
         """
         self._check_fitted()
-        X = check_array(X, order='F')
         if self.sparse_:
             return self._sparse_transform(X)
         else:
             return self._dense_transform(X)
 
     def _dense_transform(self, X, y=None):
+        X = check_array(X, order='F')
         if self.var_red != 'weight_based':
             G = self.G_.copy()
         else:
@@ -395,7 +395,7 @@ class DictMF(BaseEstimator):
         X = check_array(X, accept_sparse='csr', order='F')
         row_range = X.getnnz(axis=1).nonzero()[0]
         n_rows, n_cols = X.shape
-        code = np.zeros((n_rows, self.n_components), order='F')
+        code = np.zeros((n_rows, self.n_components), order='C')
         for j in row_range:
             nnz = X.indptr[j + 1] - X.indptr[j]
             idx = X.indices[X.indptr[j]:X.indptr[j + 1]]
@@ -404,7 +404,7 @@ class DictMF(BaseEstimator):
             Q_idx = self.D_[:, idx]
             G = Q_idx.dot(Q_idx.T)
             Qx = Q_idx.dot(x)
-            G.flat[::self.n_components + 1] += 2 * self.alpha * nnz / n_cols
+            G.flat[::self.n_components + 1] += self.alpha * nnz / n_cols
             code[j] = linalg.solve(G, Qx, sym_pos=True,
                                    overwrite_a=True, check_finite=False)
         return code

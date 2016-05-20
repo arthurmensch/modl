@@ -7,6 +7,9 @@ def configuration(parent_package='', top_path=None):
     config.add_extension('dict_fact_fast',
                          sources=['dict_fact_fast.c'],
                          include_dirs=[numpy.get_include()])
+    config.add_extension('matrix_fact_fast',
+                         sources=['matrix_fact_fast.c'],
+                         include_dirs=[numpy.get_include()])
 
     config.add_subpackage('tests')
     config.add_subpackage('_utils')

@@ -7,7 +7,7 @@ from numpy.testing import assert_almost_equal
 from numpy.testing import assert_array_almost_equal
 
 from modl._utils.cross_validation import train_test_split
-from modl.dict_completion import DictCompleter, csr_center_data
+from modl.dict_completion import DictCompleter, compute_biases
 
 backends = ['c', 'python']
 
@@ -88,7 +88,7 @@ def test_dict_completion_missing(backend):
     mf.fit(X_tr)
     X_pred = mf.predict(X_te)
     rmse = sqrt(np.sum((X_te.data - X_pred.data) ** 2) / X_te.data.shape[0])
-    X_te_c, _, _ = csr_center_data(X_te, mf.beta)
+    X_te_c, _, _ = compute_biases(X_te, mf.beta)
     rmse_c = sqrt(np.sum((X_te.data - X_te_c.data) ** 2) / X_te.data.shape[0])
     assert (rmse < rmse_c)
     # assert_array_almost_equal(X_te.data, X_pred.data)

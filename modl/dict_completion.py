@@ -109,9 +109,12 @@ class DictCompleter(DictMF):
         X = sp.csr_matrix(X, dtype='float')
 
         if self.detrend:
-            X, self.row_mean_, self.col_mean_ = csr_center_data(X,
-                                                                beta=self.beta,
-                                                                inplace=False)
+            self.row_mean_, self.col_mean_ = compute_biases(X,
+                                                            beta=self.beta,
+                                                            inplace=False)
+            for i in range(X.shape[0]):
+                X.data[X.indptr[i]:X.indptr[i + 1]] -= self.row_mean_[i]
+            X.data -= self.col_mean_.take(X.indices, mode='clip')
         DictMF.fit(self, X)
 
     def predict(self, X):
@@ -149,8 +152,14 @@ class DictCompleter(DictMF):
         X_pred = self.predict(X)
         return rmse(X, X_pred)
 
+    def _refit(self, X):
+        for i in range(X.shape[0]):
+            X.data[X.indptr[i]:X.indptr[i + 1]] -= self.row_mean_[i]
+        X.data -= self.col_mean_.take(X.indices, mode='clip')
+        DictMF._refit(self, X)
 
-def csr_center_data(X, beta, inplace=False):
+
+def compute_biases(X, beta=0, inplace=False):
     """Row and column centering from csr matrices
 
     Parameters
@@ -177,10 +186,9 @@ def csr_center_data(X, beta, inplace=False):
     n_m = X.getnnz(axis=0)
     n_u[n_u == 0] = 1
     n_m[n_m == 0] = 1
-
+    print('Centering data')
+    average_rating = np.mean(X.data)
     for _ in range(2):
-        average_rating = np.mean(X.data)
-
         w_u = (X.sum(axis=1).A[:, 0] + average_rating * beta) / (n_u + beta)
         for i, (left, right) in enumerate(zip(X.indptr[:-1], X.indptr[1:])):
             X.data[left:right] -= w_u[i]
@@ -189,7 +197,7 @@ def csr_center_data(X, beta, inplace=False):
         acc_u += w_u
         acc_m += w_m
 
-    return X, acc_u, acc_m
+    return acc_u, acc_m
 
 
 def _check(X_true, X_pred):

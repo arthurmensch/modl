@@ -13,17 +13,19 @@ import seaborn.apionly as sns
 from joblib import Parallel, delayed
 from matplotlib import gridspec
 from sklearn import clone
-from spira.impl.matrix_fact import ExplicitMF
+from modl.matrix_fact import ExplicitMF
 
 from modl._utils.cross_validation import ShuffleSplit, \
     cross_val_score
 from modl.datasets.recsys import get_recsys_data
-from modl.dict_completion import DictCompleter, csr_center_data
+from modl.dict_completion import DictCompleter
 
-trace_dir = expanduser('~/output/modl/recsys')
+trace_dir = expanduser('~/output/modl/recsys_bias')
 
-estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30),
-                        'name': 'Coordinate descent'},
+estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30,
+                                                 detrend=True,
+                                                 ),
+                         'name': 'Coordinate descent'},
                   'dl': {'estimator': DictCompleter(n_components=30,
                                                     detrend=True,
                                                     projection='full',
@@ -44,15 +46,15 @@ def _get_hyperparams():
     hyperparams = {'cd': {'100k': dict(max_iter=200),
                           "1m": dict(max_iter=200),
                           "10m": dict(max_iter=200),
-                          "netflix": dict(max_iter=200)},
+                          "netflix": dict(max_iter=50)},
                    'dl': {
-                       '100k': dict(learning_rate=0.9, n_epochs=30,
+                       '100k': dict(learning_rate=0.9, n_epochs=20,
                                     batch_size=10),
-                       '1m': dict(learning_rate=0.9, n_epochs=30,
+                       '1m': dict(learning_rate=0.9, n_epochs=20,
                                   batch_size=60),
-                       '10m': dict(learning_rate=0.9, n_epochs=30,
+                       '10m': dict(learning_rate=0.9, n_epochs=20,
                                    batch_size=600),
-                       'netflix': dict(learning_rate=0.9, n_epochs=30,
+                       'netflix': dict(learning_rate=0.9, n_epochs=10,
                                        batch_size=4000)}}
     hyperparams['dl_partial'] = hyperparams['dl']
     return hyperparams
@@ -82,17 +84,17 @@ def _get_cvparams():
                 results = json.load(f)
         except IOError:
             continue
-        for idx in estimator_grid.keys():
+        for idx in results.keys():
             cvparams[idx][version] = results[idx]['best_param']
     return cvparams
 
 
-alphas = np.logspace(-4, 2, 15)
+alphas = np.logspace(-2, 1, 30)
 betas = [0]
 learning_rates = np.linspace(0.75, 1, 10)
 
 # Optional : cross val biases on intercept
-betas = np.logspace(-1, 2, 4)
+# betas = np.logspace(-1, 2, 4)
 
 def sqnorm(M):
     m = M.ravel()
@@ -100,7 +102,7 @@ def sqnorm(M):
 
 
 class Callback(object):
-    def __init__(self, X_tr, X_te, refit=False):
+    def __init__(self, X_tr, X_te):
         self.X_tr = X_tr
         self.X_te = X_te
         self.obj = []
@@ -108,19 +110,9 @@ class Callback(object):
         self.times = []
         self.start_time = time.clock()
         self.test_time = 0
-        self.refit = refit
 
     def __call__(self, mf):
         test_time = time.clock()
-        if self.refit:
-            if mf.normalize:
-                if not hasattr(self, 'X_tr_c_'):
-                    self.X_tr_c_, _, _ = csr_center_data(self.X_tr, mf.beta)
-                else:
-                    mf._refit_code(self.X_tr_c_)
-            else:
-                mf._refit_code(self.X_tr)
-
         X_pred = mf.predict(self.X_te)
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
         print('Test RMSE : ', rmse)
@@ -158,7 +150,7 @@ def compare_learning_rate(version='100k', n_jobs=1, random_state=0):
 def single_learning_rate(mf, learning_rate, X_tr, X_te):
     mf = clone(mf)
     mf.set_params(learning_rate=learning_rate, verbose=5)
-    cb = Callback(X_tr, X_te, refit=False)
+    cb = Callback(X_tr, X_te)
     mf.set_params(callback=cb)
     mf.fit(X_tr)
     return dict(time=cb.times,
@@ -184,20 +176,16 @@ def cross_val(dataset='100k',
         mf = results[idx]['estimator']
         mf.set_params(**hyperparams[idx][dataset])
         if idx in ['dl', 'dl_partial']:
-            mf.set_params(n_epochs=8)
+            mf.set_params(n_epochs=5)
         else:
-            mf.set_params(max_iter=50)
+            mf.set_params(max_iter=40)
         mf.set_params(random_state=random_state)
-        if idx in ['dl', 'dl_partial']:
-            param_grid = [dict(alpha=alpha, beta=beta) for alpha in alphas
-                          for beta in betas]
-        else:
-            param_grid = [dict(alpha=alpha) for alpha in alphas]
+        param_grid = [dict(alpha=alpha, beta=beta) for alpha in alphas
+                      for beta in betas]
 
         mf.verbose = 0
         mf.alpha = 0
-        if idx in ['dl', 'dl_partial']:
-            mf.beta = 0
+        mf.beta = 0
         if dataset == 'netflix':
             # We don't perform nested cross val here
             res = Parallel(n_jobs=n_jobs,
@@ -271,7 +259,7 @@ def benchmark(dataset='100k',
 
 def single_fit_bench(mf, X_tr, X_te):
     mf = clone(mf)
-    cb = Callback(X_tr, X_te, refit=False)
+    cb = Callback(X_tr, X_te)
     mf.set_params(callback=cb, verbose=5)
     mf.fit(X_tr)
     return cb.times, cb.rmse
@@ -370,9 +358,9 @@ def plot_benchs():
     fig.set_figheight(fig.get_figheight() * 0.66)
     gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 1.5])
 
-    ylims = {'100k': [.90, .96], '1m': [.84, .915], '10m': [.79, .868],
+    ylims = {'100k': [.90, .96], '1m': [.86, .915], '10m': [.79, .868],
              'netflix': [.927, .99]}
-    xlims = {'100k': [0.0001, 10], '1m': [0.1, 100], '10m': [1, 500],
+    xlims = {'100k': [0.0001, 10], '1m': [0.1, 20], '10m': [1, 500],
              'netflix': [30, 8000]}
 
     names = {'dl_partial': 'Proposed \n(partial projection)',
@@ -442,12 +430,12 @@ def plot_benchs():
 
 
 if __name__ == '__main__':
-    # cross_val('1m', n_jobs=15)
-    # benchmark('1m', n_jobs=3)
-    # cross_val('10m', n_jobs=15)
-    # benchmark('10m', n_jobs=3)
-    # cross_val('netflix', n_jobs=15)
-    benchmark('netflix', n_jobs=1)
+    cross_val('1m', n_jobs=30)
+    benchmark('1m', n_jobs=3)
+    cross_val('10m', n_jobs=30)
+    benchmark('10m', n_jobs=3)
+    cross_val('netflix', n_jobs=30)
+    benchmark('netflix', n_jobs=3)
     # compare_learning_rate('10m', n_jobs=3)
     # compare_learning_rate('netflix', n_jobs=10)
     plot_benchs()
