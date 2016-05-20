@@ -20,16 +20,16 @@ from modl._utils.cross_validation import ShuffleSplit, \
 from modl.datasets.recsys import get_recsys_data
 from modl.dict_completion import DictCompleter, csr_center_data
 
-trace_dir = expanduser('~/output/modl/recsys_spira')
+trace_dir = expanduser('~/output/modl/recsys')
 
-estimator_grid = {# 'cd': {'estimator': ExplicitMF(n_components=30),
-                  #       'name': 'Coordinate descent'},
-                  # 'dl': {'estimator': DictCompleter(n_components=30,
-                  #                                   detrend=True,
-                  #                                   projection='full',
-                  #                                   fit_intercept=True,
-                  #                                   backend='c'),
-                  #        'name': 'Proposed online masked MF'},
+estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30),
+                        'name': 'Coordinate descent'},
+                  'dl': {'estimator': DictCompleter(n_components=30,
+                                                    detrend=True,
+                                                    projection='full',
+                                                    fit_intercept=True,
+                                                    backend='c'),
+                         'name': 'Proposed online masked MF'},
                   'dl_partial': {'estimator': DictCompleter(n_components=30,
                                                             detrend=True,
                                                             projection='partial',
@@ -370,10 +370,10 @@ def plot_benchs():
     fig.set_figheight(fig.get_figheight() * 0.66)
     gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 1.5])
 
-    ylims = {'100k': [.90, .96], '1m': [.865, .915], '10m': [.79, .868],
+    ylims = {'100k': [.90, .96], '1m': [.84, .915], '10m': [.79, .868],
              'netflix': [.927, .99]}
-    xlims = {'100k': [0.0001, 10], '1m': [0.1, 15], '10m': [1, 200],
-             'netflix': [30, 2000]}
+    xlims = {'100k': [0.0001, 10], '1m': [0.1, 100], '10m': [1, 500],
+             'netflix': [30, 8000]}
 
     names = {'dl_partial': 'Proposed \n(partial projection)',
              'dl': 'Proposed \n(full projection)',
@@ -442,13 +442,13 @@ def plot_benchs():
 
 
 if __name__ == '__main__':
-    cross_val('1m', n_jobs=15)
-    benchmark('1m', n_jobs=3)
-    cross_val('10m', n_jobs=15)
-    benchmark('10m', n_jobs=3)
-    cross_val('netflix', n_jobs=15)
-    benchmark('netflix', n_jobs=3)
-    compare_learning_rate('10m', n_jobs=3)
-    compare_learning_rate('netflix', n_jobs=10)
+    # cross_val('1m', n_jobs=15)
+    # benchmark('1m', n_jobs=3)
+    # cross_val('10m', n_jobs=15)
+    # benchmark('10m', n_jobs=3)
+    # cross_val('netflix', n_jobs=15)
+    # benchmark('netflix', n_jobs=3)
+    # compare_learning_rate('10m', n_jobs=3)
+    # compare_learning_rate('netflix', n_jobs=10)
     plot_benchs()
     plot_learning_rate()
