@@ -3,6 +3,7 @@ import fnmatch
 import glob
 import json
 import os
+import types
 from math import log
 from os.path import expanduser, join
 
@@ -305,10 +306,10 @@ def display_explained_variance_epoch(output_dir, impute=True):
     gs = gridspec.GridSpec(1, 1, width_ratios=[1])
     fig.set_figwidth(3.25653379549)
     fig.set_figheight(0.7 * fig.get_figheight())
-    fig.subplots_adjust(bottom=0.09)
-    fig.subplots_adjust(top=0.935)
-    fig.subplots_adjust(left=0.11)
-    fig.subplots_adjust(right=.95)
+    fig.subplots_adjust(bottom=0.11)
+    fig.subplots_adjust(top=0.9)
+    fig.subplots_adjust(left=0.13)
+    fig.subplots_adjust(right=.97)
 
     stat = []
     alphas = []
@@ -339,7 +340,7 @@ def display_explained_variance_epoch(output_dir, impute=True):
         ax[alpha].set_xlim([.1, 5])
 
         for tick in ax[alpha].xaxis.get_major_ticks():
-            tick.label.set_fontsize(6)
+            tick.label.set_fontsize(7)
         ax[alpha].set_xscale('log')
         # ax[alpha].set_yscale('log')
 
@@ -356,13 +357,13 @@ def display_explained_variance_epoch(output_dir, impute=True):
         for tick in ax[alpha].xaxis.get_major_ticks():
             tick.label.set_color('black')
         for tick in ax[alpha].yaxis.get_major_ticks():
-            tick.label.set_fontsize(4)
+            tick.label.set_fontsize(6)
 
             tick.label.set_color('black')
         t = ax[alpha].yaxis.get_offset_text()
-        t.set_size(4)
+        t.set_size(5)
     ax[1e-3].set_xlabel('Epoch')
-    ax[1e-3].xaxis.set_label_coords(-0.05, -0.047)
+    ax[1e-3].xaxis.set_label_coords(-0.045, -0.047)
 
     colormap = sns.cubehelix_palette(5, start=0, rot=0., hue=1, dark=.3,
                                      light=.7,
@@ -413,10 +414,10 @@ def display_explained_variance_epoch(output_dir, impute=True):
     #                   horizontalalignment='right', verticalalignment='top', fontsize=6)
 
     ax[alpha].annotate('$\\lambda  = 10^{%.0f}$' % log(alpha, 10),
-                       xy=(0.66, 0.32),
+                       xy=(0.1, 0.1),
                        ha='left',
                        va='bottom',
-                       fontsize=7,
+                       fontsize=8,
                        xycoords='axes fraction')
     legend_ratio = mlegend.Legend(ax[1e-3], handles[0:], labels[0:],
                                   loc='upper right',
@@ -436,11 +437,12 @@ def display_explained_variance_density(output_dir, impute=True):
     fig = plt.figure()
     gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 1])
     fig.set_figwidth(fig.get_figwidth() * .73)
-    fig.set_figheight(1.0 * fig.get_figheight())
+    fig.set_figheight(0.95 * fig.get_figheight())
     # ax_pareto = fig.add_subplot(gs[3])
     fig.subplots_adjust(bottom=0.27)
     fig.subplots_adjust(left=0.075)
     fig.subplots_adjust(right=.95)
+    fig.subplots_adjust(top=0.9)
 
     stat = []
     alphas = []
@@ -468,14 +470,14 @@ def display_explained_variance_density(output_dir, impute=True):
             ax[alpha].set_ylabel('Objective value on test set')
         ax[alpha].annotate('$\\lambda  = 10^{%.0f}$' % log(alpha, 10),
                            xy=(.65, .85),
-                           fontsize=7,
+                           fontsize=8,
                            xycoords='axes fraction')
         ax[alpha].set_xlim([.1, 200 ])
 
         # ax[alpha].set_xticklabels(['$10^{-1}$', '$10^{0}$', '$10^{1}$',
         #                            '$10^{2}$'])
         for tick in ax[alpha].xaxis.get_major_ticks():
-            tick.label.set_fontsize(5)
+            tick.label.set_fontsize(7)
         ax[alpha].set_xscale('log')
 
         ax[alpha].set_xticks([.1, 1, 10, 100])
@@ -491,18 +493,24 @@ def display_explained_variance_density(output_dir, impute=True):
         for tick in ax[alpha].xaxis.get_major_ticks():
             tick.label.set_color('black')
         for tick in ax[alpha].yaxis.get_major_ticks():
-            tick.label.set_fontsize(4)
+            tick.label.set_fontsize(6)
 
             tick.label.set_color('black')
         t = ax[alpha].yaxis.get_offset_text()
-        t.set_size(4)
+        t.set_size(5)
         # if alpha == 1e-3:
         #     t.set_transform(ax[alpha].transAxes)
         #     t.set_position((0, 0))
             # ax[alpha].yaxis.stale = True
     ax[1e-4].set_xlabel('CPU\ntime', ha='right')
-    ax[1e-4].xaxis.set_label_coords(1.17, -0.05)
+    ax[1e-4].xaxis.set_label_coords(1.19, -0.05)
 
+    # formatter = matplotlib.ticker.ScalarFormatter()
+    # formatter.set_scientific(False)
+    # ax[1e-3].yaxis.set_major_formatter(formatter)
+    # ax[1e-3].yaxis.OFFSETTEXTPAD = - 5
+    monkey_patch(ax[1e-3].yaxis, y_update_offset_text_position)
+    ax[1e-3].yaxis.set_offset_position("left")
     colormap = sns.cubehelix_palette(5, start=0, rot=0., hue=1, dark=.3,
                                      light=.7,
                                      reverse=False)
@@ -524,7 +532,7 @@ def display_explained_variance_density(output_dir, impute=True):
             s, = ax[this_stat[
                 'alpha']].plot(np.array(this_stat['records']) /
                                this_stat['reduction'] / (1200 *
-                                                         400) * 158 ,
+                                                         400) * 158,
                                this_stat['objective'],
                                color=colormap[(int(this_stat[
                                                        'reduction']) - 1) // 2],
@@ -548,7 +556,8 @@ def display_explained_variance_density(output_dir, impute=True):
                                     numpoints=1,
                                     handlelength=2,
                                     markerscale=1.4,
-                                    bbox_to_anchor=(0.3 + offset, -.35),
+                                    bbox_to_anchor=(0.3 + offset, -.365),
+                                    fontsize=8,
                                     frameon=False
                                     )
 
@@ -557,22 +566,23 @@ def display_explained_variance_density(output_dir, impute=True):
                                   ncol=5,
                                   markerscale=1.4,
                                   handlelength=2,
-                                  bbox_to_anchor=(0.3 + offset, -.5),
+                                  fontsize=8,
+                                  bbox_to_anchor=(0.3 + offset, -.515),
                                   frameon=False
                                   )
     # ax[1e-2].annotate('Reduction', xy=(0, -.35), xycoords='axes fraction')
     ax[1e-2].annotate('Original online algorithm', xy=(0.28 + offset, -.27),
                       xycoords='axes fraction',
                       horizontalalignment='right', verticalalignment='bottom',
-                      fontsize=7)
+                      fontsize=8)
     ax[1e-2].annotate('Proposed reduction factor $r$', xy=(0.28 + offset, -.42),
                       xycoords='axes fraction',
                       horizontalalignment='right', verticalalignment='bottom',
-                      fontsize=7)
+                      fontsize=8)
     ax[1e-2].add_artist(legend_ratio)
     ax[1e-2].add_artist(legend_vanilla)
 
-    ax[1e-3].annotate('(a) Convergence speed', xy= (0.5, 1.05), ha='center', va='bottom', xycoords='axes fraction')
+    ax[1e-3].annotate('(a) Convergence speed', xy= (0.5, 1.04), ha='center', fontsize=9, va='bottom', xycoords='axes fraction')
 
     fig.savefig(expanduser('~/output/icml/hcp_bench.pdf'))
 
@@ -593,11 +603,12 @@ def display_explained_variance_density(output_dir, impute=True):
 
     ####################### Final objective
     fig = plt.figure()
-    fig.set_figheight(1.05 * fig.get_figheight())
+    fig.set_figheight(0.95 * fig.get_figheight())
     # ax_pareto = fig.add_subplot(gs[3])
     fig.subplots_adjust(bottom=0.27)
     fig.subplots_adjust(left=0.05)
     fig.subplots_adjust(right=1.2)
+    fig.subplots_adjust(top=0.88)
     fig.set_figwidth(fig.get_figwidth() * 0.27)
     gs = gridspec.GridSpec(2, 1, width_ratios=[1, 1])
     ax_bar_objective = fig.add_subplot(gs[0])
@@ -618,9 +629,9 @@ def display_explained_variance_density(output_dir, impute=True):
     ax_bar_objective.get_xaxis().set_visible(False)
     ax_bar_objective.set_xlim([-.5, 2.6])
     ax_bar_objective.annotate('Final\nobjective\ndeviation\n(relative)',
-                              xy=(1.26, 0.45), fontsize=6, va='center',
+                              xy=(1.28, 0.45), fontsize=7, va='center',
                               xycoords='axes fraction')
-    ax_bar_objective.annotate('(Less is better)', xy=(.06, 0.17), fontsize=5,
+    ax_bar_objective.annotate('(Less is better)', xy=(.06, 0.17), fontsize=7,
                               va='center', xycoords='axes fraction')
     ax_bar_objective.yaxis.set_label_position('right')
 
@@ -644,7 +655,7 @@ def display_explained_variance_density(output_dir, impute=True):
     ax_bar_density.set_ylim(100, 1000)
     ax_bar_density.set_yticks([100, 1000])
     ax_bar_density.set_yticklabels(['100', '1000'])
-    ax_bar_density.tick_params(axis='y', labelsize=4)
+    ax_bar_density.tick_params(axis='y', labelsize=5)
 
     sns.barplot(x=x_bar, y=y_bar_density, hue=hue_bar, ax=ax_bar_density,
                 order=[1e-2, 1e-3, 1e-4],
@@ -656,7 +667,7 @@ def display_explained_variance_density(output_dir, impute=True):
     ax_bar_density.set_xlabel('Regularization $\\lambda$')
     ax_bar_density.annotate('$\\frac{\\ell_1}{\\ell_2}(\\mathbf D)$',
                             xy=(1.26, 0.45),
-                            fontsize=6, va='center', xycoords='axes fraction')
+                            fontsize=7, va='center', xycoords='axes fraction')
     ax_bar_density.yaxis.set_label_position('right')
 
     plt.setp(ax_bar_density.patches, linewidth=0.1)
@@ -672,7 +683,7 @@ def display_explained_variance_density(output_dir, impute=True):
         tic.tick1On = tic.tick2On = False
     ax_bar_objective.spines['bottom'].set_position(('data', 0))
     ax_bar_objective.spines['bottom'].set_linewidth(.3)
-    ax_bar_objective.annotate('(b) Decomposition quality', xy= (0.5, 1.05), ha='center', va='bottom', xycoords='axes fraction')
+    ax_bar_objective.annotate('(b) Decomposition quality', xy= (0.7, 1.165), ha='center', va='bottom', fontsize=9, xycoords='axes fraction')
 
     fig.savefig(expanduser('~/output/icml/bar_plot.pdf'))
 
@@ -709,6 +720,39 @@ def single_retrieve(experiment_dir, output_dir):
     print( join(output_dir, 'pdf', name))
     print(join(output_dir, experiment_dir, last_filename))
     plot_to_pdf(join(output_dir, experiment_dir, last_filename), join(output_dir, 'pdf', name))
+
+def monkey_patch(axis, func):
+    axis._update_offset_text_position = types.MethodType(func, axis)
+
+def y_update_offset_text_position(self, bboxes, bboxes2):
+
+    import matplotlib.transforms as mtransforms
+
+    x, y = self.offsetText.get_position()
+
+    if self.offset_text_position == 'left':
+        # y in axes coords, x in display coords
+        self.offsetText.set_transform(mtransforms.blended_transform_factory(
+                self.axes.transAxes, mtransforms.IdentityTransform()))
+
+        top = self.axes.bbox.ymax
+        y = top - 4 * self.figure.dpi / 72.0
+        x = 0.06
+
+    else:
+        # x & y in display coords
+        self.offsetText.set_transform(mtransforms.IdentityTransform())
+
+        # Northwest of upper-right corner of right-hand extent of tick labels
+        if bboxes2:
+            bbox = mtransforms.Bbox.union(bboxes2)
+        else:
+            bbox = self.axes.bbox
+        top, right = bbox.ymax, bbox.xmax
+        x = right + self.OFFSETTEXTPAD * self.figure.dpi / 72.0
+        y = top + self.OFFSETTEXTPAD * self.figure.dpi / 72.0
+
+    self.offsetText.set_position((x, y))
 
 
 if __name__ == '__main__':
