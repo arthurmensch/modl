@@ -129,5 +129,5 @@ def main(output_dir, n_jobs):
 
 
 if __name__ == '__main__':
-    output_dir = expanduser('~/output/modl/hcp_no_replacement')
-    main(output_dir, 3)
+    output_dir = expanduser('~/output/modl/hcp_no_replacement_reduction')
+    main(output_dir, 12)

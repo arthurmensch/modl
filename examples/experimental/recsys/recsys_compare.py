@@ -44,17 +44,17 @@ estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30,
 
 def _get_hyperparams():
     hyperparams = {'cd': {'100k': dict(max_iter=200),
-                          "1m": dict(max_iter=200),
+                          "1m": dict(max_iter=300),
                           "10m": dict(max_iter=200),
                           "netflix": dict(max_iter=50)},
                    'dl': {
-                       '100k': dict(learning_rate=0.9, n_epochs=20,
+                       '100k': dict(learning_rate=0.85, n_epochs=30,
                                     batch_size=10),
-                       '1m': dict(learning_rate=0.9, n_epochs=20,
+                       '1m': dict(learning_rate=0.85, n_epochs=30,
                                   batch_size=60),
-                       '10m': dict(learning_rate=0.9, n_epochs=20,
+                       '10m': dict(learning_rate=0.85, n_epochs=60,
                                    batch_size=600),
-                       'netflix': dict(learning_rate=0.9, n_epochs=10,
+                       'netflix': dict(learning_rate=0.9, n_epochs=25,
                                        batch_size=4000)}}
     hyperparams['dl_partial'] = hyperparams['dl']
     return hyperparams
@@ -89,7 +89,10 @@ def _get_cvparams():
     return cvparams
 
 
-alphas = np.logspace(-2, 1, 30)
+alphas = {'netflix': np.logspace(-2, 1, 15),
+          '10m': np.logspace(-2, 1, 15),
+          '1m': np.logspace(-2, 1, 30)
+          }
 betas = [0]
 learning_rates = np.linspace(0.75, 1, 10)
 
@@ -180,7 +183,7 @@ def cross_val(dataset='100k',
         else:
             mf.set_params(max_iter=40)
         mf.set_params(random_state=random_state)
-        param_grid = [dict(alpha=alpha, beta=beta) for alpha in alphas
+        param_grid = [dict(alpha=alpha, beta=beta) for alpha in alphas[dataset]
                       for beta in betas]
 
         mf.verbose = 0
@@ -322,10 +325,10 @@ def plot_learning_rate():
     ax[0].set_xlabel('Epoch', ha='left', va='top')
     ax[0].xaxis.set_label_coords(-.18, -0.055)
 
-    ax[0].set_xlim([.1, 20])
-    ax[0].set_xticks([1, 10, 20])
-    ax[0].set_xticklabels(['1', '10', '20'])
-    ax[1].set_xlim([.1, 20])
+    ax[0].set_xlim([.1, 40])
+    ax[0].set_xticks([1, 10, 40])
+    ax[0].set_xticklabels(['1', '10', '40'])
+    ax[1].set_xlim([.1, 25])
     ax[1].set_xticks([.1, 1, 10, 20])
     ax[1].set_xticklabels(['.1', '1', '10', '20'])
 
@@ -335,7 +338,7 @@ def plot_learning_rate():
                    xycoords='axes fraction')
 
     ax[0].set_ylim([0.795, 0.877])
-    ax[1].set_ylim([0.93, 0.983])
+    ax[1].set_ylim([0.93, 1])
     ax[0].legend(ncol=4, loc='upper left', bbox_to_anchor=(0., -.13),
                  fontsize=6, numpoints=1, columnspacing=.3, frameon=False)
     ax[0].annotate('Learning rate $\\beta$', xy=(1.6, -.38),
@@ -430,13 +433,13 @@ def plot_benchs():
 
 
 if __name__ == '__main__':
-    cross_val('1m', n_jobs=30)
+    cross_val('1m', n_jobs=15)
     benchmark('1m', n_jobs=3)
-    cross_val('10m', n_jobs=30)
+    # cross_val('10m', n_jobs=15)
     benchmark('10m', n_jobs=3)
-    cross_val('netflix', n_jobs=30)
+    # cross_val('netflix', n_jobs=15)
     benchmark('netflix', n_jobs=3)
-    # compare_learning_rate('10m', n_jobs=3)
-    # compare_learning_rate('netflix', n_jobs=10)
+    compare_learning_rate('10m', n_jobs=10)
+    compare_learning_rate('netflix', n_jobs=10)
     plot_benchs()
-    # plot_learning_rate()
+    plot_learning_rate()

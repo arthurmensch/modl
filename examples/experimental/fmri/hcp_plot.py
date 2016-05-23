@@ -24,16 +24,21 @@ def display_explained_variance_density(output_dir):
 
     results = []
     analyses = []
+    ref_time = 1000000
     for dir_name in dir_list:
         try:
             analyses.append(json.load(open(join(dir_name, 'analysis.json'), 'r')))
             results.append(json.load(open(join(dir_name, 'results.json'), 'r')))
+            if results[-1]['reduction'] == 12:
+                timings = np.array(results[-1]['timings'])
+                diff = timings[1:] - timings[:1]
+                ref_time = min(ref_time, np.min(diff))
         except IOError:
             pass
     h_reductions = []
     ax = {}
-    ylim = {1e-2: [2.475e8, 2.535e8], 1e-3: [2.37e8, 2.48e8],
-            1e-4: [2.31e8, 2.45e8]}
+    ylim = {1e-2: [2.455e8, 2.525e8], 1e-3: [2.3e8, 2.47e8],
+            1e-4: [2.16e8, 2.42e8]}
     for i, alpha in enumerate([1e-2, 1e-3, 1e-4]):
         ax[alpha] = fig.add_subplot(gs[:, i])
         if i == 0:
@@ -42,15 +47,15 @@ def display_explained_variance_density(output_dir):
                            xy=(.65, .85),
                            fontsize=7,
                            xycoords='axes fraction')
-        ax[alpha].set_xlim([1, 500])
-        # ax[alpha].set_ylim(ylim[alpha])
+        ax[alpha].set_xlim([.05, 200])
+        ax[alpha].set_ylim(ylim[alpha])
 
         for tick in ax[alpha].xaxis.get_major_ticks():
             tick.label.set_fontsize(5)
         ax[alpha].set_xscale('log')
 
-        ax[alpha].set_xticks([1, 10, 100])
-        ax[alpha].set_xticklabels(['.1 h', '1 h', '10 h', '100 h'])
+        ax[alpha].set_xticks([.1, 1, 10, 100])
+        ax[alpha].set_xticklabels(['.1h', '1h', '10h', '100h'])
 
         sns.despine(fig=fig, ax=ax[alpha])
 
@@ -84,20 +89,24 @@ def display_explained_variance_density(output_dir):
     y_bar_objective = []
     y_bar_density = []
     hue_bar = []
+
     for result, analysis in zip(results, analyses):
-        print("%s %s" % (result['alpha'], result['reduction']))
-        s, = ax[result[
-            'alpha']].plot(
-            np.array(analysis['records']) / int(result['reduction']) + 0.01,
-            analysis['objectives'],
-            color=colormap_dict[int(result['reduction'])],
-            linewidth=2,
-            linestyle='--' if result[
-                                  'reduction'] == 1 else '-',
-            zorder=result['reduction'])
-        if result['alpha'] == 1e-2:
-            h_reductions.append(
-                (s, '%.0f' % result['reduction']))
+        if True : #int(result['reduction']) != 3:
+            print("%s %s" % (result['alpha'], result['reduction']))
+            timings = (np.array(analysis['records']) + 1) / int(result['reduction']) * 12 * ref_time / 3600
+            # timings = np.array(result['timings'])[np.array(analysis['records']) + 1] / 3600
+            s, = ax[result[
+                'alpha']].plot(
+                timings,
+                np.array(analysis['objectives']) / 4,
+                color=colormap_dict[int(result['reduction'])],
+                linewidth=2,
+                linestyle='--' if result[
+                                      'reduction'] == 1 else '-',
+                zorder=result['reduction'] if result['reduction'] !=  1 else 100)
+            if result['alpha'] == 1e-2:
+                h_reductions.append(
+                    (s, '%.0f' % result['reduction']))
 
     handles, labels = list(zip(*h_reductions[::-1]))
     argsort = sorted(range(len(labels)), key=labels.__getitem__)
@@ -163,11 +172,10 @@ def display_explained_variance_density(output_dir):
     fig.set_figwidth(fig.get_figwidth() * 0.27)
     gs = gridspec.GridSpec(2, 1, width_ratios=[1, 1])
     ax_bar_objective = fig.add_subplot(gs[0])
-    ax_bar_objective.set_ylim(-0.002, 0.002)
-    ax_bar_objective.set_yticks([-.002, -0.001, 0, 0.001, .002])
-    ax_bar_objective.set_yticklabels(['$-0.2\%$', '', '$0\%$', '',
-                                      '$+0.2\%$'])
-    ax_bar_objective.set_ylim(-0.002, 0.002)
+    ax_bar_objective.set_ylim(-0.01, 0.01)
+    ax_bar_objective.set_yticks([-.01, -0.005, 0, 0.005, .01])
+    ax_bar_objective.set_yticklabels(['$-1\%$', '', '$0\%$', '',
+                                      '$+1\%$'])
     ax_bar_objective.tick_params(axis='y', labelsize=6)
 
     sns.despine(fig=fig, ax=ax_bar_objective, left=True, right=False)
@@ -235,5 +243,5 @@ def display_explained_variance_density(output_dir):
 
 
 if __name__ == '__main__':
-    output_dir = expanduser('~/output/modl/hcp_no_replacement')
+    output_dir = expanduser('~/output/modl/hcp_no_replacement_reduction')
     display_explained_variance_density(output_dir)
