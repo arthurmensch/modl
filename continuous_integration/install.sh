@@ -82,6 +82,8 @@ create_new_conda_env() {
 
 create_new_conda_env
 
+pip install nilearn
+
 if [[ "$COVERAGE" == "true" ]]; then
     pip install coverage coveralls pytest-cov
 fi
