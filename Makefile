@@ -2,6 +2,7 @@ PYTHON ?= python
 CYTHON ?= cython
 PYTEST ?= py.test --pyargs
 DATADIR=$(HOME)/modl_data
+MRIDATADIR=$(HOME)/data
 
 # Compilation...
 
@@ -44,6 +45,7 @@ test: test-code
 # from Mathieu Blondel
 datadir:
 	mkdir -p $(DATADIR)
+	mkdir -p $(MRIDATADIR)
 
 download-movielens100k: datadir
 	./download.sh http://www.mblondel.org/data/movielens100k.tar.bz2
@@ -59,3 +61,13 @@ download-movielens10m: datadir
 	./download.sh http://www.mblondel.org/data/movielens10m.tar.bz2
 	tar xvfj movielens10m.tar.bz2
 	mv movielens10m $(DATADIR)
+
+download-netflix: datadir
+    ./download.sh http://www.amensch.fr/data/netflix.tar.bz2
+	tar xvfj netflix.tar.bz2
+	mv movielens10m $(DATADIR)
+
+download-hcp-extra: datadir
+    ./download.sh http://www.amensch.fr/data/hcp_extra.tar.bz2
+	tar xvfj netflix.tar.bz2
+	mv movielens10m $(MRIDATADIR)

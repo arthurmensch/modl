@@ -14,11 +14,12 @@ from sklearn.externals.joblib import Parallel, delayed
 from modl.datasets.hcp import get_hcp_data
 from modl.spca_fmri import SpcaFmri
 
+trace_folder = expanduser('~/output/modl/hcp')
 
 def main():
     # Apply our decomposition estimator with reduction
     n_components = 70
-    n_jobs = 12
+    n_jobs = 15
     raw = True
     init = True
 
@@ -26,7 +27,7 @@ def main():
 
     mask, func_filenames = get_hcp_data(data_dir, raw)
 
-    reduction_list = [2, 4, 8, 12]
+    reduction_list = [1, 2, 4, 8, 12]
     alpha_list = [1e-2, 1e-3, 1e-4]
 
     Parallel(n_jobs=n_jobs, verbose=10)(delayed(run)(idx, reduction, alpha,
@@ -35,13 +36,11 @@ def main():
                                         idx, (reduction, alpha)
                                         in enumerate(
         itertools.product(reduction_list, alpha_list)))
-    # run(0, 12, 1e-2, mask, raw, n_components, init, func_filenames)
-
 
 def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
-    trace_folder = expanduser('~/output/modl/hcp_no_replacement_reduction/experiment_%i' % idx)
+    output_dir = join(trace_folder, 'experiment_%i' % idx)
     try:
-        os.makedirs(trace_folder)
+        os.makedirs(output_dir)
     except OSError:
         pass
     dict_fact = SpcaFmri(mask=mask,
@@ -56,11 +55,12 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
                          alpha=alpha,
                          random_state=0,
                          n_epochs=2,
+                         l1_ratio=0.5,
                          backend='c',
                          memory=expanduser("~/nilearn_cache"), memory_level=2,
                          verbose=5,
                          n_jobs=1,
-                         trace_folder=trace_folder
+                         trace_folder=output_dir
                          )
 
     print('[Example] Learning maps')
@@ -71,7 +71,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
     # Decomposition estimator embeds their own masker
     masker = dict_fact.masker_
     components_img = masker.inverse_transform(dict_fact.components_)
-    components_img.to_filename(join(trace_folder, 'components_final.nii.gz'))
+    components_img.to_filename(join(output_dir, 'components_final.nii.gz'))
     print('[Example] Run in %.2f s' % t1)
     # Show components from both methods using 4D plotting tools
     import matplotlib.pyplot as plt
@@ -85,7 +85,7 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
                   axes=axes[1],
                   colorbar=False,
                   threshold=0)
-    plt.savefig(join(trace_folder, 'components.pdf'))
+    plt.savefig(join(output_dir, 'components.pdf'))
     show()
 
 

@@ -97,6 +97,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  alpha=0.,
                  dict_init=None,
                  random_state=None,
+                 l1_ratio=1,
                  batch_size=20,
                  replacement=False,
                  reduction=1,
@@ -130,7 +131,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                                    memory_level=memory_level,
                                    n_jobs=n_jobs, verbose=verbose,
                                    )
-
+        self.l1_ratio = l1_ratio
         self.alpha = alpha
         self.dict_init = dict_init
         self.n_epochs = n_epochs
@@ -214,7 +215,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          batch_size=self.batch_size,
                          random_state=random_state,
                          dict_init=dict_init,
-                         l1_ratio=1,
+                         l1_ratio=self.l1_ratio,
                          backend=self.backend,
                          verbose=max(0, self.verbose - 1))
 

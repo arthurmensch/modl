@@ -13,12 +13,12 @@ import seaborn.apionly as sns
 from joblib import Parallel, delayed
 from matplotlib import gridspec
 from sklearn import clone
-from modl.matrix_fact import ExplicitMF
 
 from modl._utils.cross_validation import ShuffleSplit, \
     cross_val_score
 from modl.datasets.recsys import get_recsys_data
 from modl.dict_completion import DictCompleter
+from modl.externals.spira.matrix_fact import ExplicitMF
 
 trace_dir = expanduser('~/output/modl/recsys_bias')
 
@@ -283,7 +283,6 @@ def single_fit(mf, X_tr, X_te, params):
     score = [mf.score(X_te)]
     return score, params
 
-
 def plot_learning_rate():
     output_dir = join(trace_dir, 'learning_rate')
     fig = plt.figure()
@@ -333,14 +332,14 @@ def plot_learning_rate():
     ax[1].set_xticklabels(['.1', '1', '10', '20'])
 
     ax[0].annotate('MovieLens 10M', xy=(.95, .9), ha='right',
-                   xycoords='axes fraction')
+                   xycoords='axes fraction', zorder=100)
     ax[1].annotate('Netflix', xy=(.95, .9), ha='right',
-                   xycoords='axes fraction')
+                   xycoords='axes fraction', zorder=100)
 
     ax[0].set_ylim([0.795, 0.877])
-    ax[1].set_ylim([0.93, 1])
-    ax[0].legend(ncol=4, loc='upper left', bbox_to_anchor=(0., -.13),
-                 fontsize=6, numpoints=1, columnspacing=.3, frameon=False)
+    ax[1].set_ylim([0.93, .999])
+    ax[0].legend(ncol=4, loc='upper left', bbox_to_anchor=(-0.09, -.13),
+                 fontsize=7, numpoints=1, columnspacing=.3, frameon=False)
     ax[0].annotate('Learning rate $\\beta$', xy=(1.6, -.38),
                    xycoords='axes fraction')
     ltext = ax[0].get_legend().get_texts()
@@ -361,14 +360,17 @@ def plot_benchs():
     fig.set_figheight(fig.get_figheight() * 0.66)
     gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 1.5])
 
-    ylims = {'100k': [.90, .96], '1m': [.86, .915], '10m': [.79, .868],
-             'netflix': [.927, .99]}
-    xlims = {'100k': [0.0001, 10], '1m': [0.1, 20], '10m': [1, 500],
-             'netflix': [30, 8000]}
+    ylims = {'100k': [.90, .96], '1m': [.864, .915], '10m': [.80, .868],
+             'netflix': [.93, .99]}
+    xlims = {'100k': [0.0001, 10], '1m': [0.1, 20], '10m': [1, 400],
+             'netflix': [30, 3000]}
 
     names = {'dl_partial': 'Proposed \n(partial projection)',
              'dl': 'Proposed \n(full projection)',
              'cd': 'Coordinate descent'}
+    zorder = {'cd': 10,
+              'dl': 1,
+              'dl_partial': 5}
     for i, version in enumerate(['1m', '10m', 'netflix']):
         try:
             with open(join(output_dir, 'results_%s.json' % version), 'r') as f:
@@ -408,7 +410,8 @@ def plot_benchs():
             ax_time.plot(this_result['timings'], this_result['rmse'],
                          label=names[idx], color=color[idx],
                          linewidth=2,
-                         linestyle='-' if idx != 'cd' else '--')
+                         linestyle='-' if idx != 'cd' else '--',
+                         zorder=zorder[idx])
         if version == 'netflix':
             ax_time.legend(loc='upper left', bbox_to_anchor=(.65, 1.1),
                            numpoints=1,
@@ -435,9 +438,9 @@ def plot_benchs():
 if __name__ == '__main__':
     cross_val('1m', n_jobs=15)
     benchmark('1m', n_jobs=3)
-    # cross_val('10m', n_jobs=15)
+    cross_val('10m', n_jobs=15)
     benchmark('10m', n_jobs=3)
-    # cross_val('netflix', n_jobs=15)
+    cross_val('netflix', n_jobs=15)
     benchmark('netflix', n_jobs=3)
     compare_learning_rate('10m', n_jobs=10)
     compare_learning_rate('netflix', n_jobs=10)

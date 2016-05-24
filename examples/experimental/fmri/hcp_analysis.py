@@ -9,9 +9,11 @@ from nilearn.input_data import NiftiMasker
 from sklearn.externals.joblib import delayed, Parallel
 from sklearn.linear_model import Ridge
 
+from modl._utils.enet_proj import enet_scale
 from modl.datasets.hcp import get_hcp_data
 
 data_dir = expanduser('~/data')
+trace_folder = expanduser('~/output/modl/hcp')
 n_test_records = 4
 
 
@@ -105,6 +107,32 @@ def analyse_dir(output_dir, X, masker):
         json.dump(analysis, f)
 
 
+def get_init_objective(output_dir):
+    mask, func_filenames = get_hcp_data(data_dir=data_dir, raw=True)
+
+    masker = NiftiMasker(mask_img=mask, smoothing_fwhm=None,
+                         standardize=False)
+    masker.fit()
+
+    rsn70 = fetch_atlas_smith_2009().rsn70
+    components = masker.transform(rsn70)
+    print(components.shape)
+    enet_scale(components.T, inplace=True)
+    print(np.sum(np.abs(components), axis=1))
+    test_data = func_filenames[(-n_test_records * 2)::2]
+
+    n_samples, n_voxels = np.load(test_data[-1], mmap_mode='r').shape
+    X = np.empty((n_test_records * n_samples, n_voxels))
+
+    for i, this_data in enumerate(test_data):
+        X[i * n_samples:(i + 1) * n_samples] = np.load(this_data,
+                                                       mmap_mode='r')
+    exp_var = {}
+    for alpha in [1e-2, 1e-3, 1e-4]:
+        exp_var[alpha] = objective_function(X, components, alpha)
+    json.dump(open(join(output_dir, 'init_objective.json'), 'r'))
+
+
 def main(output_dir, n_jobs):
     dir_list = [join(output_dir, f) for f in os.listdir(output_dir) if
                 os.path.isdir(join(output_dir, f))]
@@ -129,5 +157,6 @@ def main(output_dir, n_jobs):
 
 
 if __name__ == '__main__':
-    output_dir = expanduser('~/output/modl/hcp_no_replacement_reduction')
-    main(output_dir, 12)
+    output_dir = expanduser(trace_folder)
+    get_init_objective(trace_folder)
+    main(output_dir, 1)

@@ -7,10 +7,10 @@ from scipy.linalg import solve
 
 # FIXME: don't depend on scikit-learn.
 from sklearn.base import BaseEstimator
-from .dict_completion import compute_biases
+from modl.dict_completion import compute_biases
 
 from .matrix_fact_fast import _cd_fit, _predict
-from .dict_completion import rmse
+from modl.dict_completion import rmse
 
 class ExplicitMF(BaseEstimator):
     def __init__(self, alpha=1.0, beta=0., n_components=30, max_iter=10, tol=1e-3,

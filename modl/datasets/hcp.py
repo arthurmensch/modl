@@ -40,6 +40,35 @@ def _fetch_hcp_behavioral_data(resource_dir):
     return df[vars_remaining]
 
 
+def _gather(dest_data_dir):
+    data_dict = []
+    for this_dict in glob.glob(join(dest_data_dir, '**/origin.json'),
+                               recursive=True):
+        with open(this_dict, 'r') as f:
+            data_dict.append(json.load(f))
+    mapping = {}
+    for this_data in data_dict:
+        mapping[this_data['filename']] = this_data['array']
+    with open(join(dest_data_dir, 'data.json'), 'w+') as f:
+        json.dump(data_dict, f)
+    with open(join(dest_data_dir, 'mapping.json'), 'w+') as f:
+        json.dump(mapping, f)
+
+
+def _single_mask(masker, metadata, data_dir, dest_data_dir):
+    img = metadata['filename']
+    dest_file = img.replace(join(data_dir, 'HCP'), dest_data_dir)
+    dest_file = dest_file.replace('.nii.gz', '')
+    dest_dir = os.path.abspath(os.path.join(dest_file, os.pardir))
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+    data = masker.transform(img)
+    np.save(dest_file, data)
+    origin = dict(array=dest_file + '.npy', **metadata)
+    with open(join(dest_dir, 'origin.json'), 'w+') as f:
+        json.dump(origin, f)
+
+
 def fetch_hcp_rest(data_dir, n_subjects=40):
     dataset_name = 'HCP'
     source_dir = _get_dataset_dir(dataset_name, data_dir=data_dir,
@@ -91,50 +120,32 @@ def fetch_hcp_rest(data_dir, n_subjects=40):
     return Bunch(**results)
 
 
-def unmask_HCP(data_dir, dest_data_dir):
-    dataset = fetch_hcp_rest(data_dir='/storage/data', n_subjects=500)
+def prepare_hcp_raw_data(data_dir):
+    dataset = fetch_hcp_rest(data_dir=data_dir, n_subjects=500)
 
-    masker = NiftiMasker(mask_img=join(data_dir, '/HCP_mask/mask_img.nii.gz'),
+    dest_data_dir = 'HCP_unmasked'
+    mask_img = join(data_dir, 'HCP_extra/mask_img.nii.gz')
+
+    masker = NiftiMasker(mask_img=mask_img,
                          smoothing_fwhm=3, standardize=True).fit()
     Parallel(n_jobs=16)(delayed(_single_mask)(masker, this_metadata) for
                         this_metadata in dataset.meta)
     _gather(dest_data_dir)
 
 
-def _gather(dest_data_dir):
-    data_dict = []
-    for this_dict in glob.glob(join(dest_data_dir, '**/origin.json'),
-                               recursive=True):
-        with open(this_dict, 'r') as f:
-            data_dict.append(json.load(f))
-    mapping = {}
-    for this_data in data_dict:
-        mapping[this_data['filename']] = this_data['array']
-    with open(join(dest_data_dir, 'data.json'), 'w+') as f:
-        json.dump(data_dict, f)
-    with open(join(dest_data_dir, 'mapping.json'), 'w+') as f:
-        json.dump(mapping, f)
-
-
-def _single_mask(masker, metadata, data_dir, dest_data_dir):
-    img = metadata['filename']
-    dest_file = img.replace(join(data_dir, 'HCP'), dest_data_dir)
-    dest_file = dest_file.replace('.nii.gz', '')
-    dest_dir = os.path.abspath(os.path.join(dest_file, os.pardir))
-    if not os.path.exists(dest_dir):
-        os.makedirs(dest_dir)
-    data = masker.transform(img)
-    np.save(dest_file, data)
-    origin = dict(array=dest_file + '.npy', **metadata)
-    with open(join(dest_dir, 'origin.json'), 'w+') as f:
-        json.dump(origin, f)
-
-
 def get_hcp_data(data_dir, raw):
+    if not os.exists(join(data_dir, 'HCP_extra')):
+        raise ValueError(
+            'Please download HCP_extra folder using make download-hcp_extra'
+            ' first.')
     if raw:
         mask = join(data_dir, 'HCP_extra/mask_img.nii.gz')
-        mapping = json.load(
-            open(join(data_dir, 'HCP_unmasked/mapping.json'), 'r'))
+        try:
+            mapping = json.load(
+                open(join(data_dir, 'HCP_unmasked/mapping.json'), 'r'))
+        except FileNotFoundError:
+            raise ValueError(
+                'Please unmask the data using hcp_prepare.py first.')
         func_filenames = sorted(list(mapping.values()))
     else:
         hcp_dataset = datasets.fetch_hcp_rest(data_dir=data_dir,

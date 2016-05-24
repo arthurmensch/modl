@@ -1,3 +1,4 @@
+import copy
 from math import sqrt
 
 import numpy as np
@@ -88,7 +89,11 @@ def test_dict_completion_missing(backend):
     mf.fit(X_tr)
     X_pred = mf.predict(X_te)
     rmse = sqrt(np.sum((X_te.data - X_pred.data) ** 2) / X_te.data.shape[0])
-    X_te_c, _, _ = compute_biases(X_te, mf.beta)
+    row_mean_, col_mean_ = compute_biases(X, beta=mf.beta, inplace=False)
+    X_te_c = copy.deepcopy(X_te)
+    for i in range(X_te_c.shape[0]):
+        X_te_c.data[X_te_c.indptr[i]:X_te_c.indptr[i + 1]] -= row_mean_[i]
+        X_te_c.data -= col_mean_.take(X_te_c.indices, mode='clip')
     rmse_c = sqrt(np.sum((X_te.data - X_te_c.data) ** 2) / X_te.data.shape[0])
     assert (rmse < rmse_c)
     # assert_array_almost_equal(X_te.data, X_pred.data)
