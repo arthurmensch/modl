@@ -82,11 +82,11 @@ create_new_conda_env() {
 
 create_new_conda_env
 
-pip install nilearn
-
 if [[ "$COVERAGE" == "true" ]]; then
     pip install coverage coveralls pytest-cov
 fi
+
+pip install nilearn==$NILEARN_VERSION
 
 # numpy not installed when skipping the tests so we do not want to run
 # setup.py install
@@ -94,4 +94,3 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
     python setup.py install
 fi
 
-pip install nilearn==$NILEARN_VERSION
