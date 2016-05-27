@@ -77,6 +77,7 @@ class DictMF(BaseEstimator):
                  reduction=1,
                  var_red='weight_based',
                  projection='partial',
+                 coupled_subset=True,
                  replacement=False,
                  fit_intercept=False,
                  # Dict parameter
@@ -105,6 +106,8 @@ class DictMF(BaseEstimator):
 
         self.dict_init = dict_init
         self.n_components = n_components
+
+        self.coupled_subset = coupled_subset
 
         self.var_red = var_red
         self.replacement = replacement
@@ -275,13 +278,18 @@ class DictMF(BaseEstimator):
             if self.sparse_:
                 self._subset_mask = np.zeros(n_cols, dtype='i1')
                 self._dict_subset = np.zeros(self._len_subset, dtype='i4')
-                self._dict_subset_lim = np.zeros(1, dtype='i4')
+                self._sparse_dict_subset_lim = np.zeros(1, dtype='i4')
         if not self.sparse_:
             self._subset_range = np.arange(n_cols, dtype='i4')
             if self.reduction >= 1:
                 self.random_state_.shuffle(self._subset_range)
             self._temp_subset = np.empty(n_cols, dtype='i4')
             self._subset_lim = np.zeros(2, dtype='i4')
+
+            self._dict_subset_range = np.arange(n_cols, dtype='i4')
+            if self.reduction >= 1:
+                self.random_state_.shuffle(self._dict_subset_range)
+            self._dict_subset_lim = np.zeros(2, dtype='i4')
 
     def _is_initialized(self):
         return hasattr(self, 'D_')
@@ -302,13 +310,30 @@ class DictMF(BaseEstimator):
         X: ndarray (n_samples, n_features)
             Dataset to learn the dictionary from
         """
+        X = self._prefit(X, reset=True)
         if self.max_n_iter > 0:
-            self.partial_fit(X)
             while self.n_iter_[0] + self.batch_size - 1 < self.max_n_iter:
                 self.partial_fit(X, check_input=False)
         else:
             for _ in range(self.n_epochs):
-                self.partial_fit(X)
+                self.partial_fit(X, check_input=False)
+
+    def _prefit(self, X, reset=False, check_input=True):
+        if reset or not self._is_initialized():
+            if self.backend not in ['python', 'c']:
+                raise ValueError("Invalid backend %s" % self.backend)
+
+            if self.debug and self.backend == 'c':
+                raise NotImplementedError(
+                    "Recording objective loss is only available"
+                    "with backend == 'python'")
+
+            self._init(X)
+            self._init_arrays(X)
+        if check_input:
+            X = check_array(X, dtype='float', order='C',
+                            accept_sparse=self.sparse_)
+        return X
 
     def _refit(self, X):
         """Use X and Q to learn a code P"""
@@ -418,24 +443,8 @@ class DictMF(BaseEstimator):
             Dataset to learn the code from
 
         """
-        if self.backend not in ['python', 'c']:
-            raise ValueError("Invalid backend %s" % self.backend)
-
-        if self.debug and self.backend == 'c':
-            raise NotImplementedError(
-                "Recording objective loss is only available"
-                "with backend == 'python'")
-
-        if not self._is_initialized():
-            self._init(X)
-            self._init_arrays(X)
-
-        if check_input:
-            X = check_array(X, dtype='float', order='C',
-                            accept_sparse=self.sparse_)
-
+        X = self._prefit(X, check_input=check_input)
         n_rows, n_cols = X.shape
-
         # Sample related variables
         if sample_subset is None:
             sample_subset = np.arange(n_rows, dtype='int')
@@ -477,7 +486,7 @@ class DictMF(BaseEstimator):
                                      self._w_temp,
                                      self._subset_mask,
                                      self._dict_subset,
-                                     self._dict_subset_lim,
+                                     self._sparse_dict_subset_lim,
                                      self._this_sample_subset,
                                      self._dummy_2d_float,
                                      self._R,
@@ -583,12 +592,23 @@ class DictMF(BaseEstimator):
                     # print(self._subset_lim)
                     self._full_X[:len_batch] = X[row_batch]
                     self._this_X[:len_batch] = self._full_X[:len_batch, subset]
-
                     self._update_code_slow(self._this_X,
                                            subset,
                                            sample_subset[row_batch],
                                            full_X=self._full_X)
-                    dict_subset = subset
+                    if self.coupled_subset:
+                        dict_subset = subset
+                    else:
+                        random_seed = self.random_state_.randint(
+                            np.iinfo(np.uint32).max)
+                        _update_subset(self.replacement,
+                                       self._len_subset,
+                                       self._dict_subset_range,
+                                       self._dict_subset_lim,
+                                       self._temp_subset,
+                                       random_seed)
+                        dict_subset = self._dict_subset_range[
+                                 self._dict_subset_lim[0]:self._dict_subset_lim[1]]
                 # End else
                 self._reset_stat()
                 self.random_state_.shuffle(self._D_range)
@@ -623,7 +643,6 @@ class DictMF(BaseEstimator):
         _, n_cols = self.D_.shape
 
         D_subset = self.D_[:, subset]
-
         self.counter_[0] += len_batch
 
         reduction = n_cols / len_subset
@@ -667,7 +686,7 @@ class DictMF(BaseEstimator):
 
             self.row_counter_[sample_subset] += 1
             w_beta = np.power(self.row_counter_[sample_subset]
-                              [:, np.newaxis], -.75)
+                              [:, np.newaxis], -.875)
             self.beta_[sample_subset] *= 1 - w_beta
             self.beta_[sample_subset] += Dx.T * w_beta
             this_beta = self.beta_[sample_subset].T
@@ -676,7 +695,6 @@ class DictMF(BaseEstimator):
                                      this_beta,
                                      sym_pos=True, overwrite_a=True,
                                      check_finite=False)
-
             self.A_ *= 1 - w_A
             self.A_ += this_code.dot(this_code.T) * w_A / len_batch
             self.B_[:, subset] *= 1 - w_B

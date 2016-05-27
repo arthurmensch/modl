@@ -42,14 +42,15 @@ class Callback(object):
         regul = mf.alpha * np.sum(code ** 2)
         self.obj.append(loss.flat[0] + regul)
         sum_B = sqrt(np.sum(mf.B_ ** 2))
-        if hasattr(mf, 'multiplier_'):
+        if not mf.var_red == 'weight_based':
             sum_B *= mf.multiplier_
         self.b.append(sum_B)
-        self.components.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
+        self.components.append(
+            mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].tolist())
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_)
+        self.iter.append(int(mf.n_iter_[0]))
 
 
 def plot_gallery(title, images, n_col, n_row, image_shape):
@@ -91,19 +92,22 @@ def main():
     data = faces_centered
 
     res = Parallel(n_jobs=3, verbose=10)(
-        delayed(single_run)(n_components, var_red, projection, offset,
+        delayed(single_run)(n_components, var_red, projection, coupled_subset,
+                            offset,
                             learning_rate, reduction,
                             alpha,
                             data)
         for projection in ['partial']
         for offset in [0]
-        for learning_rate in [1]
-        for var_red, reduction in [('combo', 5),
-                                   ('sample_based', 5),
-                                   ('weight_based', 5),
-                                   # ('two_epochs', 5),
-                                   ('none', 1)
-                                   ]
+        for learning_rate in [.9]
+        for var_red, reduction, coupled_subset in [#('weight_based', 10, True),
+                                                   ('weight_based', 10, True),
+                                                   # ('combo', 10, False),
+                                                   ('combo', 10, True),
+                                                   # ('sample_based', 10, True),
+                                                   ('sample_based', 10, False),
+                                                   # ('none', 1, True)
+                                                   ]
         for alpha in [0.001])
 
     full_res_dict = []
@@ -120,11 +124,12 @@ def main():
     json.dump(full_res_dict, open('results.json', 'w+'))
 
     fig, axes = plt.subplots(4, 1, sharex=True)
-    fig.subplots_adjust(left=0.15, right=0.7)
+    fig.subplots_adjust(left=0.15, right=0.6)
     for cb, estimator in res:
         axes[0].plot(cb.times, cb.obj,
-                     label='%s, %s' % (
-                         estimator.reduction, estimator.var_red))
+                     label='%s, %s, %s' % (
+                         estimator.reduction, estimator.var_red,
+                         estimator.coupled_subset))
         axes[1].plot(cb.times, cb.sparsity)
         axes[2].plot(cb.times, np.array(cb.components)[:, 2])
         axes[3].plot(cb.times, cb.b)
@@ -135,25 +140,28 @@ def main():
 
     axes[0].set_xscale('log')
     # axes[0].set_yscale('log')
-    axes[3].set_xlabel('Time')
+    axes[3].set_xlabel('Iter')
     axes[3].set_ylabel('|B|')
     # axes[2].legend()
     axes[2].set_ylabel('Dictionary value')
-    plt.savefig('face_compare.pdf')
+    plt.show()
+    # plt.savefig('face_compare.pdf')
 
 
-def single_run(n_components, var_red, projection, offset, learning_rate,
+def single_run(n_components, var_red, projection, coupled_subset, offset,
+               learning_rate,
                reduction,
                alpha,
                data):
     cb = Callback(data)
     estimator = DictMF(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
-                       max_n_iter=20000,
+                       coupled_subset=coupled_subset,
+                       max_n_iter=100000,
                        projection=projection,
                        var_red=var_red,
                        backend='python',
-                       verbose=3,
+                       verbose=10,
                        learning_rate=learning_rate,
                        offset=offset,
                        random_state=0,

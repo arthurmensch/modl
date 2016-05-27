@@ -100,6 +100,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  l1_ratio=1,
                  batch_size=20,
                  replacement=False,
+                 coupled_subset=True,
                  reduction=1,
                  projection='partial',
                  learning_rate=1,
@@ -140,6 +141,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.projection = projection
         self.var_red = var_red
         self.replacement = replacement
+        self.coupled_subset = coupled_subset
 
         self.backend = backend
         self.shelve = shelve
@@ -206,6 +208,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         dict_mf = DictMF(n_components=self.n_components,
                          alpha=self.alpha,
                          reduction=self.reduction,
+                         coupled_subset=self.coupled_subset,
                          projection=self.projection,
                          learning_rate=self.learning_rate,
                          offset=self.offset,

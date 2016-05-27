@@ -68,7 +68,7 @@ cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_
         count = counter[j + 1]
         w[jj + 1] = 1
         for i in range(1, 1 + batch_size):
-            w[jj + 1] *= (1 - (full_count + i) / (count + i) * pow(
+            w[jj + 1] *= (1 - float(full_count + i) / (count + i) * pow(
                 (1 + offset) / (offset + full_count + i), learning_rate))
         w[jj + 1] = 1 - w[jj + 1]
 

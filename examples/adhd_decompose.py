@@ -11,6 +11,25 @@ from nilearn import datasets
 
 from modl.spca_fmri import SpcaFmri
 
+
+class Callback(object):
+    def __init__(self, train_data, test_data):
+        self.train = train_data
+        self.test_data = test_data
+        self.test_obj = []
+        self.train_obj = []
+        self.time = []
+
+        self.start_time = time.clock()
+        self.test_time = 0
+
+    def __call__(self, spca_fmri):
+        test_time = time.clock()
+        test_obj = spca_fmri.objective_function(self.test_data)
+        train_obj = spca_fmri.objective_function(self.train_data)
+        self.test_time += time.clock() - test_time
+        self.time.append(time.clock() - self.start_time - self.test_time)
+
 adhd_dataset = datasets.fetch_adhd(n_subjects=40)
 
 func_filenames = adhd_dataset.func  # list of 4D nifti files for each subject
@@ -31,18 +50,19 @@ except OSError:
 
 dict_fact = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      memory=expanduser("~/nilearn_cache"), memory_level=2,
-                     reduction=2,
+                     reduction=3,
                      projection='partial',
                      var_red='weight_based',
                      verbose=10,
                      alpha=0.001,
                      random_state=0,
-                     learning_rate=.8,
+                     learning_rate=.875,
                      replacement=True,
+                     coupled_subset=True,
                      batch_size=50,
                      offset=0,
-                     n_epochs=1,
-                     backend='c',
+                     n_epochs=2,
+                     backend='python',
                      # trace_folder=trace_folder,
                      n_jobs=n_jobs,
                      )

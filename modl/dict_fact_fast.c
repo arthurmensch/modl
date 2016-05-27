@@ -2503,7 +2503,7 @@ static void __pyx_f_4modl_14dict_fact_fast__get_weights(__Pyx_memviewslice __pyx
  *         count = counter[j + 1]
  *         w[jj + 1] = 1             # <<<<<<<<<<<<<<
  *         for i in range(1, 1 + batch_size):
- *             w[jj + 1] *= (1 - (full_count + i) / (count + i) * pow(
+ *             w[jj + 1] *= (1 - float(full_count + i) / (count + i) * pow(
  */
     __pyx_t_11 = (__pyx_v_jj + 1);
     *((double *) ( /* dim=0 */ (__pyx_v_w.data + __pyx_t_11 * __pyx_v_w.strides[0]) )) = 1.0;
@@ -2512,7 +2512,7 @@ static void __pyx_f_4modl_14dict_fact_fast__get_weights(__Pyx_memviewslice __pyx
  *         count = counter[j + 1]
  *         w[jj + 1] = 1
  *         for i in range(1, 1 + batch_size):             # <<<<<<<<<<<<<<
- *             w[jj + 1] *= (1 - (full_count + i) / (count + i) * pow(
+ *             w[jj + 1] *= (1 - float(full_count + i) / (count + i) * pow(
  *                 (1 + offset) / (offset + full_count + i), learning_rate))
  */
     __pyx_t_3 = (1 + __pyx_v_batch_size);
@@ -2522,16 +2522,16 @@ static void __pyx_f_4modl_14dict_fact_fast__get_weights(__Pyx_memviewslice __pyx
       /* "modl/dict_fact_fast.pyx":71
  *         w[jj + 1] = 1
  *         for i in range(1, 1 + batch_size):
- *             w[jj + 1] *= (1 - (full_count + i) / (count + i) * pow(             # <<<<<<<<<<<<<<
+ *             w[jj + 1] *= (1 - float(full_count + i) / (count + i) * pow(             # <<<<<<<<<<<<<<
  *                 (1 + offset) / (offset + full_count + i), learning_rate))
  *         w[jj + 1] = 1 - w[jj + 1]
  */
       __pyx_t_13 = (__pyx_v_jj + 1);
-      *((double *) ( /* dim=0 */ (__pyx_v_w.data + __pyx_t_13 * __pyx_v_w.strides[0]) )) *= (1.0 - (((__pyx_v_full_count + __pyx_v_i) / (__pyx_v_count + __pyx_v_i)) * pow(((1.0 + __pyx_v_offset) / ((__pyx_v_offset + __pyx_v_full_count) + __pyx_v_i)), __pyx_v_learning_rate)));
+      *((double *) ( /* dim=0 */ (__pyx_v_w.data + __pyx_t_13 * __pyx_v_w.strides[0]) )) *= (1.0 - ((((double)(__pyx_v_full_count + __pyx_v_i)) / (__pyx_v_count + __pyx_v_i)) * pow(((1.0 + __pyx_v_offset) / ((__pyx_v_offset + __pyx_v_full_count) + __pyx_v_i)), __pyx_v_learning_rate)));
     }
 
     /* "modl/dict_fact_fast.pyx":73
- *             w[jj + 1] *= (1 - (full_count + i) / (count + i) * pow(
+ *             w[jj + 1] *= (1 - float(full_count + i) / (count + i) * pow(
  *                 (1 + offset) / (offset + full_count + i), learning_rate))
  *         w[jj + 1] = 1 - w[jj + 1]             # <<<<<<<<<<<<<<
  * 
