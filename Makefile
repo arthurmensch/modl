@@ -3,6 +3,7 @@ CYTHON ?= cython
 PYTEST ?= py.test --pyargs
 DATADIR=$(HOME)/modl_data
 MRIDATADIR=$(HOME)/data
+HCPLOCATION=/storage/data/HCP
 
 # Compilation...
 
@@ -67,7 +68,8 @@ download-netflix: datadir
 	tar xvfj netflix.tar.bz2
 	mv movielens10m $(DATADIR)
 
-download-hcp-extra: datadir
+hcp: datadir
     ./download.sh http://www.amensch.fr/data/hcp_extra.tar.bz2
-	tar xvfj netflix.tar.bz2
-	mv movielens10m $(MRIDATADIR)
+	tar xvfj hcp_extra.tar.bz2
+	mv hcp_extra $(MRIDATADIR)
+	ln -s $(HCPLOCATION) $(MRIDATADIR)/HCP

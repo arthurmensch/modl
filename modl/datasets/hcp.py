@@ -10,8 +10,6 @@ from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
-from modl import datasets
-
 
 def _gather(dest_data_dir):
     data_dict = []
@@ -44,8 +42,11 @@ def _single_mask(masker, metadata, data_dir, dest_data_dir):
 
 def fetch_hcp_rest(data_dir, n_subjects=40):
     dataset_name = 'HCP'
-    source_dir = _get_dataset_dir(dataset_name, data_dir=data_dir,
-                                  verbose=0)
+    try:
+        source_dir = _get_dataset_dir(dataset_name, data_dir=data_dir,
+                                      verbose=0)
+    except OSError:
+        raise IOError('Please prepare the links toward HCP data using make hcp')
     extra_dir = _get_dataset_dir('HCP_extra', data_dir=data_dir,
                                  verbose=0)
     mask = join(extra_dir, 'mask_img.nii.gz')
@@ -100,8 +101,8 @@ def prepare_hcp_raw_data(data_dir):
 
 def get_hcp_data(data_dir, raw):
     if not os.exists(join(data_dir, 'HCP_extra')):
-        raise ValueError(
-            'Please download HCP_extra folder using make download-hcp_extra'
+        raise IOError(
+            'Please download HCP_extra folder using make hcp'
             ' first.')
     if raw:
         mask = join(data_dir, 'HCP_extra/mask_img.nii.gz')
@@ -109,12 +110,12 @@ def get_hcp_data(data_dir, raw):
             mapping = json.load(
                 open(join(data_dir, 'HCP_unmasked/mapping.json'), 'r'))
         except FileNotFoundError:
-            raise ValueError(
+            raise IOError(
                 'Please unmask the data using hcp_prepare.py first.')
         func_filenames = sorted(list(mapping.values()))
     else:
-        hcp_dataset = datasets.fetch_hcp_rest(data_dir=data_dir,
-                                              n_subjects=2000)
+        hcp_dataset = fetch_hcp_rest(data_dir=data_dir,
+                                     n_subjects=2000)
         mask = hcp_dataset.mask
         # list of 4D nifti files for each subject
         func_filenames = hcp_dataset.func
