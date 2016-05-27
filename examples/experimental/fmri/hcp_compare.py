@@ -23,9 +23,7 @@ def main():
     raw = True
     init = True
 
-    data_dir = expanduser('~/data')
-
-    mask, func_filenames = get_hcp_data(data_dir, raw)
+    mask, func_filenames = get_hcp_data(raw)
 
     reduction_list = [1, 2, 4, 8, 12]
     alpha_list = [1e-2, 1e-3, 1e-4]
@@ -36,6 +34,7 @@ def main():
                                         idx, (reduction, alpha)
                                         in enumerate(
         itertools.product(reduction_list, alpha_list)))
+
 
 def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
     output_dir = join(trace_folder, 'experiment_%i' % idx)
@@ -48,7 +47,6 @@ def run(idx, reduction, alpha, mask, raw, n_components, init, func_filenames):
                          batch_size=40,
                          shelve=not raw,
                          n_components=n_components,
-                         replacement=False,
                          dict_init=fetch_atlas_smith_2009().rsn70 if
                          init else None,
                          reduction=reduction,

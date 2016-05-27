@@ -4,13 +4,9 @@ import os
 
 import joblib
 import sklearn.externals.joblib as skjoblib
-from sklearn.datasets.base import get_data_home as _get_data_home
 
-from modl._utils.cross_validation import train_test_split
-
-
-def get_data_home():
-    return _get_data_home().replace("scikit_learn", "modl")
+from .._utils.cross_validation import train_test_split
+from ..datasets import get_data_home
 
 
 def load_movielens(version):

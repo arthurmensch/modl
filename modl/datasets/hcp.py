@@ -4,11 +4,14 @@ import os
 from os.path import join
 
 import numpy as np
-from nilearn.datasets.utils import _get_dataset_dir
 from nilearn.input_data import NiftiMasker
 from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
+
+from ..datasets import get_data_home
+
+data_home = get_data_home()
 
 
 def _gather(dest_data_dir):
@@ -19,36 +22,29 @@ def _gather(dest_data_dir):
             data_dict.append(json.load(f))
     mapping = {}
     for this_data in data_dict:
-        mapping[this_data['filename']] = this_data['array']
+        mapping[this_data['img']] = this_data['array']
     with open(join(dest_data_dir, 'data.json'), 'w+') as f:
         json.dump(data_dict, f)
     with open(join(dest_data_dir, 'mapping.json'), 'w+') as f:
         json.dump(mapping, f)
 
 
-def _single_mask(masker, metadata, data_dir, dest_data_dir):
-    img = metadata['filename']
-    dest_file = img.replace(join(data_dir, 'HCP'), dest_data_dir)
+def _single_mask(masker, img, dest_data_dir, data_dir):
+    dest_file = img.replace(data_dir, dest_data_dir)
     dest_file = dest_file.replace('.nii.gz', '')
     dest_dir = os.path.abspath(os.path.join(dest_file, os.pardir))
     if not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
     data = masker.transform(img)
     np.save(dest_file, data)
-    origin = dict(array=dest_file + '.npy', **metadata)
+    origin = dict(array=dest_file + '.npy', img=img)
     with open(join(dest_dir, 'origin.json'), 'w+') as f:
         json.dump(origin, f)
 
 
-def fetch_hcp_rest(data_dir, n_subjects=40):
-    dataset_name = 'HCP'
-    try:
-        source_dir = _get_dataset_dir(dataset_name, data_dir=data_dir,
-                                      verbose=0)
-    except OSError:
-        raise IOError('Please prepare the links toward HCP data using make hcp')
-    extra_dir = _get_dataset_dir('HCP_extra', data_dir=data_dir,
-                                 verbose=0)
+def fetch_hcp_rest(data_dir=data_home, n_subjects=40):
+    source_dir = join(data_dir, 'HCP')
+    extra_dir = join(data_dir, 'HCP_extra')
     mask = join(extra_dir, 'mask_img.nii.gz')
     func = []
     meta = []
@@ -86,20 +82,21 @@ def fetch_hcp_rest(data_dir, n_subjects=40):
     return Bunch(**results)
 
 
-def prepare_hcp_raw_data(data_dir):
+def prepare_hcp_raw_data(data_dir=data_home):
     dataset = fetch_hcp_rest(data_dir=data_dir, n_subjects=500)
 
-    dest_data_dir = 'HCP_unmasked'
-    mask_img = join(data_dir, 'HCP_extra/mask_img.nii.gz')
+    dest_data_dir = data_dir.replace('HCP', 'HCP_unmasked')
+    mask = dataset.mask
 
-    masker = NiftiMasker(mask_img=mask_img,
+    masker = NiftiMasker(mask_img=mask,
                          smoothing_fwhm=3, standardize=True).fit()
-    Parallel(n_jobs=16)(delayed(_single_mask)(masker, this_metadata) for
+    Parallel(n_jobs=16)(delayed(_single_mask)(masker, this_metadata,
+                                              dest_data_dir, data_dir) for
                         this_metadata in dataset.meta)
     _gather(dest_data_dir)
 
 
-def get_hcp_data(data_dir, raw):
+def get_hcp_data(data_dir=data_home, raw=False):
     if not os.exists(join(data_dir, 'HCP_extra')):
         raise IOError(
             'Please download HCP_extra folder using make hcp'

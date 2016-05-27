@@ -12,10 +12,8 @@ from sklearn.linear_model import Ridge
 from modl._utils.enet_proj import enet_scale
 from modl.datasets.hcp import get_hcp_data
 
-data_dir = expanduser('~/data')
 trace_folder = expanduser('~/output/modl/hcp')
 n_test_records = 4
-
 
 def objective_function(X, components, alpha=0.):
     """Score function based on explained variance
@@ -108,7 +106,7 @@ def analyse_dir(output_dir, X, masker):
 
 
 def get_init_objective(output_dir):
-    mask, func_filenames = get_hcp_data(data_dir=data_dir, raw=True)
+    mask, func_filenames = get_hcp_data(raw=True)
 
     masker = NiftiMasker(mask_img=mask, smoothing_fwhm=None,
                          standardize=False)
@@ -137,7 +135,7 @@ def main(output_dir, n_jobs):
     dir_list = [join(output_dir, f) for f in os.listdir(output_dir) if
                 os.path.isdir(join(output_dir, f))]
 
-    mask, func_filenames = get_hcp_data(data_dir=data_dir, raw=True)
+    mask, func_filenames = get_hcp_data(raw=True)
 
     masker = NiftiMasker(mask_img=mask, smoothing_fwhm=None,
                          standardize=False)
