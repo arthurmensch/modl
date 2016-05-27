@@ -77,7 +77,6 @@ class DictCompleter(DictMF):
                          offset=offset,
                          # Reduction parameter
                          reduction=1,
-                         var_red='weight_based',
                          projection=projection,
                          fit_intercept=fit_intercept,
                          # Dict parameter

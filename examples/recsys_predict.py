@@ -1,4 +1,5 @@
 # Author: Arthur Mensch
+# Inspired from spira
 # License: BSD
 import time
 

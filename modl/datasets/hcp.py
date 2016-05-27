@@ -4,7 +4,6 @@ import os
 from os.path import join
 
 import numpy as np
-import pandas as pd
 from nilearn.datasets.utils import _get_dataset_dir
 from nilearn.input_data import NiftiMasker
 from sklearn.datasets.base import Bunch
@@ -12,32 +11,6 @@ from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
 from modl import datasets
-
-
-def _fetch_hcp_behavioral_data(resource_dir):
-    exc_vars_file = os.path.join(resource_dir, 'excluded_scores.txt')
-    vars_file = os.path.join(resource_dir, 'hcp_scores.txt')
-    csv = os.path.join(resource_dir, 'unrestricted_hcp_s500.csv')
-
-    # Smith's excluded scores
-    exc_ind = np.loadtxt(exc_vars_file, dtype=np.int)
-    vars_list = np.loadtxt(vars_file, dtype=bytes, delimiter='\n').astype(str)
-
-    # unrestricted scores
-    df = pd.read_csv(csv)
-    vars_csv = df.columns.values
-
-    # intersection
-    vars_remaining = np.intersect1d(vars_csv, vars_list[~exc_ind]).tolist()
-    df.set_index('Subject', inplace=True)
-
-    vars_remaining.append('Age')
-    df['Age'] = df['Age'].map({'26-30': 28,
-                               '31-35': 33,
-                               '22-25': 23.5,
-                               '36+': 36})
-
-    return df[vars_remaining]
 
 
 def _gather(dest_data_dir):
@@ -76,7 +49,6 @@ def fetch_hcp_rest(data_dir, n_subjects=40):
     extra_dir = _get_dataset_dir('HCP_extra', data_dir=data_dir,
                                  verbose=0)
     mask = join(extra_dir, 'mask_img.nii.gz')
-    behavioral_df = _fetch_hcp_behavioral_data(join(extra_dir, 'behavioral'))
     func = []
     meta = []
     ids = []
@@ -88,12 +60,6 @@ def fetch_hcp_rest(data_dir, n_subjects=40):
         serie_id = dirpath_split[-4]
 
         subject_id = int(subject_id)
-
-        try:
-            this_behavioral = behavioral_df.loc[subject_id]
-        except KeyError:
-            # Ignore subject without behavior data
-            continue
 
         ids.append(subject_id)
 
@@ -115,8 +81,7 @@ def fetch_hcp_rest(data_dir, n_subjects=40):
 
     results = {'func': func, 'meta': meta,
                'mask': mask,
-               'description': "'Human connectome project",
-               'behavioral': behavioral_df.loc[ids]}
+               'description': "'Human connectome project"}
     return Bunch(**results)
 
 

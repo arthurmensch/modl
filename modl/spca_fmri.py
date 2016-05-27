@@ -99,12 +99,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  random_state=None,
                  l1_ratio=1,
                  batch_size=20,
-                 replacement=False,
                  reduction=1,
                  projection='partial',
                  learning_rate=1,
                  offset=0,
-                 var_red='weight_based',
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -138,8 +136,6 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.batch_size = batch_size
         self.reduction = reduction
         self.projection = projection
-        self.var_red = var_red
-        self.replacement = replacement
 
         self.backend = backend
         self.shelve = shelve
@@ -209,8 +205,6 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                          projection=self.projection,
                          learning_rate=self.learning_rate,
                          offset=self.offset,
-                         var_red=self.var_red,
-                         replacement=self.replacement,
                          n_samples=offset_list[-1] + 1,
                          batch_size=self.batch_size,
                          random_state=random_state,
@@ -242,8 +236,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
             this_n_samples = record_samples[this_data_idx]
-            if self.var_red:
-                offset = offset_list[this_data_idx]
+            offset = offset_list[this_data_idx]
             if self.verbose:
                 print('Streaming record %s' % record)
             if raw:
@@ -258,13 +251,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                         confounds=this_data[1])
             if self.trace_folder is not None:
                 t0 = time.time()
-            if self.var_red:
-                dict_mf.partial_fit(data_array[:this_n_samples],
-                                    sample_subset=offset + sample_subset_range[
-                                                           :this_n_samples],
-                                    check_input=False)
-            else:
-                dict_mf.partial_fit(data_array)
+            dict_mf.partial_fit(data_array[:this_n_samples],
+                                sample_subset=offset + sample_subset_range[
+                                                       :this_n_samples],
+                                check_input=False)
             if self.trace_folder is not None:
                 t1 = (time.time() - t0) + results['timings'][-1]
                 results['timings'].append(t1)

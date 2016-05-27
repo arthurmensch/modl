@@ -326,7 +326,6 @@ cpdef void _update_dict(double[::1, :] D_,
                   long projection,
                   double[::1, :] A_,
                   double[::1, :] B_,
-                  double[::1, :] G_,
                   long[:] _D_range,
                   double[::1, :] _R,
                   double[::1, :] _D_subset,
@@ -340,7 +339,6 @@ cpdef void _update_dict(double[::1, :] D_,
     cdef double* D_subset_ptr = &_D_subset[0, 0]
     cdef double* A_ptr = &A_[0, 0]
     cdef double* R_ptr = &_R[0, 0]
-    cdef double* G_ptr = &G_[0, 0]
     cdef double old_norm = 0
     cdef unsigned int k, kk, j, jj
 

@@ -7,7 +7,6 @@ from nilearn.image import iter_img
 from modl.spca_fmri import SpcaFmri
 
 backends = ['c', 'python']
-var_reds = ['weight_based', 'sample_based']
 
 
 # Utils function are copied from nilearn.decomposition.tests.test_canica
@@ -73,14 +72,12 @@ def _make_test_data(rng=None, n_subjects=8, noisy=False):
 
 
 @pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("var_red", var_reds)
-def test_sparse_pca(backend, var_red):
+def test_sparse_pca(backend):
     data, mask_img, components, rng = _make_test_data(n_subjects=10)
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           mask=mask_img,
                           backend=backend,
-                          var_red=var_red,
-                          reduction=2 if var_red else 1,
+                          reduction=2,
                           smoothing_fwhm=0., n_epochs=3, alpha=0.01)
     sparse_pca.fit(data)
     maps = sparse_pca.masker_. \
@@ -96,23 +93,12 @@ def test_sparse_pca(backend, var_red):
     maps /= S[:, np.newaxis]
 
     G = np.abs(components.dot(maps.T))
-    # Hard
-    # if var_red:
-    #     recovered_maps = min(np.sum(np.any(G > 0.5, axis=1)),
-    #                          np.sum(np.any(G > 0.5, axis=0)))
-    # else:
-    #     recovered_maps = min(np.sum(np.any(G > 0.95, axis=1)),
-    #                  np.sum(np.any(G > 0.95, axis=0)))
-    if var_red:
-        recovered_maps = np.sum(G > 0.7)
-    else:
-        recovered_maps = np.sum(G > 0.95)
+    recovered_maps = np.sum(G > 0.95)
     assert(recovered_maps >= 4)
 
     # Smoke test n_epochs > 1
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           mask=mask_img,
-                          var_red=var_red,
                           smoothing_fwhm=0., n_epochs=2, alpha=1)
     sparse_pca.fit(data)
 
@@ -120,7 +106,6 @@ def test_sparse_pca(backend, var_red):
     sparse_pca = SpcaFmri(n_components=4, random_state=0,
                           reduction=2,
                           mask=mask_img,
-                          var_red=var_red,
                           smoothing_fwhm=0., n_epochs=1, alpha=1)
     sparse_pca.fit(data)
 

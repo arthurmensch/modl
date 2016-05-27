@@ -243,8 +243,8 @@ class DictMF(BaseEstimator):
         X: ndarray (n_samples, n_features)
             Dataset to learn the dictionary from
         """
+        X = self._prefit(X, reset=True)
         if self.max_n_iter > 0:
-            self.partial_fit(X)
             while self.n_iter_[0] + self.batch_size - 1 < self.max_n_iter:
                 self.partial_fit(X, check_input=False)
         else:
@@ -255,6 +255,11 @@ class DictMF(BaseEstimator):
         if reset or not self._is_initialized():
             if self.backend not in ['python', 'c']:
                 raise ValueError("Invalid backend %s" % self.backend)
+
+            if self.debug and self.backend == 'c':
+                raise NotImplementedError(
+                    "Recording objective loss is only available"
+                    "with backend == 'python'")
 
             self._init(X)
             self._init_arrays(X)
@@ -346,24 +351,8 @@ class DictMF(BaseEstimator):
             Dataset to learn the code from
 
         """
-        if self.backend not in ['python', 'c']:
-            raise ValueError("Invalid backend %s" % self.backend)
-
-        if self.debug and self.backend == 'c':
-            raise NotImplementedError(
-                "Recording objective loss is only available"
-                "with backend == 'python'")
-
-        if not self._is_initialized():
-            self._init(X)
-            self._init_arrays(X)
-
-        if check_input:
-            X = check_array(X, dtype='float', order='C',
-                            accept_sparse=self.sparse_)
-
+        X = self._prefit(X, check_input=check_input)
         n_rows, n_cols = X.shape
-
         # Sample related variables
         if sample_subset is None:
             sample_subset = np.arange(n_rows, dtype='int')
@@ -495,16 +484,12 @@ class DictMF(BaseEstimator):
                                    random_seed)
                     subset = self._subset_range[
                              self._subset_lim[0]:self._subset_lim[1]]
-                    self._this_X[:len_batch] = X[row_batch][subset]
+                    self._this_X[:len_batch] = X[row_batch][:, subset]
 
                     self._update_code_slow(self._this_X,
                                            subset,
                                            sample_subset[row_batch],
-                                           full_X=self._full_X)
-                    dict_subset = subset
-                    self._update_code_slow(self._this_X,
-                                           subset,
-                                           sample_subset[row_batch])
+                                           )
                     dict_subset = subset
 
                 # End else
