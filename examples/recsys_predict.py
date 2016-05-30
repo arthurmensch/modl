@@ -22,7 +22,6 @@ class Callback(object):
         self.obj = []
         self.rmse = []
         self.times = []
-        self.q = []
         self.start_time = time.clock()
         self.test_time = 0
 
@@ -33,22 +32,20 @@ class Callback(object):
         rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
         self.rmse.append(rmse)
         print('Test RMSE: ', rmse)
-        self.q.append(mf.D_[1, :10].copy())
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
 
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=.001, beta=100, verbose=3,
+mf = DictCompleter(n_components=30, alpha=.001, beta=0, verbose=3,
                    batch_size=1000, detrend=True,
                    offset=0,
-                   fit_intercept=True,
                    projection='partial',
                    random_state=0,
-                   learning_rate=.8,
+                   learning_rate=.9,
                    n_epochs=5,
-                   backend='c')
+                   backend='python')
 
 # Need to download from spira
 X = load_movielens('10m')
@@ -68,7 +65,7 @@ print('Time : %.2f s' % (time.time() - t0))
 import matplotlib.pyplot as plt
 plt.figure()
 plt.plot(cb.times, cb.rmse, label='Test')
-plt.plot(cb.times, cb.rmse_tr, label='Train')
+plt.plot(cb.times, cb.rmse, label='Train')
 
 plt.legend()
 plt.xlabel("CPU time")

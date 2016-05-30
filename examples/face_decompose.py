@@ -38,46 +38,23 @@ class Callback(object):
 
     def __init__(self, X_tr):
         self.X_tr = X_tr
-        # self.X_te = X_te
         self.obj = []
-        self.obj_tr = []
-        self.rmse = []
-        self.rmse_tr = []
         self.times = []
-        self.sparsity = []
         self.iter = []
-        self.regul = []
-        self.regul_tr = []
-        self.q = []
-        self.diff = []
         self.start_time = time.clock()
         self.test_time = 0
 
     def __call__(self, mf):
         test_time = time.clock()
-        P = mf.code_.T
-        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
-        regul = mf.alpha * np.sum(P ** 2)
-        self.obj.append(loss + regul)
-        self.regul.append(regul)
 
         P = mf.transform(self.X_tr)
         loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
         regul = mf.alpha * np.sum(P ** 2)
-        self.obj_tr.append(loss + regul)
-        self.regul_tr.append(regul)
+        self.obj.append(loss + regul)
 
-        beta = self.X_tr.dot(mf.components_.T)
-        if hasattr(mf, 'beta_'):
-            self.diff.append(np.sum((beta - mf.beta_) ** 2))
-        else:
-            self.diff.append(0.)
-        self.q.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
-        self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
-        # self.sparsity.append(np.sum(np.abs(mf.Q_)) / np.sum(mf.Q_ ** 2))
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_)
+        self.iter.append(mf.n_iter_[0])
 
 
 def plot_gallery(title, images, n_col=n_col, n_row=n_row):
@@ -107,11 +84,10 @@ estimator = DictMF(n_components=n_components, batch_size=10,
                    reduction=10,
                    l1_ratio=1,
                    alpha=0.001,
-                   max_n_iter=200000,
+                   max_n_iter=10000,
                    projection='partial',
-                   var_red='combo',
-                   backend='python',
-                   verbose=1,
+                   backend='c',
+                   verbose=3,
                    learning_rate=.8,
                    offset=0,
                    random_state=2,
@@ -130,19 +106,10 @@ P = estimator.transform(data)
 #              data[:n_components])
 plot_gallery('Residual',
              data[:n_components] - P.T.dot(estimator.components_)[:n_components])
-fig, axes = plt.subplots(3, 1, sharex=True)
-axes[0].plot(cb.iter, cb.obj, label='P_')
-axes[0].plot(cb.iter, cb.regul, label='regul_')
-axes[0].plot(cb.iter, cb.regul_tr, label='regul')
-axes[0].plot(cb.iter, cb.obj_tr, label='P')
-axes[0].legend()
-
-axes[2].plot(cb.iter, cb.diff, label='beta_ variance')
-axes[2].set_xlabel('beta_ variance')
-
-axes[0].set_xlabel('Function value')
-axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
-axes[1].set_xlabel('Sparsity')
-axes[0].set_xscale('log')
+fig, ax = plt.subplots(1, 1, sharex=True)
+ax.plot(cb.iter, cb.obj, label='P')
+ax.set_xlabel('Iter')
+ax.set_ylabel('Train objective')
+ax.set_xscale('log')
 
 plt.show()

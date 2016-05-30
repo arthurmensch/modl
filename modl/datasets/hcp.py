@@ -9,7 +9,7 @@ from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
-from ..datasets import get_data_home
+from modl.datasets import get_data_home
 
 data_home = get_data_home()
 

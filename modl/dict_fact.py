@@ -459,6 +459,8 @@ class DictMF(BaseEstimator):
                 if self.sparse_:
                     for j in row_batch:
                         subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
+                        if len(subset) == 0:
+                            continue
                         self._this_X[0, :subset.shape[0]] = X.data[
                                                             X.indptr[j]:
                                                             X.indptr[
