@@ -96,3 +96,7 @@ Related projects :
   - [spira](https://github.com/mblondel/spira) is a python library to perform collaborative filtering based on coordinate descent. It serves as the baseline for recsys experiments.
   - [scikit-learn](https://github.com/scikit-learn/scikit-learn) is a python library for machine learning. It serves as the basis of this project.
   - [nilearn](https://github.com/nilearn/nilearn) is a neuro-imaging library that we wrap in our fMRI related estimators.
+
+## Author
+
+Arthur Mensch, 2015-
