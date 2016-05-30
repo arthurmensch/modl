@@ -14,7 +14,7 @@ It allows to perform sparse / dense matrix factorization on fully-observed/missi
 Reference paper is available on [HAL](https://hal.archives-ouvertes.fr/hal-01308934) / [arxiv](http://arxiv.org/abs/1605.00937). This package allows to reproduce the
  experiments and figures from the papers.
 
-More importantly, it provides [github.com/scikit-learn/scikit-learn](scikit-learn) compatible
+More importantly, it provides [https://github.com/scikit-learn/scikit-learn](scikit-learn) compatible
  estimators that fully implements the proposed algorithms.
 
 ## Installing from source with pip
@@ -33,7 +33,7 @@ py.test --pyargs modl
 ## Examples
 
 Two simple examples runs out-of-the box. Those are a good basis for understanding the API of `modl` estimators.
-  - ADHD (rfMRI) sparse decomposition, relying on [nilearn](github.com/nilearn/nilearn)
+  - ADHD (rfMRI) sparse decomposition, relying on [nilearn](https://github.com/nilearn/nilearn)
   ```
   python examples/adhd_decompose.py
   ```
@@ -42,7 +42,7 @@ Two simple examples runs out-of-the box. Those are a good basis for understandin
   python examples/recsys_predict.py
   ```
 
-For Movielens example, you will need to download the dataset, from [spira repository](github.com/mblondel/spira).
+For Movielens example, you will need to download the dataset, from [spira repository](https://github.com/mblondel/spira).
 ```
 make download-movielens10m
 ```
@@ -93,6 +93,6 @@ By default, results will be available in `$HOME/output/modl`
 ## References
 
 Related projects :
-  - [spira](github.com/mblondel/spira) is a python library to perform collaborative filtering based on coordinate descent. It serves as the baseline for recsys experiments.
-  - [scikit-learn](github.com/scikit-learn/scikit-learn) is a python library for machine learning. It serves as the basis of this project.
-  - [nilearn](github.com/nilearn/nilearn) is a neuro-imaging library that we wrap in our fMRI related estimators.
+  - [spira](https://github.com/mblondel/spira) is a python library to perform collaborative filtering based on coordinate descent. It serves as the baseline for recsys experiments.
+  - [scikit-learn](https://github.com/scikit-learn/scikit-learn) is a python library for machine learning. It serves as the basis of this project.
+  - [nilearn](https://github.com/nilearn/nilearn) is a neuro-imaging library that we wrap in our fMRI related estimators.
