@@ -45,7 +45,6 @@ test: test-code
 # from Mathieu Blondel
 datadir:
 	mkdir -p $(DATADIR)
-	mkdir -p $(MRIDATADIR)
 
 download-movielens100k: datadir
 	./download.sh http://www.mblondel.org/data/movielens100k.tar.bz2
@@ -63,12 +62,12 @@ download-movielens10m: datadir
 	mv movielens10m $(DATADIR)
 
 download-netflix: datadir
-    ./download.sh http://www.amensch.fr/data/netflix.tar.bz2
-	tar xvfj netflix.tar.bz2
-	mv movielens10m $(DATADIR)
+	./download.sh http://www.amensch.fr/data/nf_prize.tar.bz2
+	tar xvfj nf_prize.tar.bz2
+	mv nf_prize $(DATADIR)
 
 hcp: datadir
-    ./download.sh http://www.amensch.fr/data/hcp_extra.tar.bz2
-	tar xvfj hcp_extra.tar.bz2
+	./download.sh http://www.amensch.fr/data/HCP_extra.tar.bz2
+	tar xvfj HCP_extra.tar.bz2
 	mv HCP_extra $(DATADIR)
 	ln -s $(HCPLOCATION) $(DATADIR)/HCP

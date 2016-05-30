@@ -30,11 +30,12 @@ def _gather(dest_data_dir):
 
 
 def _single_mask(masker, img, dest_data_dir, data_dir):
-    dest_file = img.replace(data_dir, dest_data_dir)
+    dest_file = img.replace('HCP', 'HCP_unmasked')
     dest_file = dest_file.replace('.nii.gz', '')
     dest_dir = os.path.abspath(os.path.join(dest_file, os.pardir))
     if not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
+    print('Unmasking %s' % img)
     data = masker.transform(img)
     np.save(dest_file, data)
     origin = dict(array=dest_file + '.npy', img=img)
@@ -82,22 +83,24 @@ def fetch_hcp_rest(data_dir=data_home, n_subjects=40):
     return Bunch(**results)
 
 
-def prepare_hcp_raw_data(data_dir=data_home):
+def prepare_hcp_raw_data(n_jobs=1, data_dir=data_home):
     dataset = fetch_hcp_rest(data_dir=data_dir, n_subjects=500)
 
-    dest_data_dir = data_dir.replace('HCP', 'HCP_unmasked')
+    imgs = [img for subject_imgs in dataset.func for img in subject_imgs]
+
+    dest_data_dir = join(data_dir, 'HCP_unmasked')
     mask = dataset.mask
 
     masker = NiftiMasker(mask_img=mask,
                          smoothing_fwhm=3, standardize=True).fit()
-    Parallel(n_jobs=16)(delayed(_single_mask)(masker, this_metadata,
+    Parallel(n_jobs=n_jobs)(delayed(_single_mask)(masker, img,
                                               dest_data_dir, data_dir) for
-                        this_metadata in dataset.meta)
+                        img in imgs)
     _gather(dest_data_dir)
 
 
 def get_hcp_data(data_dir=data_home, raw=False):
-    if not os.exists(join(data_dir, 'HCP_extra')):
+    if not os.path.exists(join(data_dir, 'HCP_extra')):
         raise IOError(
             'Please download HCP_extra folder using make hcp'
             ' first.')
@@ -117,8 +120,7 @@ def get_hcp_data(data_dir=data_home, raw=False):
         # list of 4D nifti files for each subject
         func_filenames = hcp_dataset.func
         # Flatten it
-        func_filenames = [(record for record in subject)
-                          for subject in func_filenames]
+        func_filenames = [record for subject in func_filenames for record in subject]
 
         # print basic information on the dataset
         print('First functional nifti image (4D) is at: %s' %

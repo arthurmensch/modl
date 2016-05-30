@@ -10,7 +10,6 @@ def configuration(parent_package='', top_path=None):
                          include_dirs=[numpy.get_include()])
 
     config.add_subpackage('tests')
-    config.add_subpackage('system')
     config.add_subpackage('masking')
 
     return config

@@ -19,11 +19,11 @@ trace_folder = expanduser('~/output/modl/hcp')
 def main():
     # Apply our decomposition estimator with reduction
     n_components = 70
-    n_jobs = 15
+    n_jobs = 1
     raw = True
     init = True
 
-    mask, func_filenames = get_hcp_data(raw)
+    mask, func_filenames = get_hcp_data(raw=raw)
 
     reduction_list = [1, 2, 4, 8, 12]
     alpha_list = [1e-2, 1e-3, 1e-4]

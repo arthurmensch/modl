@@ -29,6 +29,7 @@ def load_movielens(version):
     X = skjoblib.load(path)
     return X
 
+
 def load_netflix():
     data_home = get_data_home()
     path = os.path.join(data_home, "nf_prize", "X_tr.pkl")
@@ -48,4 +49,4 @@ def get_recsys_data(dataset, random_state):
         return X_tr, X_te
     if dataset is 'netflix':
         return load_netflix()
-    
+
