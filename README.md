@@ -3,7 +3,7 @@
 [![Travis](https://travis-ci.org/arthurmensch/modl.svg?branch=master)](https://travis-ci.org/arthurmensch/modl)
 [![Coveralls](https://coveralls.io/repos/github/arthurmensch/modl/badge.svg?branch=master)](https://coveralls.io/github/arthurmensch/modl?branch=master)
 
-This package implements our ICML'16 paper:
+This python package ([webpage](https://github.com/arthurmensch/modl)) implements our ICML'16 paper:
 
 >Arthur Mensch, Julien Mairal, Bertrand Thirion, Gaël Varoquaux.
 Dictionary Learning for Massive Matrix Factorization. International Conference
@@ -90,13 +90,21 @@ python examples/experiment/fmri/hcp_plot.py
 
 By default, results will be available in `$HOME/output/modl`
 
+
+## Contributions
+
+Please feel free to report any issue and propose improvements on github.
+
 ## References
 
 Related projects :
-  - [spira](https://github.com/mblondel/spira) is a python library to perform collaborative filtering based on coordinate descent. It serves as the baseline for recsys experiments.
+  - [spira](https://github.com/mblondel/spira) is a python library to perform collaborative filtering based on coordinate descent. It serves as the baseline for recsys experiments - we hard included it for simplicity.
   - [scikit-learn](https://github.com/scikit-learn/scikit-learn) is a python library for machine learning. It serves as the basis of this project.
   - [nilearn](https://github.com/nilearn/nilearn) is a neuro-imaging library that we wrap in our fMRI related estimators.
 
 ## Author
 
-Arthur Mensch, 2015-
+Licensed under simplified BSD.
+
+Arthur Mensch, 2015 - present
+
