@@ -647,6 +647,8 @@ class DictMF(BaseEstimator):
 
         reduction = n_cols / len_subset
 
+        sample_learning_rate = max(0.75, 2.5 - 2 * self.learning_rate)
+
         if self.var_red == 'weight_based':
             self.counter_[subset + 1] += len_batch
             w = np.zeros(len(subset) + 1)
@@ -686,7 +688,7 @@ class DictMF(BaseEstimator):
 
             self.row_counter_[sample_subset] += 1
             w_beta = np.power(self.row_counter_[sample_subset]
-                              [:, np.newaxis], -.875)
+                              [:, np.newaxis], -sample_learning_rate)
             self.beta_[sample_subset] *= 1 - w_beta
             self.beta_[sample_subset] += Dx.T * w_beta
             this_beta = self.beta_[sample_subset].T
@@ -723,7 +725,7 @@ class DictMF(BaseEstimator):
             else:
                 self.row_counter_[sample_subset] += 1
                 w_beta = np.power(self.row_counter_[sample_subset]
-                                  [:, np.newaxis], -.75)
+                                  [:, np.newaxis], -sample_learning_rate)
                 self.beta_[sample_subset] *= 1 - w_beta
                 self.beta_[sample_subset] += Dx.T * w_beta
                 this_beta = self.beta_[sample_subset].T
