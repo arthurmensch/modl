@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 from modl._utils.cross_validation import train_test_split
-from modl.datasets.recsys import load_movielens
+from modl.datasets.recsys import load_movielens, load_netflix
 from modl.dict_completion import DictCompleter
 
 def sqnorm(M):
@@ -39,21 +39,21 @@ class Callback(object):
 
 random_state = 0
 
-mf = DictCompleter(n_components=30, alpha=.001, beta=0, verbose=3,
-                   batch_size=1000, detrend=True,
+mf = DictCompleter(n_components=30, alpha=1, beta=1, verbose=3,
+                   batch_size=600, detrend=True,
                    offset=0,
                    fit_intercept=True,
                    projection='partial',
                    random_state=0,
                    learning_rate=.9,
-                   n_epochs=10,
+                   n_epochs=3,
                    backend='c')
 
 # Need to download from spira
-X = load_movielens('10m')
-X_tr, X_te = train_test_split(X, train_size=0.75,
-                              random_state=random_state)
-
+# X = load_movielens('10m')
+# X_tr, X_te = train_test_split(X, train_size=0.75,
+#                               random_state=random_state)
+X_tr, X_te = load_netflix()
 X_tr = X_tr.tocsr()
 X_te = X_te.tocsr()
 cb = Callback(X_tr, X_te)
