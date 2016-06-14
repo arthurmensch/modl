@@ -12,7 +12,7 @@ from matplotlib import gridspec
 fig_width = 6.75
 fig_height = 1.5
 
-trace_folder = expanduser('~/output/modl/hcp')
+trace_folder = expanduser('~/output/icml/v3/hcp')
 
 
 def display_explained_variance_density(output_dir):
@@ -158,8 +158,8 @@ def display_explained_variance_density(output_dir):
     ax[1e-3].add_artist(legend_ratio)
     ax[1e-3].add_artist(legend_vanilla)
 
-    ax[1e-3].annotate('(a) Convergence speed', xy=(0.7, 1.02), ha='center',
-                      fontsize=9, va='bottom', xycoords='axes fraction')
+    # ax[1e-3].annotate('(a) Convergence speed', xy=(0.7, 1.02), ha='center',
+    #                   fontsize=9, va='bottom', xycoords='axes fraction')
 
     fig.savefig(join(output_dir, 'hcp_bench.pdf'))
 
@@ -375,4 +375,4 @@ def display_explained_variance_epoch(output_dir):
 
 if __name__ == '__main__':
     display_explained_variance_density(trace_folder)
-    display_explained_variance_epoch(trace_folder)
+    # display_explained_variance_epoch(trace_folder)
