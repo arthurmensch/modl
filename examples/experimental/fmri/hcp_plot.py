@@ -12,18 +12,18 @@ from matplotlib import gridspec
 fig_width = 6.75
 fig_height = 1.5
 
-trace_folder = expanduser('~/output/modl/hcp')
+trace_folder = expanduser('~/output/icml/v3/hcp')
 
 
 def display_explained_variance_density(output_dir):
     dir_list = [join(output_dir, f) for f in os.listdir(output_dir) if
                 os.path.isdir(join(output_dir, f))]
 
-    fig = plt.figure(figsize=(fig_width * 0.73, fig_height))
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1])
+    fig = plt.figure(figsize=(fig_width * 0.4, fig_height))
+    gs = gridspec.GridSpec(1, 1, width_ratios=[1])
     fig.subplots_adjust(bottom=0.29)
     fig.subplots_adjust(left=0.075)
-    fig.subplots_adjust(right=.92)
+    fig.subplots_adjust(right=.85)
 
     results = []
     analyses = []
@@ -45,15 +45,15 @@ def display_explained_variance_density(output_dir):
     ax = {}
     ylim = {1e-2: [2.455e8, 2.525e8], 1e-3: [2.3e8, 2.47e8],
             1e-4: [2.16e8, 2.42e8]}
-    for i, alpha in enumerate([1e-3, 1e-4]):
+    for i, alpha in enumerate([1e-4]):
         ax[alpha] = fig.add_subplot(gs[:, i])
         if i == 0:
             ax[alpha].set_ylabel('Objective value on test set')
-        ax[alpha].annotate('$\\lambda  = 10^{%.0f}$' % log(alpha, 10),
-                           xy=(.65, .85),
-                           fontsize=8,
-                           xycoords='axes fraction')
-        ax[alpha].set_xlim([.05, 200])
+        # ax[alpha].annotate('$\\lambda  = 10^{%.0f}$' % log(alpha, 10),
+        #                    xy=(.65, .85),
+        #                    fontsize=8,
+        #                    xycoords='axes fraction')
+        ax[alpha].set_xlim([.1, 200])
         ax[alpha].set_ylim(ylim[alpha])
 
         for tick in ax[alpha].xaxis.get_major_ticks():
@@ -77,8 +77,8 @@ def display_explained_variance_density(output_dir):
             tick.label.set_color('black')
         t = ax[alpha].yaxis.get_offset_text()
         t.set_size(5)
-    ax[1e-4].set_xlabel('CPU\ntime', ha='right')
-    ax[1e-4].xaxis.set_label_coords(1.15, -0.05)
+    ax[1e-4].set_xlabel('CPU\n time', ha='right')
+    ax[1e-4].xaxis.set_label_coords(1.17, -0.0)
 
     colormap = sns.cubehelix_palette(4, start=0, rot=0., hue=1, dark=.3,
                                      light=.7,
@@ -97,7 +97,7 @@ def display_explained_variance_density(output_dir):
     hue_bar = []
 
     for result, analysis in zip(results, analyses):
-        if result['alpha'] != 1e-2 and result['reduction'] != 2:
+        if result['alpha'] == 1e-4 and result['reduction'] != 2:
             print("%s %s" % (result['alpha'], result['reduction']))
             timings = (np.array(analysis['records']) + 1) / int(
                 result['reduction']) * 12 * ref_time / 3600
@@ -112,7 +112,7 @@ def display_explained_variance_density(output_dir):
                                       'reduction'] == 1 else '-',
                 zorder=result['reduction'] if result[
                                                   'reduction'] != 1 else 100)
-            if result['alpha'] == 1e-3:
+            if result['alpha'] == 1e-4:
                 h_reductions.append(
                     (s, '%.0f' % result['reduction']))
 
@@ -123,43 +123,43 @@ def display_explained_variance_density(output_dir):
 
     offset = .3
     yoffset = -.05
-    legend_vanilla = mlegend.Legend(ax[1e-3], handles[:1], ['No reduction'],
+    legend_vanilla = mlegend.Legend(ax[1e-4], handles[:1], ['No reduction'],
                                     loc='lower left',
                                     ncol=5,
                                     numpoints=1,
                                     handlelength=2,
                                     markerscale=1.4,
                                     bbox_to_anchor=(
-                                        0.3 + offset, -.39 + yoffset),
+                                        0.22 + offset, -.39 + yoffset),
                                     fontsize=8,
                                     frameon=False
                                     )
 
-    legend_ratio = mlegend.Legend(ax[1e-3], handles[1:], labels[1:],
+    legend_ratio = mlegend.Legend(ax[1e-4], handles[1:], labels[1:],
                                   loc='lower left',
                                   ncol=5,
                                   markerscale=1.4,
                                   handlelength=2,
                                   fontsize=8,
                                   bbox_to_anchor=(
-                                      0.3 + offset, -.54 + yoffset),
+                                      0.05 + offset, -.54 + yoffset),
                                   frameon=False
                                   )
-    ax[1e-3].annotate('Original online algorithm',
-                      xy=(0.28 + offset, -.27 + yoffset),
+    ax[1e-4].annotate('Original online algorithm',
+                      xy=(0.2 + offset, -.27 + yoffset),
                       xycoords='axes fraction',
                       horizontalalignment='right', verticalalignment='bottom',
                       fontsize=8)
-    ax[1e-3].annotate('Proposed reduction factor $r$',
-                      xy=(0.28 + offset, -.42 + yoffset),
+    ax[1e-4].annotate('Reduction factor $r$',
+                      xy=(0.05 + offset, -.42 + yoffset),
                       xycoords='axes fraction',
                       horizontalalignment='right', verticalalignment='bottom',
                       fontsize=8)
-    ax[1e-3].add_artist(legend_ratio)
-    ax[1e-3].add_artist(legend_vanilla)
+    ax[1e-4].add_artist(legend_ratio)
+    ax[1e-4].add_artist(legend_vanilla)
 
-    ax[1e-3].annotate('(a) Convergence speed', xy=(0.7, 1.02), ha='center',
-                      fontsize=9, va='bottom', xycoords='axes fraction')
+    # ax[1e-4].annotate('(a) Convergence speed', xy=(0.7, 1.02), ha='center',
+    #                   fontsize=9, va='bottom', xycoords='axes fraction')
 
     fig.savefig(join(output_dir, 'hcp_bench.pdf'))
 
@@ -261,13 +261,13 @@ def display_explained_variance_epoch(output_dir):
     dir_list = [join(output_dir, f) for f in os.listdir(output_dir) if
                 os.path.isdir(join(output_dir, f))]
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(fig_width * 0.36, fig_height * 0.8))
     gs = gridspec.GridSpec(1, 1, width_ratios=[1])
-    fig.set_figwidth(3.25653379549)
-    fig.set_figheight(1.3)
-    fig.subplots_adjust(bottom=0.105)
+    # fig.set_figwidth(3.25653379549)
+    # fig.set_figheight(1.3)
+    fig.subplots_adjust(bottom=0.12)
     fig.subplots_adjust(top=0.9)
-    fig.subplots_adjust(left=0.12)
+    fig.subplots_adjust(left=0.17)
     fig.subplots_adjust(right=.95)
 
     results = []
@@ -360,19 +360,19 @@ def display_explained_variance_epoch(output_dir):
                        va='bottom',
                        fontsize=8,
                        xycoords='axes fraction')
-    legend_ratio = mlegend.Legend(ax[1e-4], handles[0:], labels[0:],
-                                  loc='upper right',
-                                  ncol=1,
-                                  numpoints=1,
-                                  handlelength=2,
-                                  frameon=False,
-                                  bbox_to_anchor=(1, 1.15)
-                                  )
-    ax[1e-4].add_artist(legend_ratio)
+    # legend_ratio = mlegend.Legend(ax[1e-4], handles[0:], labels[0:],
+    #                               loc='upper right',
+    #                               ncol=1,
+    #                               numpoints=1,
+    #                               handlelength=2,
+    #                               frameon=False,
+    #                               bbox_to_anchor=(1, 1.15)
+    #                               )
+    # ax[1e-4].add_artist(legend_ratio)
 
     fig.savefig(join(output_dir, 'hcp_epoch.pdf'))
 
 
 if __name__ == '__main__':
-    display_explained_variance_density(trace_folder)
+    # display_explained_variance_density(trace_folder)
     display_explained_variance_epoch(trace_folder)

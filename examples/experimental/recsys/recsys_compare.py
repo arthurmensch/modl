@@ -20,7 +20,7 @@ from modl.datasets.recsys import get_recsys_data
 from modl.dict_completion import DictCompleter
 from modl.externals.spira.matrix_fact import ExplicitMF
 
-trace_dir = expanduser('~/output/modl/recsys_bias')
+trace_dir = expanduser('~/output/modl_old')
 
 estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30,
                                                  detrend=True,
@@ -353,12 +353,14 @@ def plot_benchs():
 
     fig = plt.figure()
 
-    fig.subplots_adjust(right=.9)
+    fig.set_figwidth(3)
+
+    fig.subplots_adjust(right=.85)
     fig.subplots_adjust(top=.905)
     fig.subplots_adjust(bottom=.12)
-    fig.subplots_adjust(left=.06)
+    fig.subplots_adjust(left=.1)
     fig.set_figheight(fig.get_figheight() * 0.66)
-    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 1.5])
+    gs = gridspec.GridSpec(1, 1, width_ratios=[1])
 
     ylims = {'100k': [.90, .96], '1m': [.864, .915], '10m': [.80, .868],
              'netflix': [.93, .99]}
@@ -371,7 +373,7 @@ def plot_benchs():
     zorder = {'cd': 10,
               'dl': 1,
               'dl_partial': 5}
-    for i, version in enumerate(['1m', '10m', 'netflix']):
+    for i, version in enumerate(['netflix']):
         try:
             with open(join(output_dir, 'results_%s.json' % version), 'r') as f:
                 results = json.load(f)
@@ -407,13 +409,13 @@ def plot_benchs():
         color = {'dl_partial': palette[2], 'dl': palette[1], 'cd': palette[0]}
         for idx in sorted(OrderedDict(results).keys()):
             this_result = results[idx]
-            ax_time.plot(this_result['timings'], this_result['rmse'],
+            ax_time.plot(this_result['time'], this_result['rmse'],
                          label=names[idx], color=color[idx],
                          linewidth=2,
                          linestyle='-' if idx != 'cd' else '--',
                          zorder=zorder[idx])
         if version == 'netflix':
-            ax_time.legend(loc='upper left', bbox_to_anchor=(.65, 1.1),
+            ax_time.legend(loc='upper left', bbox_to_anchor=(.55, 1.1),
                            numpoints=1,
                            frameon=False)
         ax_time.set_xscale('log')
@@ -436,13 +438,13 @@ def plot_benchs():
 
 
 if __name__ == '__main__':
-    cross_val('1m', n_jobs=15)
-    benchmark('1m', n_jobs=3)
-    cross_val('10m', n_jobs=15)
-    benchmark('10m', n_jobs=3)
-    cross_val('netflix', n_jobs=15)
-    benchmark('netflix', n_jobs=3)
-    compare_learning_rate('10m', n_jobs=10)
-    compare_learning_rate('netflix', n_jobs=10)
+    # cross_val('1m', n_jobs=15)
+    # benchmark('1m', n_jobs=3)
+    # cross_val('10m', n_jobs=15)
+    # benchmark('10m', n_jobs=3)
+    # cross_val('netflix', n_jobs=15)
+    # benchmark('netflix', n_jobs=3)
+    # compare_learning_rate('10m', n_jobs=10)
+    # compare_learning_rate('netflix', n_jobs=10)
     plot_benchs()
-    plot_learning_rate()
+    # plot_learning_rate()
