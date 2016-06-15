@@ -20,7 +20,7 @@ from modl.datasets.recsys import get_recsys_data
 from modl.dict_completion import DictCompleter
 from modl.externals.spira.matrix_fact import ExplicitMF
 
-trace_dir = expanduser('~/output/modl_old')
+trace_dir = expanduser('~/output/icml/v3/recsys/legacy_plot')
 
 estimator_grid = {'cd': {'estimator': ExplicitMF(n_components=30,
                                                  detrend=True,
@@ -349,7 +349,7 @@ def plot_learning_rate():
 
 
 def plot_benchs():
-    output_dir = join(trace_dir, 'benches')
+    output_dir = trace_dir
 
     fig = plt.figure()
 
@@ -362,7 +362,7 @@ def plot_benchs():
     fig.set_figheight(fig.get_figheight() * 0.66)
     gs = gridspec.GridSpec(1, 1, width_ratios=[1])
 
-    ylims = {'100k': [.90, .96], '1m': [.864, .915], '10m': [.80, .868],
+    ylims = {'100k': [.90, .96], '1m': [.864, .915], '10m': [.79, .868],
              'netflix': [.93, .99]}
     xlims = {'100k': [0.0001, 10], '1m': [0.1, 20], '10m': [1, 400],
              'netflix': [30, 3000]}
@@ -373,14 +373,24 @@ def plot_benchs():
     zorder = {'cd': 10,
               'dl': 1,
               'dl_partial': 5}
-    for i, version in enumerate(['netflix']):
+    for i, version in enumerate(['10m', 'netflix']):
+        fig = plt.figure()
+
+        fig.set_figwidth(3 if version == 'netflix' else 2.3)
+
+        fig.subplots_adjust(right=.85 if version == 'netflix' else 0.95)
+        fig.subplots_adjust(top=.905)
+        fig.subplots_adjust(bottom=.12)
+        fig.subplots_adjust(left=.1 if version == 'netflix' else .14)
+        fig.set_figheight(fig.get_figheight() * 0.66)
+        gs = gridspec.GridSpec(1, 1, width_ratios=[1])
         try:
             with open(join(output_dir, 'results_%s.json' % version), 'r') as f:
                 results = json.load(f)
         except IOError:
             continue
 
-        ax_time = fig.add_subplot(gs[0, i])
+        ax_time = fig.add_subplot(gs[0, 0])
         ax_time.grid()
         sns.despine(fig, ax_time)
 
@@ -390,10 +400,10 @@ def plot_benchs():
         ax_time.yaxis.set_tick_params(color=(.6, .6, .6), which='both')
 
         for tick in ax_time.xaxis.get_major_ticks():
-            tick.label.set_fontsize(7)
+            tick.label.set_fontsize(8)
             tick.label.set_color('black')
         for tick in ax_time.yaxis.get_major_ticks():
-            tick.label.set_fontsize(7)
+            tick.label.set_fontsize(8)
             tick.label.set_color('black')
 
         if i == 0:
@@ -434,7 +444,7 @@ def plot_benchs():
             'MovieLens %s' % version.upper() if version != 'netflix' else 'Netflix (140M)',
             xy=(.5 if version != 'netflix' else .4, 1),
             xycoords='axes fraction', ha='center', va='bottom')
-    plt.savefig(join(trace_dir, 'bench.pdf'))
+        plt.savefig(join(trace_dir, 'bench_%s.pdf' % version))
 
 
 if __name__ == '__main__':

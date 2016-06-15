@@ -1,6 +1,5 @@
 import json
 import os
-from math import log
 from os.path import expanduser, join
 
 import matplotlib.legend as mlegend
@@ -22,7 +21,7 @@ def display_explained_variance_density(output_dir):
     fig = plt.figure(figsize=(fig_width * 0.4, fig_height))
     gs = gridspec.GridSpec(1, 1, width_ratios=[1])
     fig.subplots_adjust(bottom=0.29)
-    fig.subplots_adjust(left=0.075)
+    fig.subplots_adjust(left=0.17)
     fig.subplots_adjust(right=.85)
 
     results = []
@@ -72,7 +71,7 @@ def display_explained_variance_density(output_dir):
         for tick in ax[alpha].xaxis.get_major_ticks():
             tick.label.set_color('black')
         for tick in ax[alpha].yaxis.get_major_ticks():
-            tick.label.set_fontsize(6)
+            tick.label.set_fontsize(7)
 
             tick.label.set_color('black')
         t = ax[alpha].yaxis.get_offset_text()
@@ -121,7 +120,7 @@ def display_explained_variance_density(output_dir):
     handles = [handles[i] for i in argsort]
     labels = [labels[i] for i in argsort]
 
-    offset = .3
+    offset = .0
     yoffset = -.05
     legend_vanilla = mlegend.Legend(ax[1e-4], handles[:1], ['No reduction'],
                                     loc='lower left',
@@ -130,7 +129,7 @@ def display_explained_variance_density(output_dir):
                                     handlelength=2,
                                     markerscale=1.4,
                                     bbox_to_anchor=(
-                                        0.22 + offset, -.39 + yoffset),
+                                        0.4 + offset, -.39 + yoffset),
                                     fontsize=8,
                                     frameon=False
                                     )
@@ -142,18 +141,18 @@ def display_explained_variance_density(output_dir):
                                   handlelength=2,
                                   fontsize=8,
                                   bbox_to_anchor=(
-                                      0.05 + offset, -.54 + yoffset),
+                                      0.25 + offset, -.54 + yoffset),
                                   frameon=False
                                   )
     ax[1e-4].annotate('Original online algorithm',
-                      xy=(0.2 + offset, -.27 + yoffset),
+                      xy=(-0.25 + offset, -.27 + yoffset),
                       xycoords='axes fraction',
-                      horizontalalignment='right', verticalalignment='bottom',
+                      horizontalalignment='left', verticalalignment='bottom',
                       fontsize=8)
     ax[1e-4].annotate('Reduction factor $r$',
-                      xy=(0.05 + offset, -.42 + yoffset),
+                      xy=(-0.25 + offset, -.42 + yoffset),
                       xycoords='axes fraction',
-                      horizontalalignment='right', verticalalignment='bottom',
+                      horizontalalignment='left', verticalalignment='bottom',
                       fontsize=8)
     ax[1e-4].add_artist(legend_ratio)
     ax[1e-4].add_artist(legend_vanilla)
@@ -261,14 +260,11 @@ def display_explained_variance_epoch(output_dir):
     dir_list = [join(output_dir, f) for f in os.listdir(output_dir) if
                 os.path.isdir(join(output_dir, f))]
 
-    fig = plt.figure(figsize=(fig_width * 0.36, fig_height * 0.8))
+    fig = plt.figure(figsize=(fig_width * 0.4, fig_height))
     gs = gridspec.GridSpec(1, 1, width_ratios=[1])
-    # fig.set_figwidth(3.25653379549)
-    # fig.set_figheight(1.3)
-    fig.subplots_adjust(bottom=0.12)
-    fig.subplots_adjust(top=0.9)
+    fig.subplots_adjust(bottom=0.29)
     fig.subplots_adjust(left=0.17)
-    fig.subplots_adjust(right=.95)
+    fig.subplots_adjust(right=.85)
 
     results = []
     analyses = []
@@ -293,14 +289,14 @@ def display_explained_variance_epoch(output_dir):
         ax[alpha] = fig.add_subplot(gs[:, i])
         if i == 0:
             ax[alpha].set_ylabel('Objective value on test set')
-        ax[alpha].set_xlim([50, 4000])
+        ax[alpha].set_xlim([50, 3000])
 
         for tick in ax[alpha].xaxis.get_major_ticks():
             tick.label.set_fontsize(7)
         ax[alpha].set_xscale('log')
 
-        ax[alpha].set_xticks([100, 1000, 1947, 4000])
-        ax[alpha].set_xticklabels(['100', '1000', 'Epoch', '4000'])
+        ax[alpha].set_xticks([100, 1000, 1947])
+        ax[alpha].set_xticklabels(['100', '1000', 'Epoch'])
 
 
         ax[alpha].set_ylim(ylim[alpha])
@@ -317,9 +313,9 @@ def display_explained_variance_epoch(output_dir):
 
             tick.label.set_color('black')
         t = ax[alpha].yaxis.get_offset_text()
-        t.set_size(6)
+        t.set_size(7)
     ax[1e-4].set_xlabel('Records')
-    ax[1e-4].xaxis.set_label_coords(-0.04, -0.047)
+    ax[1e-4].xaxis.set_label_coords(1.1, -0.06)
 
     colormap = sns.cubehelix_palette(4, start=0, rot=0., hue=1, dark=.3,
                                      light=.7,
@@ -354,13 +350,13 @@ def display_explained_variance_epoch(output_dir):
     labels = [('$r=%i$' % labels[i]) for i in argsort]
     labels[0] = 'No reduction\n(original alg.)'
 
-    ax[1e-4].annotate('$\\lambda  = 10^{%.0f}$' % log(alpha, 10),
-                       xy=(0.07, 0.07),
-                       ha='left',
-                       va='bottom',
-                       fontsize=8,
-                       xycoords='axes fraction')
-    # legend_ratio = mlegend.Legend(ax[1e-4], handles[0:], labels[0:],
+    # ax[1e-4].annotate('$\\lambda  = 10^{%.0f}$' % log(alpha, 10),
+    #                    xy=(0.07, 0.07),
+    #                    ha='left',
+    #                    va='bottom',
+    #                    fontsize=8,
+    #                    xycoords='axes fraction')
+    # # legend_ratio = mlegend.Legend(ax[1e-4], handles[0:], labels[0:],
     #                               loc='upper right',
     #                               ncol=1,
     #                               numpoints=1,
@@ -374,5 +370,5 @@ def display_explained_variance_epoch(output_dir):
 
 
 if __name__ == '__main__':
-    # display_explained_variance_density(trace_folder)
+    display_explained_variance_density(trace_folder)
     display_explained_variance_epoch(trace_folder)
