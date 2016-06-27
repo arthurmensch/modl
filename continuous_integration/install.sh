@@ -86,7 +86,11 @@ if [[ "$COVERAGE" == "true" ]]; then
     pip install coverage coveralls pytest-cov
 fi
 
-pip install nilearn==$NILEARN_VERSION
+if [[ "$NILEARN_VERSION" == "*" ]]; then
+    pip install nilearn
+else
+    pip install nilearn==$NILEARN_VERSION
+fi
 
 # numpy not installed when skipping the tests so we do not want to run
 # setup.py install
