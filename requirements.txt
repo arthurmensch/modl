@@ -1,4 +1,3 @@
-libgfortran
 nilearn>=0.2
 scikit_learn>=0.16
 numpy>=1.9

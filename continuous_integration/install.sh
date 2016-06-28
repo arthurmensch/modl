@@ -78,6 +78,7 @@ create_new_conda_env() {
         # Make sure that MKL is not used
         conda remove --yes --features mkl || echo "MKL not installed"
     fi
+    conda install libgfortran
 }
 
 create_new_conda_env
