@@ -68,13 +68,12 @@ create_new_conda_env() {
     # provided versions
     REQUIREMENTS=$(print_conda_requirements)
     echo "conda requirements string: $REQUIREMENTS"
-    conda create -n testenv --yes $REQUIREMENTS
     if [[ "$INSTALL_MKL" == "true" ]]; then
         # Make sure that MKL is used
-        conda install --yes mkl $REQUIREMENTS
+        conda create -n testenv --yes mkl $REQUIREMENTS
     else
         # Make sure that MKL is not used
-        conda install --yes nomkl $REQUIREMENTS
+        conda create -n testenv --yes nomkl $REQUIREMENTS
     fi
     source activate testenv
 
