@@ -73,7 +73,7 @@ create_new_conda_env() {
         conda create -n testenv --yes $REQUIREMENTS libgfortran mkl
     else
         # Make sure that MKL is not used
-        conda create -n testenv --yes $REQUIREMENTS libgfortran nomkl
+        conda create -n testenv --yes $REQUIREMENTS libgfortran=1.0 nomkl
     fi
     source activate testenv
 
