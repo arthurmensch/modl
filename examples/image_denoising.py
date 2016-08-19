@@ -75,7 +75,7 @@ distorted[:, width // 2:] += 0.075 * np.random.randn(height, width // 2)
 print('Extracting reference patches...')
 t0 = time()
 patch_size = (16, 16)
-data = extract_patches_2d(distorted[:, :width // 2], patch_size)
+data = extract_patches_2d(distorted[:, :width // 2], patch_size, max_patches=10000)
 data = data.reshape(data.shape[0], -1)
 data -= np.mean(data, axis=0)
 data /= np.std(data, axis=0)
@@ -89,9 +89,12 @@ t0 = time()
 dico = DictMF(n_components=100, alpha=1, penalty='l1',
               l1_ratio=0,
               batch_size=10,
-              learning_rate=0.8,
-              reduction=5,
-              n_epochs=3, backend='python')
+              learning_rate=1,
+              reduction=2,
+              # projection='full',
+              replacement=True,
+              coupled_subset=False,
+              n_epochs=5, backend='python')
 V = dico.fit(data).components_
 dt = time() - t0
 print('done in %.2fs.' % dt)
