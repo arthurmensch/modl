@@ -2,10 +2,9 @@ import time
 from math import sqrt
 
 import numpy as np
+from modl.dict_fact import DictMF
 from numpy.random import RandomState
 from sklearn.datasets import fetch_olivetti_faces
-
-from modl.dict_fact import DictMF
 
 n_row, n_col = 3, 6
 n_components = n_row * n_col
@@ -107,10 +106,10 @@ estimator = DictMF(n_components=n_components, batch_size=1,
                    reduction=10,
                    l1_ratio=1,
                    alpha=0.001,
-                   max_n_iter=400,
+                   max_n_iter=40000,
                    projection='partial',
-                   var_red='weight_based',
-                   backend='python',
+                   var_red='combo',
+                   backend='c',
                    verbose=1,
                    learning_rate=.8,
                    offset=0,

@@ -6,11 +6,12 @@ from math import floor
 
 import numpy as np
 import scipy.sparse as sp
+from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from scipy import linalg
 from sklearn.base import BaseEstimator
+from sklearn.linear_model import cd_fast
 from sklearn.utils import check_random_state, gen_batches, check_array
 
-from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import _get_weights, \
     _get_simple_weights, dict_learning_sparse, \
     dict_learning_dense, _update_subset
@@ -75,7 +76,7 @@ class DictMF(BaseEstimator):
                  offset=0,
                  # Reduction parameter
                  reduction=1,
-                 var_red='weight_based',
+                 var_red='combo',
                  projection='partial',
                  coupled_subset=True,
                  replacement=False,
@@ -88,6 +89,7 @@ class DictMF(BaseEstimator):
                  # Generic parameters
                  max_n_iter=0,
                  n_epochs=1,
+                 penalty='l2',
                  random_state=None,
                  verbose=0,
                  backend='c',
@@ -106,6 +108,8 @@ class DictMF(BaseEstimator):
 
         self.dict_init = dict_init
         self.n_components = n_components
+
+        self.penalty = penalty
 
         self.coupled_subset = coupled_subset
 
@@ -317,6 +321,7 @@ class DictMF(BaseEstimator):
         else:
             for _ in range(self.n_epochs):
                 self.partial_fit(X, check_input=False)
+        return self
 
     def _prefit(self, X, reset=False, check_input=True):
         if reset or not self._is_initialized():
@@ -365,38 +370,62 @@ class DictMF(BaseEstimator):
             return self._dense_transform(X)
 
     def _dense_transform(self, X, y=None):
+        reduced = True
         X = check_array(X, order='F')
+        n_rows, n_cols = X.shape
         if self.var_red != 'weight_based':
             G = self.G_.copy()
         else:
             G = self.D_.dot(self.D_.T)
-        Dx = self.D_.dot(X.T)
-        G.flat[::self.n_components + 1] += 2 * self.alpha
-        code = linalg.solve(G, Dx, sym_pos=True,
-                            overwrite_a=True, check_finite=False)
-        return code
-
-    def _reduced_transform(self, X):
-        n_rows, n_cols = X.shape
-        G = self.G_.copy()
-        G.flat[::self.n_components + 1] += 2 * self.alpha
-        len_subset = int(floor(n_cols / self.reduction))
-        batches = gen_batches(len(X), self.batch_size)
-        row_range = self.random_state_.permutation(n_rows)
-        code = np.zeros((n_rows, self.n_components), order='C')
-        subset_range = np.arange(n_cols, dtype='i4')
-        for batch in batches:
-            sample_subset = row_range[batch]
+        if reduced:
+            subset_range = np.arange(n_cols, dtype='i4')
+            len_subset = int(floor(n_cols / self.reduction))
             self.random_state_.shuffle(subset_range)
             subset = subset_range[:len_subset]
-            self.row_counter_[sample_subset] += 1
-            this_X = X[sample_subset][:, subset] * self.reduction
-
-            Dx = self.D_[:, subset].dot(this_X.T)
-            code[batch] = linalg.solve(G, Dx, sym_pos=True,
-                                       overwrite_a=True,
-                                       check_finite=False).T
+            Dx = (X[:, subset].dot(self.D_[:, subset].T)).T * self.reduction
+        else:
+            Dx = (X.dot(self.D_.T)).T
+        if self.penalty == 'l2':
+            G.flat[::self.n_components + 1] += 2 * self.alpha
+            code = linalg.solve(G, Dx, sym_pos=True,
+                                overwrite_a=True, check_finite=False)
+        else:
+            code = np.ones((n_rows, self.n_components))
+            for i in range(n_rows):
+                cd_fast.enet_coordinate_descent_gram(
+                    code[i], self.alpha, 0,
+                    G, Dx[:, i], X[i], 100,
+                    1e-2, self.random_state_, True, False)
+            code = code.T
         return code
+
+    # def _reduced_transform(self, X):
+    #     n_rows, n_cols = X.shape
+    #     G = self.G_.copy()
+    #     len_subset = int(floor(n_cols / self.reduction))
+    #     batches = gen_batches(len(X), self.batch_size)
+    #     row_range = self.random_state_.permutation(n_rows)
+    #     code = np.zeros((n_rows, self.n_components), order='C')
+    #     subset_range = np.arange(n_cols, dtype='i4')
+    #     for batch in batches:
+    #         sample_subset = row_range[batch]
+    #         self.random_state_.shuffle(subset_range)
+    #         subset = subset_range[:len_subset]
+    #         this_X = X[sample_subset][:, subset] * self.reduction
+    #
+    #         Dx = (this_X.dot(self.D_[:, subset].T)).T
+    #         if self.penalty == 'l2':
+    #             G.flat[::self.n_components + 1] += 2 * self.alpha
+    #             code[batch] = linalg.solve(G, Dx, sym_pos=True,
+    #                                        overwrite_a=True,
+    #                                        check_finite=False).T
+    #         else:
+    #             for ii, i in enumerate(sample_subset):
+    #                 cd_fast.enet_coordinate_descent_gram(
+    #                     code[i], self.alpha, 0,
+    #                     G, Dx[:, ii], this_X[ii], 100,
+    #                     1e-2, self.random_state_, True, False)
+    #     return code.T
 
     def _sparse_transform(self, X):
         """Ridge with missing value.
@@ -608,7 +637,8 @@ class DictMF(BaseEstimator):
                                        self._temp_subset,
                                        random_seed)
                         dict_subset = self._dict_subset_range[
-                                 self._dict_subset_lim[0]:self._dict_subset_lim[1]]
+                                      self._dict_subset_lim[0]:
+                                      self._dict_subset_lim[1]]
                 # End else
                 self._reset_stat()
                 self.random_state_.shuffle(self._D_range)
@@ -684,19 +714,35 @@ class DictMF(BaseEstimator):
             else:
                 this_G = self.G_
 
-            this_G.flat[::self.n_components + 1] += self.alpha
+            if self.penalty == 'l2':
+                this_G.flat[::self.n_components + 1] += self.alpha
 
             self.row_counter_[sample_subset] += 1
             w_beta = np.power(self.row_counter_[sample_subset]
                               [:, np.newaxis], -sample_learning_rate)
+            # w_beta = 1
             self.beta_[sample_subset] *= 1 - w_beta
             self.beta_[sample_subset] += Dx.T * w_beta
             this_beta = self.beta_[sample_subset].T
 
-            this_code = linalg.solve(this_G,
-                                     this_beta,
-                                     sym_pos=True, overwrite_a=True,
-                                     check_finite=False)
+            if self.penalty == 'l2':
+                this_code = linalg.solve(this_G,
+                                         this_beta,
+                                         sym_pos=True, overwrite_a=True,
+                                         check_finite=False)
+            elif self.penalty == 'l1':
+                this_code = self.code_[sample_subset]
+                for i in range(len_batch):
+                    cd_fast.enet_coordinate_descent_gram(
+                        this_code[i], self.alpha, 0,
+                        this_G, this_beta[:, i],
+                        this_X[i] * self.reduction, 100,
+                        1e-3, self.random_state_, True, False)
+                this_code = this_code.T
+
+            if self.penalty == 'l2':
+                this_G.flat[::self.n_components + 1] -= self.alpha
+
             self.A_ *= 1 - w_A
             self.A_ += this_code.dot(this_code.T) * w_A / len_batch
             self.B_[:, subset] *= 1 - w_B
@@ -718,7 +764,8 @@ class DictMF(BaseEstimator):
             else:
                 this_G = self.G_
 
-            this_G.flat[::self.n_components + 1] += self.alpha
+            if self.penalty == 'l2':
+                this_G.flat[::self.n_components + 1] += self.alpha
 
             if self.var_red == 'none':
                 this_beta = Dx
@@ -730,10 +777,21 @@ class DictMF(BaseEstimator):
                 self.beta_[sample_subset] += Dx.T * w_beta
                 this_beta = self.beta_[sample_subset].T
 
-            this_code = linalg.solve(this_G,
-                                     this_beta,
-                                     sym_pos=True, overwrite_a=True,
-                                     check_finite=False)
+            if self.penalty == 'l2':
+                this_code = linalg.solve(this_G,
+                                         this_beta,
+                                         sym_pos=True, overwrite_a=True,
+                                         check_finite=False)
+            elif self.penalty == 'l1':
+                this_code = self.code_[sample_subset]
+                for i in range(len_batch):
+                    cd_fast.enet_coordinate_descent_gram(
+                        this_code[i], self.alpha, 0,
+                        this_G, this_beta[i], this_X[i] * self.reduction, 100,
+                        1e-3, self.random_state_, True, False)
+
+            if self.penalty == 'l2':
+                this_G.flat[::self.n_components + 1] -= self.alpha
 
             self.A_ += this_code.dot(this_code.T) * w_norm / len_batch
 
@@ -785,8 +843,12 @@ class DictMF(BaseEstimator):
         ger, = linalg.get_blas_funcs(('ger',), (self.A_, D_subset))
         for k in D_range:
             ger(1.0, self.A_[k], D_subset[k], a=R, overwrite_a=True)
-            # R += np.dot(stat.A[:, j].reshape(n_components, 1),
-            D_subset[k] = R[k] / (self.A_[k, k])
+            # R += np.dot(stat.A[:, j].reshape(n_components, 1)
+            if self.A_[k, k] == 0:
+                # D_subset[k] = D_subset[k]
+                print('A = 0')
+            else:
+                D_subset[k] = R[k] / self.A_[k, k]
             if self.projection == 'full':
                 self.D_[k][subset] = D_subset[k]
                 self.D_[k] = enet_projection(self.D_[k],
