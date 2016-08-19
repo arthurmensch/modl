@@ -3,6 +3,11 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
+from Cython.Compiler.Options import directive_defaults
+
+directive_defaults['linetrace'] = True
+directive_defaults['binding'] = True
+
 from libc.math cimport pow
 from libc.math cimport ceil
 from scipy.linalg.cython_blas cimport dgemm, dger
