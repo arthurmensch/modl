@@ -3,6 +3,7 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
+cimport numpy as np
 ctypedef np.uint32_t UINT32_t
 
 cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,

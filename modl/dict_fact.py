@@ -606,7 +606,7 @@ class DictMF(BaseEstimator):
 
         sample_learning_rate = max(0.75, 2.5 - 2 * self.learning_rate)
 
-        this_X *= reduction
+        # this_X *= reduction
         self.counter_[subset + 1] += len_batch
         Dx = np.dot(D_subset, this_X.T)
         w = np.zeros(len(subset) + 1)
@@ -624,8 +624,8 @@ class DictMF(BaseEstimator):
         this_beta = self.beta_[sample_subset].T
 
         if self.penalty == 'l2':
-            G = self.G_.copy()
-            G.flat[::self.n_components + 1] += self.alpha
+            G = self.G_ / reduction
+            G.flat[::self.n_components + 1] += self.alpha / reduction
             this_code = linalg.solve(G,
                                      this_beta,
                                      sym_pos=True, overwrite_a=True,
@@ -644,7 +644,7 @@ class DictMF(BaseEstimator):
         self.A_ += this_code.dot(this_code.T) * w_A / len_batch
         self.B_[:, subset] *= 1 - w_B
         self.B_[:, subset] += this_code.dot(
-            this_X) * w_B / len_batch / reduction
+            this_X) * w_B / len_batch
 
         self.code_[sample_subset] = this_code.T
 

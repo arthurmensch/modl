@@ -3,11 +3,6 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
-from Cython.Compiler.Options import directive_defaults
-
-directive_defaults['linetrace'] = True
-directive_defaults['binding'] = True
-
 from libc.math cimport pow
 from libc.math cimport ceil
 from scipy.linalg.cython_blas cimport dgemm, dger
@@ -226,7 +221,7 @@ cpdef void _update_code(double[::1, :] this_X,
     cdef double* A_ptr = &A_[0, 0]
     cdef double* B_ptr = &B_[0, 0]
     cdef double* G_ptr = &G_[0, 0]
-    cdef double* this_code_ptr = &_code_temp[0, 0]
+    cdef double* code_temp_ptr = &_code_temp[0, 0]
     cdef double* G_temp_ptr = &_G_temp[0, 0]
     cdef double* this_X_ptr = &this_X[0, 0]
     cdef int info = 0
@@ -259,19 +254,12 @@ cpdef void _update_code(double[::1, :] this_X,
           D_subset_ptr, &n_components,
           this_X_ptr, &len_batch,
           &zerod,
-          this_code_ptr, &n_components
+          code_temp_ptr, &n_components
           )
 
-    # this_G = D_subset.dot(D_subset.T)
-    dgemm(&NTRANS, &TRANS,
-          &n_components, &n_components, &len_subset,
-          &oned,
-          D_subset_ptr, &n_components,
-          D_subset_ptr, &n_components,
-          &zerod,
-          G_temp_ptr, &n_components
-          )
     for p in range(n_components):
+        for q in range(n_components):
+            _G_temp[p, q] = G_[p, q] / reduction
         _G_temp[p, p] += alpha / reduction
 
     for ii in range(len_batch):
@@ -285,10 +273,10 @@ cpdef void _update_code(double[::1, :] this_X,
                 _code_temp[p, ii] = beta_[i, p]
         else:
             for p in range(n_components):
-                beta_[i, p] += _code_temp[p, ii]
+                beta_[i, p] = _code_temp[p, ii]
 
     dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
-          this_code_ptr, &n_components,
+          code_temp_ptr, &n_components,
           &info)
     if info != 0:
         raise ValueError
@@ -300,8 +288,8 @@ cpdef void _update_code(double[::1, :] this_X,
     dgemm(&NTRANS, &TRANS,
           &n_components, &n_components, &len_batch,
           &wdbatch,
-          this_code_ptr, &n_components,
-          this_code_ptr, &n_components,
+          code_temp_ptr, &n_components,
+          code_temp_ptr, &n_components,
           &one_m_w,
           A_ptr, &n_components
           )
@@ -317,7 +305,7 @@ cpdef void _update_code(double[::1, :] this_X,
     dgemm(&NTRANS, &NTRANS,
           &n_components, &len_subset, &len_batch,
           &oned,
-          this_code_ptr, &n_components,
+          code_temp_ptr, &n_components,
           this_X_ptr, &len_batch,
           &oned,
           D_subset_ptr, &n_components)
@@ -368,6 +356,7 @@ cpdef void _update_dict(double[::1, :] D_,
             _norm_temp[k] = enet_norm(D_[k], l1_ratio)
         else:
             _norm_temp[k] = enet_norm(_D_subset[k, :len_subset], l1_ratio)
+
     if projection == 2:
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
@@ -394,7 +383,8 @@ cpdef void _update_dict(double[::1, :] D_,
              &one, D_subset_ptr + k, &n_components, R_ptr, &n_components)
 
         for jj in range(len_subset):
-            _D_subset[k, jj] = _R[k, jj] / A_[k, k]
+            if A_[k, k] != 0:
+                _D_subset[k, jj] = _R[k, jj] / A_[k, k]
 
         if projection == 1:
             for jj in range(len_subset):
@@ -423,14 +413,14 @@ cpdef void _update_dict(double[::1, :] D_,
             j = dict_subset[jj]
             for kk in range(n_components):
                 D_[kk, j] = _D_subset[kk, jj]
-            dgemm(&NTRANS, &TRANS,
-                  &n_components, &n_components, &len_subset,
-                  &oned,
-                  D_subset_ptr, &n_components,
-                  D_subset_ptr, &n_components,
-                  &oned,
-                  G_ptr, &n_components
-                  )
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &n_components, &len_subset,
+              &oned,
+              D_subset_ptr, &n_components,
+              D_subset_ptr, &n_components,
+              &oned,
+              G_ptr, &n_components
+              )
     else:
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &n_cols,
