@@ -1,36 +1,3 @@
-"""
-=========================================
-Image denoising using dictionary learning
-=========================================
-
-An example comparing the effect of reconstructing noisy fragments
-of a raccoon face image using firstly online :ref:`DictionaryLearning` and
-various transform methods.
-
-The dictionary is fitted on the distorted left half of the image, and
-subsequently used to reconstruct the right half. Note that even better
-performance could be achieved by fitting to an undistorted (i.e.
-noiseless) image, but here we start from the assumption that it is not
-available.
-
-A common practice for evaluating the results of image denoising is by looking
-at the difference between the reconstruction and the original image. If the
-reconstruction is perfect this will look like Gaussian noise.
-
-It can be seen from the plots that the results of :ref:`omp` with two
-non-zero coefficients is a bit less biased than when keeping only one
-(the edges look less prominent). It is in addition closer from the ground
-truth in Frobenius norm.
-
-The result of :ref:`least_angle_regression` is much more strongly biased: the
-difference is reminiscent of the local intensity value of the original image.
-
-Thresholding is clearly not useful for denoising, but it is here to show that
-it can produce a suggestive output with very high speed, and thus be useful
-for other tasks such as object classification, where performance is not
-necessarily related to visualisation.
-
-"""
 from modl.dict_fact import DictMF
 
 print(__doc__)
@@ -89,12 +56,13 @@ t0 = time()
 dico = DictMF(n_components=100, alpha=1, penalty='l1',
               l1_ratio=0,
               batch_size=10,
-              learning_rate=0.8,
-              reduction=3,
-              # projection='full',
+              learning_rate=.8,
+              reduction=4,
+              verbose=5,
+              projection='partial',
               replacement=True,
               coupled_subset=False,
-              n_epochs=10, backend='python')
+              n_epochs=1, backend='python')
 V = dico.fit(data).components_
 dt = time() - t0
 print('done in %.2fs.' % dt)

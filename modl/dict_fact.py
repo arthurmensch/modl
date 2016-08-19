@@ -338,8 +338,8 @@ class DictMF(BaseEstimator):
             return self._dense_transform(X)
 
     def _dense_transform(self, X, y=None):
-        reduced = True
-        X = check_array(X, order='F')
+        reduced = False
+        X = check_array(X, order='F', dtype='float64')
         n_rows, n_cols = X.shape
         if reduced:
             subset_range = np.arange(n_cols, dtype='i4')
@@ -359,7 +359,7 @@ class DictMF(BaseEstimator):
             for i in range(n_rows):
                 cd_fast.enet_coordinate_descent_gram(
                     code[i], self.alpha, 0,
-                    self.G_, Dx[:, i], X[i], 100,
+                    self.G_.T, Dx[:, i], X[i], 100,
                     1e-2, self.random_state_, True, False)
             code = code.T
         return code
@@ -624,7 +624,7 @@ class DictMF(BaseEstimator):
         this_beta = self.beta_[sample_subset].T
 
         if self.penalty == 'l2':
-            G = self.G_ / reduction
+            G = self.G_.copy() / reduction
             G.flat[::self.n_components + 1] += self.alpha / reduction
             this_code = linalg.solve(G,
                                      this_beta,
@@ -636,7 +636,7 @@ class DictMF(BaseEstimator):
                 cd_fast.enet_coordinate_descent_gram(
                     this_code[i], self.alpha, 0,
                     self.G_.T, this_beta[:, i],
-                    this_X[i] * self.reduction, 100,
+                    this_X[i], 100,
                     1e-3, self.random_state_, True, False)
             this_code = this_code.T
 

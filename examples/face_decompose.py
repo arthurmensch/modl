@@ -68,7 +68,7 @@ class Callback(object):
 
         beta = self.X_tr.dot(mf.components_.T)
         if hasattr(mf, 'beta_'):
-            self.diff.append(np.sum((beta - mf.beta_) ** 2))
+            self.diff.append(np.sum((beta - mf.beta_ * mf.reduction) ** 2))
         else:
             self.diff.append(0.)
         self.q.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
@@ -106,8 +106,8 @@ estimator = DictMF(n_components=n_components, batch_size=1,
                    reduction=10,
                    l1_ratio=1,
                    alpha=0.001,
-                   max_n_iter=40000,
-                   backend='python',
+                   max_n_iter=100000,
+                   backend='c',
                    projection='partial',
                    penalty='l2',
                    verbose=1,
