@@ -89,12 +89,12 @@ t0 = time()
 dico = DictMF(n_components=100, alpha=1, penalty='l1',
               l1_ratio=0,
               batch_size=10,
-              learning_rate=1,
-              reduction=2,
+              learning_rate=0.8,
+              reduction=3,
               # projection='full',
               replacement=True,
               coupled_subset=False,
-              n_epochs=5, backend='python')
+              n_epochs=10, backend='python')
 V = dico.fit(data).components_
 dt = time() - t0
 print('done in %.2fs.' % dt)

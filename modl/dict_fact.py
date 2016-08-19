@@ -64,10 +64,6 @@ class DictMF(BaseEstimator):
             Learned dictionary
     """
 
-    _dummy_2d_float = np.zeros((1, 1), order='F')
-    _dummy_1d_int = np.zeros(1, dtype='int')
-    _dummy_1d_float = np.zeros(1)
-
     def __init__(self, alpha=1.0,
                  n_components=30,
                  # Hyper-parameters
@@ -242,7 +238,6 @@ class DictMF(BaseEstimator):
         else:
             self._this_X = np.empty((self.batch_size, self._len_subset),
                                     order='F')
-            self._full_X = np.empty((self.batch_size, n_cols), order='F')
         self._this_sample_subset = np.empty(self.batch_size, dtype='int')
         if self.backend == 'c':
             # Init various arrays for efficiency
@@ -346,7 +341,6 @@ class DictMF(BaseEstimator):
         reduced = True
         X = check_array(X, order='F')
         n_rows, n_cols = X.shape
-        G = self.G_
         if reduced:
             subset_range = np.arange(n_cols, dtype='i4')
             len_subset = int(floor(n_cols / self.reduction))
@@ -356,16 +350,16 @@ class DictMF(BaseEstimator):
         else:
             Dx = (X.dot(self.D_.T)).T
         if self.penalty == 'l2':
-            G.flat[::self.n_components + 1] += 2 * self.alpha
+            G = self.G_.copy()
+            G.flat[::self.n_components + 1] += self.alpha
             code = linalg.solve(G, Dx, sym_pos=True,
                                 overwrite_a=True, check_finite=False)
-            G.flat[::self.n_components + 1] -= 2 * self.alpha
         else:
             code = np.ones((n_rows, self.n_components))
             for i in range(n_rows):
                 cd_fast.enet_coordinate_descent_gram(
                     code[i], self.alpha, 0,
-                    G, Dx[:, i], X[i], 100,
+                    self.G_, Dx[:, i], X[i], 100,
                     1e-2, self.random_state_, True, False)
             code = code.T
         return code
@@ -440,7 +434,6 @@ class DictMF(BaseEstimator):
                                      self.offset,
                                      self.fit_intercept,
                                      self.l1_ratio,
-                                     self._get_var_red(),
                                      self._get_projection(),
                                      self.D_,
                                      self.code_,
@@ -448,7 +441,6 @@ class DictMF(BaseEstimator):
                                      self.B_,
                                      self.G_,
                                      self.beta_,
-                                     self.multiplier_,
                                      self.counter_,
                                      self.row_counter_,
                                      self._D_subset,
@@ -460,7 +452,6 @@ class DictMF(BaseEstimator):
                                      self._dict_subset,
                                      self._sparse_dict_subset_lim,
                                      self._this_sample_subset,
-                                     self._dummy_2d_float,
                                      self._R,
                                      self._D_range,
                                      self._norm_temp,
@@ -480,7 +471,6 @@ class DictMF(BaseEstimator):
                                     self.offset,
                                     self.fit_intercept,
                                     self.l1_ratio,
-                                    self._get_var_red(),
                                     self._get_projection(),
                                     self.replacement,
                                     self.D_,
@@ -489,14 +479,12 @@ class DictMF(BaseEstimator):
                                     self.B_,
                                     self.G_,
                                     self.beta_,
-                                    self.multiplier_,
                                     self.counter_,
                                     self.row_counter_,
                                     self._D_subset,
                                     self._code_temp,
                                     self._G_temp,
                                     self._this_X,
-                                    self._full_X,
                                     self._w_temp,
                                     self._len_subset,
                                     self._subset_range,
@@ -562,8 +550,7 @@ class DictMF(BaseEstimator):
                     subset = self._subset_range[
                              self._subset_lim[0]:self._subset_lim[1]]
                     # print(self._subset_lim)
-                    self._full_X[:len_batch] = X[row_batch]
-                    self._this_X[:len_batch] = self._full_X[:len_batch, subset]
+                    self._this_X[:len_batch] = X[row_batch][:, subset]
                     self._update_code_slow(self._this_X,
                                            subset,
                                            sample_subset[row_batch],
