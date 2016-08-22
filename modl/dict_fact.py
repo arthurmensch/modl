@@ -13,7 +13,6 @@ from sklearn.linear_model import cd_fast
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from .dict_fact_fast import _get_weights, \
-    dict_learning_sparse, \
     dict_learning_dense, _update_subset
 
 
@@ -84,7 +83,8 @@ class DictMF(BaseEstimator):
                  # Generic parameters
                  max_n_iter=0,
                  n_epochs=1,
-                 penalty='l2',
+                 pen_l1_ratio=0,
+                 present_boost=None,
                  random_state=None,
                  verbose=0,
                  backend='c',
@@ -104,7 +104,7 @@ class DictMF(BaseEstimator):
         self.dict_init = dict_init
         self.n_components = n_components
 
-        self.penalty = penalty
+        self.pen_l1_ratio = pen_l1_ratio
 
         self.coupled_subset = coupled_subset
 
@@ -125,18 +125,11 @@ class DictMF(BaseEstimator):
 
         self.n_epochs = n_epochs
 
+        self.present_boost = present_boost
+
     @property
     def components_(self):
         return self.D_
-
-    def _get_var_red(self):
-        var_reds = {
-            'none': 1,
-            'code_only': 2,
-            'weight_based': 3,
-            'sample_based': 4,
-        }
-        return var_reds[self.var_red]
 
     def _get_projection(self):
         projections = {
@@ -159,6 +152,11 @@ class DictMF(BaseEstimator):
                                       "var_red='weight_based', got %s" % self.var_red)
 
         n_rows, n_cols = X.shape
+
+        if self.present_boost is None:
+            self._present_boost = self.reduction == 1
+        else:
+            self._present_boost = self.present_boost
 
         if self.n_samples is not None:
             self.n_samples_ = self.n_samples
@@ -349,7 +347,7 @@ class DictMF(BaseEstimator):
             Dx = (X[:, subset].dot(self.D_[:, subset].T)).T * self.reduction
         else:
             Dx = (X.dot(self.D_.T)).T
-        if self.penalty == 'l2':
+        if self.pen_l1_ratio == 0:
             G = self.G_.copy()
             G.flat[::self.n_components + 1] += self.alpha
             code = linalg.solve(G, Dx, sym_pos=True,
@@ -358,7 +356,8 @@ class DictMF(BaseEstimator):
             code = np.ones((n_rows, self.n_components))
             for i in range(n_rows):
                 cd_fast.enet_coordinate_descent_gram(
-                    code[i], self.alpha, 0,
+                    code[i], self.alpha * self.pen_l1_ratio,
+                             self.alpha * (1 - self.pen_l1_ratio),
                     self.G_.T, Dx[:, i], X[i], 100,
                     1e-2, self.random_state_, True, False)
             code = code.T
@@ -422,45 +421,8 @@ class DictMF(BaseEstimator):
         if self.backend == 'c':
             random_seed = self.random_state_.randint(np.iinfo(np.uint32).max)
             if self.sparse_:
-                dict_learning_sparse(X.data, X.indices,
-                                     X.indptr,
-                                     n_rows,
-                                     n_cols,
-                                     row_range,
-                                     sample_subset,
-                                     self.batch_size,
-                                     self.alpha,
-                                     self.learning_rate,
-                                     self.offset,
-                                     self.fit_intercept,
-                                     self.l1_ratio,
-                                     self._get_projection(),
-                                     self.D_,
-                                     self.code_,
-                                     self.A_,
-                                     self.B_,
-                                     self.G_,
-                                     self.beta_,
-                                     self.counter_,
-                                     self.row_counter_,
-                                     self._D_subset,
-                                     self._code_temp,
-                                     self._G_temp,
-                                     self._this_X,
-                                     self._w_temp,
-                                     self._subset_mask,
-                                     self._dict_subset,
-                                     self._sparse_dict_subset_lim,
-                                     self._this_sample_subset,
-                                     self._R,
-                                     self._D_range,
-                                     self._norm_temp,
-                                     self._proj_temp,
-                                     random_seed,
-                                     self.verbose,
-                                     self.n_iter_,
-                                     self._callback,
-                                     )
+                raise NotImplementedError(
+                    'Not implemented in c version (see other branch)')
             else:
                 dict_learning_dense(X,
                                     row_range,
@@ -471,6 +433,8 @@ class DictMF(BaseEstimator):
                                     self.offset,
                                     self.fit_intercept,
                                     self.l1_ratio,
+                                    self.pen_l1_ratio,
+                                    self._present_boost,
                                     self._get_projection(),
                                     self.replacement,
                                     self.D_,
@@ -549,7 +513,7 @@ class DictMF(BaseEstimator):
                                    random_seed)
                     subset = self._subset_range[
                              self._subset_lim[0]:self._subset_lim[1]]
-                    # print(self._subset_lim)
+                    # subset = np.arange(n_cols, dtype='i4')
                     self._this_X[:len_batch] = X[row_batch][:, subset]
                     self._update_code_slow(self._this_X,
                                            subset,
@@ -569,6 +533,7 @@ class DictMF(BaseEstimator):
                         dict_subset = self._dict_subset_range[
                                       self._dict_subset_lim[0]:
                                       self._dict_subset_lim[1]]
+                # dict_subset = np.arange(n_cols)
                 # End else
                 self.random_state_.shuffle(self._D_range)
                 # Dictionary update
@@ -604,9 +569,10 @@ class DictMF(BaseEstimator):
 
         reduction = n_cols / len_subset
 
-        sample_learning_rate = max(0.75, 2.5 - 2 * self.learning_rate)
+        sample_learning_rate = 2.5 - 2 * self.learning_rate
+        # sample_learning_rate = max(0.75, 2.5 - 2 * self.learning_rate)
+        this_X *= reduction
 
-        # this_X *= reduction
         self.counter_[subset + 1] += len_batch
         Dx = np.dot(D_subset, this_X.T)
         w = np.zeros(len(subset) + 1)
@@ -621,32 +587,40 @@ class DictMF(BaseEstimator):
         # w_beta = 1
         self.beta_[sample_subset] *= 1 - w_beta
         self.beta_[sample_subset] += Dx.T * w_beta
-        this_beta = self.beta_[sample_subset].T
+        if self._present_boost:
+            this_beta = self.beta_[sample_subset].T * (1 - 1 / reduction)
+            this_beta += Dx / reduction
+        else:
+            this_beta = self.beta_[sample_subset].T
 
-        if self.penalty == 'l2':
-            G = self.G_.copy() / reduction
-            G.flat[::self.n_components + 1] += self.alpha / reduction
+        if self.pen_l1_ratio == 0:
+            G = self.G_.copy()
+            # G = D_subset.dot(D_subset.T) * reduction
+            G.flat[::self.n_components + 1] += self.alpha
             this_code = linalg.solve(G,
                                      this_beta,
                                      sym_pos=True, overwrite_a=True,
                                      check_finite=False)
-        elif self.penalty == 'l1':
+        else:
             this_code = self.code_[sample_subset]
             for i in range(len_batch):
                 cd_fast.enet_coordinate_descent_gram(
-                    this_code[i], self.alpha, 0,
+                    this_code[i], self.alpha * self.pen_l1_ratio,
+                                  self.alpha * (1 - self.pen_l1_ratio),
                     self.G_.T, this_beta[:, i],
                     this_X[i], 100,
                     1e-3, self.random_state_, True, False)
             this_code = this_code.T
+
+        self.code_[sample_subset] = this_code.T
+
+        this_X /= reduction
 
         self.A_ *= 1 - w_A
         self.A_ += this_code.dot(this_code.T) * w_A / len_batch
         self.B_[:, subset] *= 1 - w_B
         self.B_[:, subset] += this_code.dot(
             this_X) * w_B / len_batch
-
-        self.code_[sample_subset] = this_code.T
 
         if self.debug:
             dict_loss = .5 * np.sum(
@@ -677,6 +651,8 @@ class DictMF(BaseEstimator):
         """
         D_subset = self.D_[:, subset]
 
+        self.A_.flat[::self.n_components + 1] += 1e-3
+
         if self.projection == 'full':
             norm = enet_norm(self.D_, self.l1_ratio)
         else:
@@ -706,6 +682,15 @@ class DictMF(BaseEstimator):
         else:
             self.D_[:, subset] = D_subset
             self.G_ += D_subset.dot(D_subset.T)
+        self.A_.flat[::self.n_components + 1] -= 1e-3
+
+    def score(self, X):
+        code = self.transform(X)
+        loss = np.sum((X - code.T.dot(self.components_)) ** 2) / 2
+        regul = self.alpha * (self.pen_l1_ratio * np.sum(np.abs(code))
+                              + (1 - self.pen_l1_ratio) * np.sum(
+            code ** 2) / 2)
+        return loss + regul
 
     def _callback(self):
         if self.callback is not None:

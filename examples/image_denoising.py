@@ -9,12 +9,35 @@ import numpy as np
 import scipy as sp
 
 from sklearn.feature_extraction.image import extract_patches_2d
-from sklearn.utils.testing import SkipTest
-from sklearn.utils.fixes import sp_version
 
-if sp_version < (0, 12):
-    raise SkipTest("Skipping because SciPy version earlier than 0.12.0 and "
-                   "thus does not include the scipy.misc.face() image.")
+class Callback(object):
+    """Utility class for plotting RMSE"""
+
+    def __init__(self, X_tr):
+        self.X_tr = X_tr
+        # self.X_te = X_t
+        self.obj = []
+        self.times = []
+        self.sparsity = []
+        self.iter = []
+        self.diff = []
+        self.start_time = time()
+        self.test_time = 0
+
+    def __call__(self, mf):
+        test_time = time()
+        self.obj.append(mf.score(self.X_tr))
+        beta = self.X_tr.dot(mf.components_.T)
+        if hasattr(mf, 'beta_'):
+            self.diff.append(np.sum((beta - mf.beta_) ** 2))
+        else:
+            self.diff.append(0.)
+        self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
+        self.test_time += time() - test_time
+        self.times.append(time() - self.start_time - self.test_time)
+        self.iter.append(mf.n_iter_[0])
+
+
 
 ###############################################################################
 try:
@@ -36,13 +59,20 @@ height, width = face.shape
 # Distort the right half of the image
 print('Distorting image...')
 distorted = face.copy()
-distorted[:, width // 2:] += 0.075 * np.random.randn(height, width // 2)
+# distorted[:, width // 2:] += 0.075 * np.random.randn(height, width // 2)
 
 # Extract all reference patches from the left half of the image
 print('Extracting reference patches...')
 t0 = time()
-patch_size = (16, 16)
-data = extract_patches_2d(distorted[:, :width // 2], patch_size, max_patches=10000)
+patch_size = (8, 8)
+data = extract_patches_2d(distorted[:, :width // 2], patch_size,
+                          max_patches=2000)
+tiled_data = np.empty((data.shape[0], data.shape[1] * 8, data.shape[2] * 8))
+for i in range(8):
+    for j in range(8):
+        tiled_data[:, i::8, j::8] = data
+data = tiled_data
+patch_size = (8 * 8, 8 * 8)
 data = data.reshape(data.shape[0], -1)
 data -= np.mean(data, axis=0)
 data /= np.std(data, axis=0)
@@ -53,17 +83,31 @@ print('done in %.2fs.' % (time() - t0))
 
 print('Learning the dictionary...')
 t0 = time()
-dico = DictMF(n_components=100, alpha=1, penalty='l1',
+
+cb = Callback(data)
+dico = DictMF(n_components=100, alpha=1,
               l1_ratio=0,
+              pen_l1_ratio=.9,
               batch_size=10,
-              learning_rate=.8,
+              learning_rate=.9,
               reduction=4,
-              verbose=5,
+              verbose=1,
               projection='partial',
               replacement=True,
-              coupled_subset=False,
-              n_epochs=1, backend='python')
-V = dico.fit(data).components_
+              present_boost=False,
+              coupled_subset=True,
+              n_samples=2000,
+              backend='c',
+              callback=cb)
+dico.set_params(reduction=1)
+for i in range(10):
+    dico.partial_fit(data[:10], sample_subset=np.arange(10))
+# dico.set_params(reduction=4)
+# dico.partial_fit(data[100:], sample_subset=np.arange(100, 2000))
+# dico.partial_fit(data)
+# dico.partial_fit(data)
+# dico.partial_fit(data)
+V = dico.components_
 dt = time() - t0
 print('done in %.2fs.' % dt)
 
@@ -79,56 +123,19 @@ plt.suptitle('Dictionary learned from face patches\n' +
              fontsize=16)
 plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
+fig, axes = plt.subplots(2, 1, sharex=True)
+axes[0].plot(cb.iter[1:], cb.obj[1:], label='P')
+# axes[0].set_xlim([9e4,12e4])
+# axes[0].plot(cb.iter, cb.regul, label='regul')
+# axes[0].plot(cb.iter, cb.diff_p, label='diff')
+axes[0].legend()
 
-###############################################################################
-# Display the distorted image
+axes[1].plot(cb.iter[1:], cb.diff[1:], label='beta_ variance')
+axes[1].set_xlabel('beta_ variance')
 
-def show_with_diff(image, reference, title):
-    """Helper function to display denoising"""
-    plt.figure(figsize=(5, 3.3))
-    plt.subplot(1, 2, 1)
-    plt.title('Image')
-    plt.imshow(image, vmin=0, vmax=1, cmap=plt.cm.gray,
-               interpolation='nearest')
-    plt.xticks(())
-    plt.yticks(())
-    plt.subplot(1, 2, 2)
-    difference = image - reference
-
-    plt.title('Difference (norm: %.2f)' % np.sqrt(np.sum(difference ** 2)))
-    plt.imshow(difference, vmin=-0.5, vmax=0.5, cmap=plt.cm.PuOr,
-               interpolation='nearest')
-    plt.xticks(())
-    plt.yticks(())
-    plt.suptitle(title, size=16)
-    plt.subplots_adjust(0.02, 0.02, 0.98, 0.79, 0.02, 0.2)
-
-# show_with_diff(distorted, face, 'Distorted image')
-#
-# ###############################################################################
-# # Extract noisy patches and reconstruct them using the dictionary
-#
-# print('Extracting noisy patches... ')
-# t0 = time()
-# data = extract_patches_2d(distorted[:, width // 2:], patch_size)
-# data = data.reshape(data.shape[0], -1)
-# intercept = np.mean(data, axis=0)
-# data -= intercept
-# print('done in %.2fs.' % (time() - t0))
-#
-# reconstructions = face.copy()
-# t0 = time()
-# dico.set_params(alpha=0.2)
-# code = dico.transform(data)
-# patches = np.dot(code.T, V)
-#
-# patches += intercept
-# patches = patches.reshape(len(data), *patch_size)
-# reconstructions[:, width // 2:] = reconstruct_from_patches_2d(
-#     patches, (height, width // 2))
-# dt = time() - t0
-# print('done in %.2fs.' % dt)
-# show_with_diff(reconstructions, face,
-#                '(time: %.1fs)' % dt)
+axes[0].set_xlabel('Function value')
+# axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
+# axes[1].set_xlabel('Sparsity')
+axes[0].set_xscale('log')
 
 plt.show()

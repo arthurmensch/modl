@@ -3,10 +3,13 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
+cimport numpy as np
+import numpy as np
 from libc.math cimport pow
 from libc.math cimport ceil
 from scipy.linalg.cython_blas cimport dgemm, dger
 from scipy.linalg.cython_lapack cimport dposv
+from sklearn.linear_model import cd_fast
 
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
@@ -66,114 +69,14 @@ cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_
         j = subset[jj]
         w[jj + 1] = w[0] * float(counter[0]) / counter[j + 1]
 
-cpdef long _update_code_sparse_batch(double[:] X_data,
-                                     int[:] X_indices,
-                                     int[:] X_indptr,
-                                     int n_rows,
-                                     int n_cols,
-                                     long[:] row_batch,
-                                     long[:] sample_subset,
-                                     double alpha,
-                                     double learning_rate,
-                                     double offset,
-                                     long projection,
-                                     double[::1, :] D_,
-                                     double[:, ::1] code_,
-                                     double[::1, :] A_,
-                                     double[::1, :] B_,
-                                     double[::1, :] G_,
-                                     double[::1, :] beta_,
-                                     long[:] counter_,
-                                     long[:] row_counter_,
-                                     double[::1, :] _D_subset,
-                                     double[::1, :] _code_temp,
-                                     double[::1, :] _G_temp,
-                                     double[::1, :] _this_X,
-                                     double[:] _w_temp,
-                                     char[:] _subset_mask,
-                                     int[:] _dict_subset,
-                                     int[:] _dict_subset_lim,
-                                     ) except *:
-    """
-    Parameters
-    ----------
-    X_data: masked data matrix (csr)
-    X_indices: masked data matrix (csr)
-    X_indptr: masked data matrix (csr)
-    n_rows: masked data matrix (csr)
-    n_cols: masked data matrix (csr)
-    alpha: regularization parameter
-    learning_rate: decrease rate in the learning sequence (in [.5, 1])
-    offset: offset in the learning sequence
-    Q: Dictionary
-    A: Algorithm variable
-    B: Algorithm variable
-    counter: Algorithm variable
-    G: Algorithm variable
-    beta: Algorithm variable
-    impute: Online update of Gram matrix
-    Q_subset : Temporary array. Holds the subdictionary
-    P_temp: Temporary array. Holds the codes for the mini batch
-    _G_temp: Temporary array. Holds the Gram matrix.
-    _subset_mask: Holds the binary mask for visited features
-    _dict_subset: for union of seen features
-    _dict_subset_lim: for union of seen features (holds the number of seen
-     features)
-    weights_temp: Temporary array. Holds the update weights
-    n_iter: Updated by the function, for early stopping
-    max_n_iter: Iteration budget
-    update_P: keeps an updated version of the code
-    """
-    cdef int len_batch = sample_subset.shape[0]
-    cdef int n_components = D_.shape[0]
-    cdef int ii, i, j, jj, k, idx_j
-    cdef int l = 0
-    cdef int[:] subset
-    _subset_mask[:] = 0
-    for ii in range(len_batch):
-        i = row_batch[ii]
-        subset = X_indices[X_indptr[i]:X_indptr[i + 1]]
-        len_subset = subset.shape[0]
-        if len_subset == 0:
-            continue
-        for jj in range(len_subset):
-            idx_j = X_indptr[i] + jj
-            _this_X[0, jj] = X_data[idx_j]
-            j = subset[jj]
-            if not _subset_mask[j]:
-                _subset_mask[j] = 1
-                _dict_subset[l] = j
-                l += 1
-
-        _update_code(_this_X,
-                     subset,
-                     sample_subset[ii:ii+1],
-                     alpha,
-                     learning_rate,
-                     offset,
-                     projection,
-                     D_,
-                     code_,
-                     A_,
-                     B_,
-                     G_,
-                     beta_,
-                     counter_,
-                     row_counter_,
-                     _D_subset,
-                     _code_temp,
-                     _G_temp,
-                     _w_temp,
-                     False,
-                     )
-    _dict_subset_lim[0] = l
-
 cpdef void _update_code(double[::1, :] this_X,
                         int[:] subset,
                         long[:] sample_subset,
                         double alpha,
+                        double pen_l1_ratio,
                         double learning_rate,
                         double offset,
+                        bint present_boost,
                         long projection,
                         double[::1, :] D_,
                         double[:, ::1] code_,
@@ -187,7 +90,8 @@ cpdef void _update_code(double[::1, :] this_X,
                         double[::1, :] _code_temp,
                         double[::1, :] _G_temp,
                         double[:] _w_temp,
-                        bint aggregate_past) except *:
+                        np.ndarray[double, ndim=2, mode='c'] _beta_temp,
+                        object rng) except *:
     """
     Compute code for a mini-batch and update algorithm statistics accordingly
 
@@ -232,7 +136,7 @@ cpdef void _update_code(double[::1, :] this_X,
     cdef double one_m_w, w, wdbatch, w_norm
     cdef double reduction = float(n_cols) / len_subset
 
-    cdef double sample_learning_rate = max(0.75, 2.5 - 2 * learning_rate)
+    cdef double sample_learning_rate = 2.5 - 2 * learning_rate
 
     for jj in range(len_subset):
         j = subset[jj]
@@ -244,8 +148,10 @@ cpdef void _update_code(double[::1, :] this_X,
     for jj in range(len_subset):
         j = subset[jj]
         counter_[j + 1] += len_batch
+        for ii in range(len_batch):
+            this_X[ii, jj] *= reduction
     _get_weights(_w_temp, subset, counter_, len_batch,
-         learning_rate, offset)
+                 learning_rate, offset)
 
     # P_temp = np.dot(D_subset, this_X.T)
     dgemm(&NTRANS, &TRANS,
@@ -257,29 +163,40 @@ cpdef void _update_code(double[::1, :] this_X,
           code_temp_ptr, &n_components
           )
 
-    for p in range(n_components):
-        for q in range(n_components):
-            _G_temp[p, q] = G_[p, q] / reduction
-        _G_temp[p, p] += alpha / reduction
-
     for ii in range(len_batch):
         i = sample_subset[ii]
         row_counter_[i] += 1
         w = pow(row_counter_[i], -sample_learning_rate)
-        if aggregate_past:
-            for p in range(n_components):
-                beta_[i, p] *= 1 - w
-                beta_[i, p] += _code_temp[p, ii] * w
+        for p in range(n_components):
+            beta_[i, p] *= 1 - w
+            beta_[i, p] += _code_temp[p, ii] * w
+            if present_boost:
+                _code_temp[p, ii] /= reduction
+                _code_temp[p, ii] += beta_[i, p] * (1 - 1. / reduction)
+            else:
                 _code_temp[p, ii] = beta_[i, p]
-        else:
+    if pen_l1_ratio == 0:
+        for p in range(n_components):
+            for q in range(n_components):
+                _G_temp[p, q] = G_[p, q]
+            _G_temp[p, p] += alpha
+        dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
+              code_temp_ptr, &n_components,
+              &info)
+        if info != 0:
+            raise ValueError
+    else:
+        for ii in range(len_batch):
+            i = sample_subset[ii]
             for p in range(n_components):
-                beta_[i, p] = _code_temp[p, ii]
-
-    dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
-          code_temp_ptr, &n_components,
-          &info)
-    if info != 0:
-        raise ValueError
+                _beta_temp[ii, p] = _code_temp[p, ii]
+                _code_temp[p, ii] = code_[i, p]
+            cd_fast.enet_coordinate_descent_gram(
+                _code_temp[:, ii], alpha * pen_l1_ratio,
+                                   alpha * (1 - pen_l1_ratio),
+                np.asarray(G_.T), _beta_temp[ii],
+                np.asarray(this_X[ii], order='C'), 100,
+                1e-3, rng, True, False)
 
     wdbatch = _w_temp[0] / len_batch
     one_m_w = 1 - _w_temp[0]
@@ -301,7 +218,7 @@ cpdef void _update_code(double[::1, :] this_X,
         for k in range(n_components):
             _D_subset[k, jj] = B_[k, j] * (1 - _w_temp[jj + 1])
         for ii in range(len_batch):
-            this_X[ii, jj] *= _w_temp[jj + 1] / len_batch
+            this_X[ii, jj] *= _w_temp[jj + 1] / len_batch / reduction
     dgemm(&NTRANS, &NTRANS,
           &n_components, &len_subset, &len_batch,
           &oned,
@@ -461,113 +378,6 @@ cpdef void _predict(double[:] X_data,
 
             data[ii] = dot
 
-
-def dict_learning_sparse(double[:] X_data, int[:] X_indices,
-                    int[:] X_indptr, long n_rows, long n_cols,
-                    long[:] row_range,
-                    long[:] sample_subset,
-                    long batch_size,
-                    double alpha,
-                    double learning_rate,
-                    double offset,
-                    bint fit_intercept,
-                    double l1_ratio,
-                    long projection,
-                    double[::1, :] D_,
-                    double[:, ::1] code_,
-                    double[::1, :] A_,
-                    double[::1, :] B_,
-                    double[::1, :] G_,
-                    double[::1, :] beta_,
-                    long[:] counter_,
-                    long[:] row_counter_,
-                    double[::1, :] _D_subset,
-                    double[::1, :] _code_temp,
-                    double[::1, :] _G_temp,
-                    double[::1, :] _this_X,
-                    double[:] _w_temp,
-                    char[:] _subset_mask,
-                    int[:] _dict_subset,
-                    int[:] _dict_subset_lim,
-                    long[:] _this_sample_subset,
-                    double[::1, :] _R,
-                    long[:] _D_range,
-                    double[:] _norm_temp,
-                    double[:] _proj_temp,
-                    UINT32_t random_seed,
-                    long verbose,
-                    long[:] n_iter_,
-                    _callback):
-
-    cdef int len_row_range = row_range.shape[0]
-    cdef long[:] row_batch
-    cdef int n_batches = int(ceil(len_row_range / batch_size))
-    cdef int start = 0
-    cdef int stop = 0
-    cdef int len_batch = 0
-
-    cdef long old_n_iter = n_iter_[0]
-    cdef long new_verbose_iter_ = 0
-
-    cdef int i, ii
-
-    for i in range(n_batches):
-        if verbose and n_iter_[0] - old_n_iter >= new_verbose_iter_:
-            print("Iteration %i" % n_iter_[0])
-            new_verbose_iter_ += n_rows // verbose
-            _callback()
-        start = i * batch_size
-        stop = start + batch_size
-        if stop > len_row_range:
-            stop = len_row_range
-        len_batch = stop - start
-        row_batch = row_range[start:stop]
-        for ii in range(len_batch):
-            _this_sample_subset[ii] = sample_subset[row_batch[ii]]
-        _update_code_sparse_batch(X_data, X_indices,
-                                  X_indptr,
-                                  n_rows,
-                                  n_cols,
-                                  row_batch,
-                                  _this_sample_subset[:len_batch],
-                                  alpha,
-                                  learning_rate,
-                                  offset,
-                                  projection,
-                                  D_,
-                                  code_,
-                                  A_,
-                                  B_,
-                                  G_,
-                                  beta_,
-                                  counter_,
-                                  row_counter_,
-                                  _D_subset,
-                                  _code_temp,
-                                  _G_temp,
-                                  _this_X,
-                                  _w_temp,
-                                  _subset_mask,
-                                  _dict_subset,
-                                  _dict_subset_lim,
-                                  )
-        _shuffle(_D_range, &random_seed)
-        _update_dict(D_,
-                     _dict_subset[:_dict_subset_lim[0]],
-                     fit_intercept,
-                     l1_ratio,
-                     projection,
-                     A_,
-                     B_,
-                     G_,
-                     _D_range,
-                     _R,
-                     _D_subset,
-                     _norm_temp,
-                     _proj_temp)
-        n_iter_[0] += len_batch
-
-
 def dict_learning_dense(double[:, ::1] X,
                     long[:] row_range,
                     long[:] sample_subset,
@@ -577,6 +387,8 @@ def dict_learning_dense(double[:, ::1] X,
                     double offset,
                     bint fit_intercept,
                     double l1_ratio,
+                    double pen_l1_ratio,
+                    bint present_boost,
                     long projection,
                     bint replacement,
                     double[::1, :] D_,
@@ -615,6 +427,7 @@ def dict_learning_dense(double[:, ::1] X,
 
     cdef int n_rows = X.shape[0]
     cdef int n_cols = X.shape[1]
+    cdef int n_components = D_.shape[0]
 
     cdef long old_n_iter = n_iter_[0]
     cdef long new_verbose_iter_ = 0
@@ -622,6 +435,10 @@ def dict_learning_dense(double[:, ::1] X,
     cdef int i, ii, jj, j
 
     cdef int[:] subset
+
+    rng = np.random.RandomState(random_seed)
+
+    _beta_temp = np.zeros((batch_size, n_components), order='C')
 
     for i in range(n_batches):
         if verbose and n_iter_[0] - old_n_iter >= new_verbose_iter_:
@@ -652,8 +469,10 @@ def dict_learning_dense(double[:, ::1] X,
                      subset,
                      _this_sample_subset[:len_batch],
                      alpha,
+                     pen_l1_ratio,
                      learning_rate,
                      offset,
+                     present_boost,
                      projection,
                      D_,
                      code_,
@@ -667,7 +486,8 @@ def dict_learning_dense(double[:, ::1] X,
                      _code_temp,
                      _G_temp,
                      _w_temp,
-                     True)
+                     _beta_temp,
+                     rng)
         _shuffle(_D_range, &random_seed)
         _update_dict(D_,
                      subset,
