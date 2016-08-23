@@ -484,7 +484,6 @@ class DictMF(BaseEstimator):
                                   self.learning_rate, self.offset)
         w_B = np.ones(n_cols)
 
-        self.counter_[0] += len_batch
 
         if self.full_B:
             w_B[:] = w_A
@@ -497,6 +496,7 @@ class DictMF(BaseEstimator):
         #     features_counter != 0]
         # w_B = np.minimum(1, w_B)
 
+        self.counter_[0] += len_batch
         if self.full_B:
             self.counter_[1:] += len_batch
         else:

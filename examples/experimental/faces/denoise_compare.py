@@ -36,8 +36,8 @@ class Callback(object):
         self.iter.append(mf.n_iter_[0])
 
 
-def single_run(replacement, present_boost, coupled_subset, projection,
-               reduction, learning_rate, divide_X, data_tr, data_te):
+def single_run(replacement, full_B, coupled_subset, projection,
+               reduction, learning_rate, data_tr, data_te):
     t0 = time()
     cb = Callback(data_tr)
     estimator = DictMF(n_components=100, alpha=1,
@@ -48,11 +48,10 @@ def single_run(replacement, present_boost, coupled_subset, projection,
                        reduction=reduction,
                        verbose=5,
                        projection=projection,
-                       divide_X=divide_X,
                        replacement=replacement,
-                       present_boost=present_boost,
                        coupled_subset=coupled_subset,
-                       n_epochs=int(ceil(10 * reduction)), backend='python',
+                       full_B=full_B,
+                       n_epochs=int(ceil(3 * reduction)), backend='python',
                        callback=cb)
     V = estimator.fit(data_tr).components_
     dt = time() - t0
@@ -108,15 +107,13 @@ def main():
     print('done in %.2fs.' % (time() - t0))
 
     res = Parallel(n_jobs=2, verbose=10, max_nbytes=None)(
-        delayed(single_run)(replacement, present_boost, coupled_subset,
+        delayed(single_run)(replacement, full_B, coupled_subset,
                             projection,
                             reduction, learning_rate,
-                            divide_X,
                             data_tr, data_te)
-        for present_boost in [False]
+        for full_B in [True]
         for replacement in [True]
-        for reduction in np.linspace(1, 5, 20)
-        for divide_X in [False]
+        for reduction in [1, 3]
         for coupled_subset in [False]
         for projection in ['partial']
         for learning_rate in [1])
@@ -124,11 +121,10 @@ def main():
     full_res_dict = []
     for cb, estimator in res:
         res_dict = {'replacement': estimator.replacement,
-                    'present_boost': estimator.present_boost,
                     'coupled_subset': estimator.coupled_subset,
-                    'divide_X': estimator.divide_X,
                     'projection': estimator.projection,
                     'reduction': estimator.reduction,
+                    'full_B': estimator.full_B,
                     'iter': cb.iter, 'times': cb.times,
                     'obj': cb.obj}
         full_res_dict.append(res_dict)
@@ -139,14 +135,15 @@ def main():
 
     for cb, estimator in res:
         axes[0].plot(cb.times[1:], cb.obj[1:],
-                     label='%s' % (
-                         estimator.reduction))
+                     label='full_B: %s' % (
+                         estimator.full_B))
         axes[1].plot(cb.times[1:], cb.diff[1:], label='beta_ variance')
 
     axes[0].legend(loc='upper left', bbox_to_anchor=(1, 1))
     axes[0].set_ylabel('Function value')
 
-    axes[1].set_xlabel('beta_ variance')
+    axes[1].set_ylabel('beta_ variance')
+    axes[1].set_xlabel('Time (s)')
 
     plt.show()
 
