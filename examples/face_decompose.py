@@ -76,7 +76,7 @@ class Callback(object):
         # self.sparsity.append(np.sum(np.abs(mf.Q_)) / np.sum(mf.Q_ ** 2))
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_)
+        self.iter.append(mf.n_iter_[0])
 
 
 def plot_gallery(title, images, n_col=n_col, n_row=n_row):
@@ -102,14 +102,14 @@ t0 = time.time()
 data = faces_centered
 cb = Callback(data)
 
-estimator = DictMF(n_components=n_components, batch_size=1,
+estimator = DictMF(n_components=n_components, batch_size=10,
                    reduction=10,
                    l1_ratio=1,
                    alpha=0.001,
                    max_n_iter=40000,
                    projection='partial',
                    var_red='combo',
-                   backend='c',
+                   backend='python',
                    verbose=1,
                    learning_rate=.8,
                    offset=0,
