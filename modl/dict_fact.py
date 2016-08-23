@@ -5,15 +5,13 @@ Dictionary learning with masked data
 from math import floor
 
 import numpy as np
-import scipy.sparse as sp
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from scipy import linalg
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import cd_fast
 from sklearn.utils import check_random_state, gen_batches, check_array
 
-from .dict_fact_fast import _get_weights, \
-    dict_learning_dense, _update_subset
+from .dict_fact_fast import dict_learning_dense, _update_subset, _get_simple_weights
 
 
 class DictMF(BaseEstimator):
@@ -84,7 +82,9 @@ class DictMF(BaseEstimator):
                  max_n_iter=0,
                  n_epochs=1,
                  pen_l1_ratio=0,
-                 present_boost=None,
+                 masked_objective=None,
+                 sample_learning_rate=None,
+                 full_B=False,
                  random_state=None,
                  verbose=0,
                  backend='c',
@@ -110,6 +110,8 @@ class DictMF(BaseEstimator):
 
         self.replacement = replacement
 
+        self.full_B = full_B
+
         self.n_samples = n_samples
         self.max_n_iter = max_n_iter
 
@@ -125,7 +127,9 @@ class DictMF(BaseEstimator):
 
         self.n_epochs = n_epochs
 
-        self.present_boost = present_boost
+        self.masked_objective = masked_objective
+
+        self.sample_learning_rate = sample_learning_rate
 
     @property
     def components_(self):
@@ -144,19 +148,9 @@ class DictMF(BaseEstimator):
             raise ValueError("projection should be in {'partial', 'full'},"
                              " got %s" % self.projection)
 
-        X = check_array(X, dtype='float', order='F', accept_sparse='csr')
-
-        self.sparse_ = sp.issparse(X)
-        if self.sparse_ and self.var_red != 'weight_based':
-            raise NotImplementedError("Sparse input can only be used with "
-                                      "var_red='weight_based', got %s" % self.var_red)
+        X = check_array(X, dtype='float', order='F')
 
         n_rows, n_cols = X.shape
-
-        if self.present_boost is None:
-            self._present_boost = self.reduction == 1
-        else:
-            self._present_boost = self.present_boost
 
         if self.n_samples is not None:
             self.n_samples_ = self.n_samples
@@ -203,7 +197,6 @@ class DictMF(BaseEstimator):
         self.A_ = np.zeros((self.n_components, self.n_components),
                            order='F')
         self.B_ = np.zeros((self.n_components, n_cols), order="F")
-
         self.counter_ = np.zeros(n_cols + 1, dtype='int')
 
         self.n_iter_ = np.zeros(1, dtype='long')
@@ -222,22 +215,16 @@ class DictMF(BaseEstimator):
 
     def _init_arrays(self, X):
         n_rows, n_cols = X.shape
-        if self.sparse_:
-            self._len_subset = min(n_cols,
-                                   self.batch_size * X.getnnz(axis=1).max())
-        else:
-            self._len_subset = int(floor(n_cols / self.reduction))
         if self.fit_intercept:
             self._D_range = np.arange(1, self.n_components)
         else:
             self._D_range = np.arange(self.n_components)
-        if self.sparse_:
-            self._this_X = np.empty((1, self._len_subset), order='F')
-        else:
-            self._this_X = np.empty((self.batch_size, self._len_subset),
-                                    order='F')
+        self._this_X = np.empty((self.batch_size, n_cols),
+                                order='F')
+
         self._this_sample_subset = np.empty(self.batch_size, dtype='int')
         if self.backend == 'c':
+            self._len_subset = int(floor(n_cols / self.reduction))
             # Init various arrays for efficiency
             self._D_subset = np.empty((self.n_components, self._len_subset),
                                       order='F')
@@ -252,21 +239,14 @@ class DictMF(BaseEstimator):
                 self._proj_temp = np.zeros(n_cols)
             else:
                 self._proj_temp = np.zeros(self._len_subset)
-            if self.sparse_:
-                self._subset_mask = np.zeros(n_cols, dtype='i1')
-                self._dict_subset = np.zeros(self._len_subset, dtype='i4')
-                self._sparse_dict_subset_lim = np.zeros(1, dtype='i4')
-        if not self.sparse_:
-            self._subset_range = np.arange(n_cols, dtype='i4')
-            if self.reduction >= 1:
-                self.random_state_.shuffle(self._subset_range)
-            self._temp_subset = np.empty(n_cols, dtype='i4')
-            self._subset_lim = np.zeros(2, dtype='i4')
+        self._subset_range = np.arange(n_cols, dtype='i4')
+        self.random_state_.shuffle(self._subset_range)
+        self._temp_subset = np.empty(n_cols, dtype='i4')
+        self._subset_lim = np.zeros(2, dtype='i4')
 
-            self._dict_subset_range = np.arange(n_cols, dtype='i4')
-            if self.reduction >= 1:
-                self.random_state_.shuffle(self._dict_subset_range)
-            self._dict_subset_lim = np.zeros(2, dtype='i4')
+        self._dict_subset_range = np.arange(n_cols, dtype='i4')
+        self.random_state_.shuffle(self._dict_subset_range)
+        self._dict_subset_lim = np.zeros(2, dtype='i4')
 
     def _is_initialized(self):
         return hasattr(self, 'D_')
@@ -302,8 +282,7 @@ class DictMF(BaseEstimator):
             self._init(X)
             self._init_arrays(X)
         if check_input:
-            X = check_array(X, dtype='float', order='C',
-                            accept_sparse=self.sparse_)
+            X = check_array(X, dtype='float', order='C')
         return X
 
     def _refit(self, X):
@@ -330,73 +309,27 @@ class DictMF(BaseEstimator):
             Code obtained projecting X on the dictionary
         """
         self._check_fitted()
-        if self.sparse_:
-            return self._sparse_transform(X)
-        else:
-            return self._dense_transform(X)
+        return self._dense_transform(X)
 
     def _dense_transform(self, X, y=None):
-        reduced = False
         X = check_array(X, order='F', dtype='float64')
         n_rows, n_cols = X.shape
-        if reduced:
-            subset_range = np.arange(n_cols, dtype='i4')
-            len_subset = int(floor(n_cols / self.reduction))
-            self.random_state_.shuffle(subset_range)
-            subset = subset_range[:len_subset]
-            Dx = (X[:, subset].dot(self.D_[:, subset].T)).T * self.reduction
-        else:
-            Dx = (X.dot(self.D_.T)).T
+        Dx = (X.dot(self.D_.T)).T
         if self.pen_l1_ratio == 0:
             G = self.G_.copy()
             G.flat[::self.n_components + 1] += self.alpha
             code = linalg.solve(G, Dx, sym_pos=True,
                                 overwrite_a=True, check_finite=False)
         else:
+            random_state = check_random_state(self.random_state)
             code = np.ones((n_rows, self.n_components))
             for i in range(n_rows):
                 cd_fast.enet_coordinate_descent_gram(
                     code[i], self.alpha * self.pen_l1_ratio,
                              self.alpha * (1 - self.pen_l1_ratio),
                     self.G_.T, Dx[:, i], X[i], 100,
-                    1e-2, self.random_state_, True, False)
+                    1e-2, random_state, False, False)
             code = code.T
-        return code
-
-    def _sparse_transform(self, X):
-        """Ridge with missing value.
-
-        Useful to relearn code from a given dictionary
-
-        Parameters
-        ----------
-        X: ndarray( n_samples, n_features)
-            Data matrix
-        Q: ndarray (n_components, n_features)
-            Dictionary
-        alpha: float,
-            Regularization parameter
-
-        Returns
-        -------
-        P: ndarray (n_components, n_samples)
-            Code for each of X sample
-        """
-        X = check_array(X, accept_sparse='csr', order='F')
-        row_range = X.getnnz(axis=1).nonzero()[0]
-        n_rows, n_cols = X.shape
-        code = np.zeros((n_rows, self.n_components), order='C')
-        for j in row_range:
-            nnz = X.indptr[j + 1] - X.indptr[j]
-            idx = X.indices[X.indptr[j]:X.indptr[j + 1]]
-            x = X.data[X.indptr[j]:X.indptr[j + 1]]
-
-            Q_idx = self.D_[:, idx]
-            G = Q_idx.dot(Q_idx.T)
-            Qx = Q_idx.dot(x)
-            G.flat[::self.n_components + 1] += self.alpha * nnz / n_cols
-            code[j] = linalg.solve(G, Qx, sym_pos=True,
-                                   overwrite_a=True, check_finite=False)
         return code
 
     def partial_fit(self, X, y=None, sample_subset=None, check_input=True):
@@ -420,51 +353,46 @@ class DictMF(BaseEstimator):
 
         if self.backend == 'c':
             random_seed = self.random_state_.randint(np.iinfo(np.uint32).max)
-            if self.sparse_:
-                raise NotImplementedError(
-                    'Not implemented in c version (see other branch)')
-            else:
-                dict_learning_dense(X,
-                                    row_range,
-                                    sample_subset,
-                                    self.batch_size,
-                                    self.alpha,
-                                    self.learning_rate,
-                                    self.offset,
-                                    self.fit_intercept,
-                                    self.l1_ratio,
-                                    self.pen_l1_ratio,
-                                    self._present_boost,
-                                    self._get_projection(),
-                                    self.replacement,
-                                    self.D_,
-                                    self.code_,
-                                    self.A_,
-                                    self.B_,
-                                    self.G_,
-                                    self.beta_,
-                                    self.counter_,
-                                    self.row_counter_,
-                                    self._D_subset,
-                                    self._code_temp,
-                                    self._G_temp,
-                                    self._this_X,
-                                    self._w_temp,
-                                    self._len_subset,
-                                    self._subset_range,
-                                    self._temp_subset,
-                                    self._subset_lim,
-                                    self._this_sample_subset,
-                                    self._R,
-                                    self._D_range,
-                                    self._norm_temp,
-                                    self._proj_temp,
-                                    random_seed,
-                                    self.verbose,
-                                    self.n_iter_,
-                                    self._callback,
-                                    )
-
+            dict_learning_dense(X,
+                                row_range,
+                                sample_subset,
+                                self.batch_size,
+                                self.alpha,
+                                self.learning_rate,
+                                self.offset,
+                                self.fit_intercept,
+                                self.l1_ratio,
+                                self.pen_l1_ratio,
+                                self._present_boost,
+                                self._get_projection(),
+                                self.replacement,
+                                self.D_,
+                                self.code_,
+                                self.A_,
+                                self.B_,
+                                self.G_,
+                                self.beta_,
+                                self.counter_,
+                                self.row_counter_,
+                                self._D_subset,
+                                self._code_temp,
+                                self._G_temp,
+                                self._this_X,
+                                self._w_temp,
+                                self._len_subset,
+                                self._subset_range,
+                                self._temp_subset,
+                                self._subset_lim,
+                                self._this_sample_subset,
+                                self._R,
+                                self._D_range,
+                                self._norm_temp,
+                                self._proj_temp,
+                                random_seed,
+                                self.verbose,
+                                self.n_iter_,
+                                self._callback,
+                                )
         else:
             new_verbose_iter_ = 0
             old_n_iter = self.n_iter_[0]
@@ -485,55 +413,39 @@ class DictMF(BaseEstimator):
 
                 if 0 < self.max_n_iter <= self.n_iter_[0] + len_batch - 1:
                     return
-                if self.sparse_:
-                    for j in row_batch:
-                        subset = X.indices[X.indptr[j]:X.indptr[j + 1]]
-                        self._this_X[0, :subset.shape[0]] = X.data[
-                                                            X.indptr[j]:
-                                                            X.indptr[
-                                                                j + 1]]
-                        self._update_code_slow(
-                            self._this_X[:, :subset.shape[0]],
-                            subset,
-                            sample_subset[j:j + 1])
-                    dict_subset = np.concatenate([X.indices[
-                                                  X.indptr[j]:X.indptr[
-                                                      j + 1]]
-                                                  for j in row_batch])
-                    dict_subset = np.unique(dict_subset)
-                # End if self.sparse_
+                len_subset = int(floor(n_cols / self.reduction))
+                random_seed = self.random_state_.randint(
+                    np.iinfo(np.uint32).max)
+                _update_subset(self.replacement,
+                               len_subset,
+                               self._subset_range,
+                               self._subset_lim,
+                               self._temp_subset,
+                               random_seed)
+                subset = self._subset_range[
+                         self._subset_lim[0]:self._subset_lim[1]]
+
+                self._this_X[:len_batch, :len_subset] = X[row_batch][:,
+                                                        subset]
+                self._update_code_slow(self._this_X,
+                                       subset,
+                                       sample_subset[row_batch],
+                                       full_X=X[row_batch]
+                                       )
+                if self.coupled_subset:
+                    dict_subset = subset
                 else:
                     random_seed = self.random_state_.randint(
                         np.iinfo(np.uint32).max)
                     _update_subset(self.replacement,
-                                   self._len_subset,
-                                   self._subset_range,
-                                   self._subset_lim,
+                                   len_subset,
+                                   self._dict_subset_range,
+                                   self._dict_subset_lim,
                                    self._temp_subset,
                                    random_seed)
-                    subset = self._subset_range[
-                             self._subset_lim[0]:self._subset_lim[1]]
-                    # subset = np.arange(n_cols, dtype='i4')
-                    self._this_X[:len_batch] = X[row_batch][:, subset]
-                    self._update_code_slow(self._this_X,
-                                           subset,
-                                           sample_subset[row_batch],
-                                           )
-                    if self.coupled_subset:
-                        dict_subset = subset
-                    else:
-                        random_seed = self.random_state_.randint(
-                            np.iinfo(np.uint32).max)
-                        _update_subset(self.replacement,
-                                       self._len_subset,
-                                       self._dict_subset_range,
-                                       self._dict_subset_lim,
-                                       self._temp_subset,
-                                       random_seed)
-                        dict_subset = self._dict_subset_range[
-                                      self._dict_subset_lim[0]:
-                                      self._dict_subset_lim[1]]
-                # dict_subset = np.arange(n_cols)
+                    dict_subset = self._dict_subset_range[
+                                  self._dict_subset_lim[0]:
+                                  self._dict_subset_lim[1]]
                 # End else
                 self.random_state_.shuffle(self._D_range)
                 # Dictionary update
@@ -543,7 +455,7 @@ class DictMF(BaseEstimator):
     def _update_code_slow(self, this_X,
                           subset,
                           sample_subset,
-                          ):
+                          full_X=None):
         """Compute code for a mini-batch and update algorithm statistics accordingly
 
         Parameters
@@ -559,47 +471,54 @@ class DictMF(BaseEstimator):
 
         len_subset = subset.shape[0]
 
-        if len_batch != self.batch_size:
-            this_X = this_X[:len_batch]
+        this_X = this_X[:len_batch, :len_subset]
 
         _, n_cols = self.D_.shape
-
-        D_subset = self.D_[:, subset]
-        self.counter_[0] += len_batch
-
         reduction = n_cols / len_subset
+        sample_learning_rate = 2.5 - 2 * self.learning_rate if \
+            self.sample_learning_rate is None else self.sample_learning_rate
 
-        sample_learning_rate = 2.5 - 2 * self.learning_rate
-        # sample_learning_rate = max(0.75, 2.5 - 2 * self.learning_rate)
-        this_X *= reduction
-
-        self.counter_[subset + 1] += len_batch
-        Dx = np.dot(D_subset, this_X.T)
-        w = np.zeros(len(subset) + 1)
-        _get_weights(w, subset, self.counter_, len_batch,
+        w_A = _get_simple_weights(subset, self.counter_, len_batch,
                      self.learning_rate, self.offset)
-        w_A = w[0]
-        w_B = w[1:]
+        w_B = w_A * self.counter[0] / self.counter[1:]
+        w_B[np.isnan(w_B)] = 1
+        self.counter_[0] += len_batch
+        if self.full_B:
+            self.counter_[1:] += len_batch
+        else:
+            self.counter_[subset + 1] += len_batch
 
-        self.row_counter_[sample_subset] += 1
+        this_X *= reduction
+        D_subset = self.D_[:, subset]
+
+        Dx = np.dot(D_subset, this_X.T)
+
+        if self.masked_objective:
+            G = D_subset.dot(D_subset.T) * reduction
+        else:
+            if self.pen_l1_ratio == 0:
+                G = self.G_.copy()
+            else:
+                G = self.G_.T
+
         w_beta = np.power(self.row_counter_[sample_subset]
-                          [:, np.newaxis], -sample_learning_rate)
-        # w_beta = 1
+                          [:, np.newaxis] + 1, -sample_learning_rate)
+        self.row_counter_[sample_subset] += 1
         self.beta_[sample_subset] *= 1 - w_beta
         self.beta_[sample_subset] += Dx.T * w_beta
-        if self._present_boost:
-            this_beta = self.beta_[sample_subset].T * (1 - 1 / reduction)
-            this_beta += Dx / reduction
+
+        if self.masked_objective:
+            beta = np.array(Dx, order='F')
         else:
-            this_beta = self.beta_[sample_subset].T
+            beta = self.beta_[sample_subset].T
+        # beta *= l
+        # beta += average_beta * (1 - l)
 
         if self.pen_l1_ratio == 0:
-            G = self.G_.copy()
-            # G = D_subset.dot(D_subset.T) * reduction
             G.flat[::self.n_components + 1] += self.alpha
             this_code = linalg.solve(G,
-                                     this_beta,
-                                     sym_pos=True, overwrite_a=True,
+                                     beta,
+                                     sym_pos=True, overwrite_a=False,
                                      check_finite=False)
         else:
             this_code = self.code_[sample_subset]
@@ -607,21 +526,22 @@ class DictMF(BaseEstimator):
                 cd_fast.enet_coordinate_descent_gram(
                     this_code[i], self.alpha * self.pen_l1_ratio,
                                   self.alpha * (1 - self.pen_l1_ratio),
-                    self.G_.T, this_beta[:, i],
+                    G, beta[:, i],
                     this_X[i], 100,
-                    1e-3, self.random_state_, True, False)
+                    1e-3, self.random_state_, False, False)
             this_code = this_code.T
 
         self.code_[sample_subset] = this_code.T
 
         this_X /= reduction
-
         self.A_ *= 1 - w_A
         self.A_ += this_code.dot(this_code.T) * w_A / len_batch
-        self.B_[:, subset] *= 1 - w_B
-        self.B_[:, subset] += this_code.dot(
-            this_X) * w_B / len_batch
-
+        if self.full_B:
+            self.B_ *= 1 - w_B
+            self.B_ += this_code.dot(full_X) * w_B / len_batch
+        else:
+            self.B_[:, subset] *= 1 - w_B[subset]
+            self.B_[:, subset] += this_code.dot(this_X) * w_B[subset] / len_batch
         if self.debug:
             dict_loss = .5 * np.sum(
                 self.D_.dot(self.D_.T) * self.A_) - np.sum(
@@ -649,22 +569,50 @@ class DictMF(BaseEstimator):
             Pseudo number generator state used for random sampling.
 
         """
+        n_cols = self.D_.shape[1]
         D_subset = self.D_[:, subset]
-
-        self.A_.flat[::self.n_components + 1] += 1e-3
 
         if self.projection == 'full':
             norm = enet_norm(self.D_, self.l1_ratio)
         else:
-            self.G_ -= D_subset.dot(D_subset.T)
             norm = enet_norm(D_subset, self.l1_ratio)
+            self.G_ -= D_subset.dot(D_subset.T)
+
+        clean = True
+        if clean:
+            non_active = np.logical_or(norm < 1e-20, np.diag(self.A_) < 1e-20)
+            if np.sum(non_active) > 0:
+                self.G_[non_active, :] += D_subset.dot(
+                    D_subset[non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
+
+                self.D_[non_active] = self.random_state_.randn(n_cols)
+                self.D_[non_active] = enet_scale(self.D_[non_active],
+                                                 l1_ratio=self.l1_ratio)
+                self.A_[non_active, :] = 0
+                self.A_[:, non_active] = 0
+                self.B_[non_active, :] = 0
+                self.G_[non_active, :] = self.D_.dot(self.D_[non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
+
+                if self.projection == 'partial':
+                    D_subset[non_active] = self.D_[non_active][:, subset]
+                    norm[non_active] = enet_norm(D_subset[non_active],
+                                                 self.l1_ratio)
+                    self.G_[non_active, :] -= D_subset.dot(D_subset[
+                                                               non_active].T).T
+                    self.G_[:, non_active] = self.G_[non_active, :].T
+                else:
+                    norm[non_active] = enet_norm(self.D_[non_active],
+                                                 self.l1_ratio)
+
         R = self.B_[:, subset] - np.dot(D_subset.T, self.A_).T
 
         ger, = linalg.get_blas_funcs(('ger',), (self.A_, D_subset))
         for k in D_range:
+            # R = self.B_[k][subset] - np.dot(D_subset.T, self.A_[k]).T
             ger(1.0, self.A_[k], D_subset[k], a=R, overwrite_a=True)
-            # R += np.dot(stat.A[:, j].reshape(n_components, 1)
-            if self.A_[k, k] != 0:
+            if self.A_[k, k] > 1e-20:
                 D_subset[k] = R[k] / self.A_[k, k]
             if self.projection == 'full':
                 self.D_[k][subset] = D_subset[k]
@@ -676,13 +624,11 @@ class DictMF(BaseEstimator):
                 D_subset[k] = enet_projection(D_subset[k], norm[k],
                                               self.l1_ratio)
             ger(-1.0, self.A_[k], D_subset[k], a=R, overwrite_a=True)
-            # R -= np.dot(stat.A[:, j].reshape(n_components, 1),
         if self.projection == 'full':
             self.G_ = self.D_.dot(self.D_.T).T
         else:
             self.D_[:, subset] = D_subset
             self.G_ += D_subset.dot(D_subset.T)
-        self.A_.flat[::self.n_components + 1] -= 1e-3
 
     def score(self, X):
         code = self.transform(X)

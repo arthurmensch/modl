@@ -58,6 +58,7 @@ cdef void _shuffle_int(int[:] arr, UINT32_t* random_state):
 cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_size,
            double learning_rate, double offset):
     cdef int len_subset = subset.shape[0]
+    cdef double reduction = (counter.shape[0] - 1) / float(len_subset)
     cdef int full_count = counter[0]
     cdef int count
     cdef int i, jj, j
@@ -67,7 +68,22 @@ cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_
     w[0] = 1 - w[0]
     for jj in range(len_subset):
         j = subset[jj]
-        w[jj + 1] = w[0] * float(counter[0]) / counter[j + 1]
+        if counter[j + 1] == 0:
+            w[j + 1] = 1
+        else:
+            w[jj + 1] = min(1, w[0] * float(counter[0]) / counter[j + 1])
+
+cpdef double _get_simple_weights(int[:] subset, long[:] counter, long batch_size,
+           double learning_rate, double offset):
+    cdef int len_subset = subset.shape[0]
+    cdef int full_count = counter[0]
+    cdef int count
+    cdef int i, jj, j
+    cdef double w = 1
+    for i in range(full_count + 1, full_count + 1 + batch_size):
+        w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+    w = 1 - w
+    return w
 
 cpdef void _update_code(double[::1, :] this_X,
                         int[:] subset,

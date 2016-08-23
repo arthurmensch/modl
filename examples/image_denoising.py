@@ -10,6 +10,8 @@ import scipy as sp
 
 from sklearn.feature_extraction.image import extract_patches_2d
 
+np.seterr(all='raise')
+
 class Callback(object):
     """Utility class for plotting RMSE"""
 
@@ -20,7 +22,9 @@ class Callback(object):
         self.times = []
         self.sparsity = []
         self.iter = []
-        self.diff = []
+        self.beta_var = []
+        # self.B_var = []
+        self.R = []
         self.start_time = time()
         self.test_time = 0
 
@@ -28,14 +32,17 @@ class Callback(object):
         test_time = time()
         self.obj.append(mf.score(self.X_tr))
         beta = self.X_tr.dot(mf.components_.T)
-        if hasattr(mf, 'beta_'):
-            self.diff.append(np.sum((beta - mf.beta_) ** 2))
-        else:
-            self.diff.append(0.)
+        self.beta_var.append(np.sum((beta - mf.beta_) ** 2))
+        # self.B_var.append(np.sum((mf.full_B_ - mf.B_) ** 2))
+        R = (mf.B_ - mf.A_.dot(mf.D_))
+        scale = np.diag(mf.A_).copy()[:, np.newaxis]
+        scale[scale == 0] = 1
+        R /= scale
+        self.R.append(np.sum(R ** 2))
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_[0])
+        self.iter.append(mf.n_iter_[0] + 1)
 
 
 
@@ -64,15 +71,16 @@ distorted = face.copy()
 # Extract all reference patches from the left half of the image
 print('Extracting reference patches...')
 t0 = time()
+tile = 1
 patch_size = (8, 8)
 data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                          max_patches=2000)
-tiled_data = np.empty((data.shape[0], data.shape[1] * 8, data.shape[2] * 8))
-for i in range(8):
-    for j in range(8):
-        tiled_data[:, i::8, j::8] = data
+                          max_patches=2000, random_state=0)
+tiled_data = np.empty((data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
+for i in range(tile):
+    for j in range(tile):
+        tiled_data[:, i::tile, j::tile] = data
 data = tiled_data
-patch_size = (8 * 8, 8 * 8)
+patch_size = (8 * tile, 8 * tile)
 data = data.reshape(data.shape[0], -1)
 data -= np.mean(data, axis=0)
 data /= np.std(data, axis=0)
@@ -87,26 +95,37 @@ t0 = time()
 cb = Callback(data)
 dico = DictMF(n_components=100, alpha=1,
               l1_ratio=0,
-              pen_l1_ratio=.9,
+              pen_l1_ratio=0.9,
               batch_size=10,
-              learning_rate=.9,
-              reduction=4,
-              verbose=1,
+              learning_rate=.75,
+              reduction=2,
+              verbose=5,
               projection='partial',
               replacement=True,
-              present_boost=False,
-              coupled_subset=True,
+              masked_objective=False,
+              coupled_subset=False,
+              backend='python',
               n_samples=2000,
-              backend='c',
-              callback=cb)
-dico.set_params(reduction=1)
-for i in range(10):
-    dico.partial_fit(data[:10], sample_subset=np.arange(10))
-# dico.set_params(reduction=4)
-# dico.partial_fit(data[100:], sample_subset=np.arange(100, 2000))
-# dico.partial_fit(data)
-# dico.partial_fit(data)
-# dico.partial_fit(data)
+              sample_learning_rate=None,
+              full_B=True,
+              callback=cb,
+              random_state=0)
+# Conditioning
+# warmup = 5 * dico.batch_size
+# reduction = dico.reduction
+# dico.set_params(reduction=1)
+# dico.partial_fit(data[:warmup], sample_subset=np.arange(warmup))
+# dico.set_params(reduction=2)
+# Better performance of ICML algorithm at the beginning
+# for i in range(dico.reduction * 2):
+#     dico.partial_fit(data)
+
+for i in range(5):
+    dico.partial_fit(data)
+
+dico.set_params(masked_objective=False, coupled_subset=False)
+for i in range(15):
+    dico.partial_fit(data)
 V = dico.components_
 dt = time() - t0
 print('done in %.2fs.' % dt)
@@ -123,19 +142,29 @@ plt.suptitle('Dictionary learned from face patches\n' +
              fontsize=16)
 plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
-fig, axes = plt.subplots(2, 1, sharex=True)
-axes[0].plot(cb.iter[1:], cb.obj[1:], label='P')
-# axes[0].set_xlim([9e4,12e4])
-# axes[0].plot(cb.iter, cb.regul, label='regul')
-# axes[0].plot(cb.iter, cb.diff_p, label='diff')
+# plt.figure(figsize=(4.2, 4))
+# for i, comp in enumerate(data[:100]):
+#     plt.subplot(10, 10, i + 1)
+#     plt.imshow(comp.reshape(patch_size), cmap=plt.cm.gray_r,
+#                interpolation='nearest')
+#     plt.xticks(())
+#     plt.yticks(())
+# plt.suptitle('Patches',
+#              fontsize=16)
+# plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
+
+fig, axes = plt.subplots(4, 1, sharex=True)
+axes[0].plot(cb.iter, cb.obj)
 axes[0].legend()
-
-axes[1].plot(cb.iter[1:], cb.diff[1:], label='beta_ variance')
-axes[1].set_xlabel('beta_ variance')
-
-axes[0].set_xlabel('Function value')
+axes[0].set_ylabel('Function value')
+axes[0].set_xscale('log')
+axes[1].plot(cb.iter, cb.beta_var)
+axes[1].set_ylabel('beta variance')
+# axes[2].plot(cb.iter, cb.B_var)
+# axes[2].set_ylabel('B variance')
+axes[3].plot(cb.iter, cb.R)
+axes[3].set_xlabel('Iter')
+axes[3].set_ylabel('Residual')
 # axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
 # axes[1].set_xlabel('Sparsity')
-axes[0].set_xscale('log')
-
 plt.show()

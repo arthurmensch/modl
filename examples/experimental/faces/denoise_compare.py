@@ -1,4 +1,5 @@
 import json
+from math import ceil
 from time import time
 
 import matplotlib.pyplot as plt
@@ -36,9 +37,9 @@ class Callback(object):
 
 
 def single_run(replacement, present_boost, coupled_subset, projection,
-               reduction, learning_rate, data_tr, data_te):
+               reduction, learning_rate, divide_X, data_tr, data_te):
     t0 = time()
-    cb = Callback(data_te)
+    cb = Callback(data_tr)
     estimator = DictMF(n_components=100, alpha=1,
                        l1_ratio=0,
                        pen_l1_ratio=.9,
@@ -47,10 +48,11 @@ def single_run(replacement, present_boost, coupled_subset, projection,
                        reduction=reduction,
                        verbose=5,
                        projection=projection,
+                       divide_X=divide_X,
                        replacement=replacement,
                        present_boost=present_boost,
                        coupled_subset=coupled_subset,
-                       n_epochs=reduction, backend='c',
+                       n_epochs=int(ceil(10 * reduction)), backend='python',
                        callback=cb)
     V = estimator.fit(data_tr).components_
     dt = time() - t0
@@ -89,14 +91,15 @@ def main():
     print('Extracting reference patches...')
     t0 = time()
     patch_size = (8, 8)
+    tile = 4
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
                               max_patches=4000)
-    tiled_data = np.empty((data.shape[0], data.shape[1] * 8, data.shape[2] * 8))
-    for i in range(8):
-        for j in range(8):
-            tiled_data[:, i::8, j::8] = data
+    tiled_data = np.empty((data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
+    for i in range(tile):
+        for j in range(tile):
+            tiled_data[:, i::tile, j::tile] = data
     data = tiled_data
-    # patch_size = (16 * 4, 16 * 4)
+    patch_size = (8 * tile, 8 * tile)
     data = data.reshape(data.shape[0], -1)
     data -= np.mean(data, axis=0)
     data /= np.std(data, axis=0)
@@ -107,19 +110,23 @@ def main():
     res = Parallel(n_jobs=2, verbose=10, max_nbytes=None)(
         delayed(single_run)(replacement, present_boost, coupled_subset,
                             projection,
-                            reduction, learning_rate, data_tr, data_te)
+                            reduction, learning_rate,
+                            divide_X,
+                            data_tr, data_te)
         for present_boost in [False]
         for replacement in [True]
-        for reduction in [1, 2, 3, 4]
+        for reduction in np.linspace(1, 5, 20)
+        for divide_X in [False]
         for coupled_subset in [False]
         for projection in ['partial']
-        for learning_rate in [.9])
+        for learning_rate in [1])
 
     full_res_dict = []
     for cb, estimator in res:
         res_dict = {'replacement': estimator.replacement,
                     'present_boost': estimator.present_boost,
                     'coupled_subset': estimator.coupled_subset,
+                    'divide_X': estimator.divide_X,
                     'projection': estimator.projection,
                     'reduction': estimator.reduction,
                     'iter': cb.iter, 'times': cb.times,
