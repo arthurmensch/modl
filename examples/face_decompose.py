@@ -102,14 +102,15 @@ t0 = time.time()
 data = faces_centered
 cb = Callback(data)
 
-estimator = DictMF(n_components=n_components, batch_size=1,
+estimator = DictMF(n_components=n_components, batch_size=10,
                    reduction=10,
                    l1_ratio=1,
+                   pen_l1_ratio=0,
                    alpha=0.001,
-                   max_n_iter=100000,
-                   backend='c',
+                   max_n_iter=10000,
+                   backend='python',
                    projection='partial',
-                   penalty='l2',
+                   full_B=False,
                    verbose=1,
                    learning_rate=.8,
                    random_state=2,

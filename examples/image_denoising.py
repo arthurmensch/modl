@@ -23,7 +23,7 @@ class Callback(object):
         self.sparsity = []
         self.iter = []
         self.beta_var = []
-        # self.B_var = []
+        self.B_var = []
         self.R = []
         self.start_time = time()
         self.test_time = 0
@@ -33,7 +33,7 @@ class Callback(object):
         self.obj.append(mf.score(self.X_tr))
         beta = self.X_tr.dot(mf.components_.T)
         self.beta_var.append(np.sum((beta - mf.beta_) ** 2))
-        # self.B_var.append(np.sum((mf.full_B_ - mf.B_) ** 2))
+        self.B_var.append(np.sum((mf.full_B_ - mf.B_) ** 2))
         R = (mf.B_ - mf.A_.dot(mf.D_))
         scale = np.diag(mf.A_).copy()[:, np.newaxis]
         scale[scale == 0] = 1
@@ -97,7 +97,7 @@ dico = DictMF(n_components=100, alpha=1,
               l1_ratio=0,
               pen_l1_ratio=0.9,
               batch_size=10,
-              learning_rate=.75,
+              learning_rate=1,
               reduction=2,
               verbose=5,
               projection='partial',
@@ -106,26 +106,14 @@ dico = DictMF(n_components=100, alpha=1,
               coupled_subset=False,
               backend='python',
               n_samples=2000,
-              sample_learning_rate=None,
               full_B=True,
               callback=cb,
               random_state=0)
-# Conditioning
-# warmup = 5 * dico.batch_size
-# reduction = dico.reduction
-# dico.set_params(reduction=1)
-# dico.partial_fit(data[:warmup], sample_subset=np.arange(warmup))
-# dico.set_params(reduction=2)
-# Better performance of ICML algorithm at the beginning
-# for i in range(dico.reduction * 2):
+for i in range(10):
+    dico.partial_fit(data)
+# dico.set_params(full_B=False)
+# for i in range(10):ss
 #     dico.partial_fit(data)
-
-for i in range(5):
-    dico.partial_fit(data)
-
-dico.set_params(masked_objective=False, coupled_subset=False)
-for i in range(15):
-    dico.partial_fit(data)
 V = dico.components_
 dt = time() - t0
 print('done in %.2fs.' % dt)
@@ -142,29 +130,18 @@ plt.suptitle('Dictionary learned from face patches\n' +
              fontsize=16)
 plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
-# plt.figure(figsize=(4.2, 4))
-# for i, comp in enumerate(data[:100]):
-#     plt.subplot(10, 10, i + 1)
-#     plt.imshow(comp.reshape(patch_size), cmap=plt.cm.gray_r,
-#                interpolation='nearest')
-#     plt.xticks(())
-#     plt.yticks(())
-# plt.suptitle('Patches',
-#              fontsize=16)
-# plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
-
 fig, axes = plt.subplots(4, 1, sharex=True)
-axes[0].plot(cb.iter, cb.obj)
+axes[0].plot(cb.iter[1:], cb.obj[1:])
 axes[0].legend()
 axes[0].set_ylabel('Function value')
 axes[0].set_xscale('log')
-axes[1].plot(cb.iter, cb.beta_var)
+axes[1].plot(cb.iter[1:], cb.beta_var[1:])
 axes[1].set_ylabel('beta variance')
-# axes[2].plot(cb.iter, cb.B_var)
-# axes[2].set_ylabel('B variance')
-axes[3].plot(cb.iter, cb.R)
+# axes[1].set_yscale('log')
+axes[2].plot(cb.iter[1:], cb.B_var[1:])
+axes[2].set_ylabel('B variance')
+# axes[2].set_yscale('log')
+axes[3].plot(cb.iter[1:], cb.R[1:])
 axes[3].set_xlabel('Iter')
 axes[3].set_ylabel('Residual')
-# axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
-# axes[1].set_xlabel('Sparsity')
 plt.show()

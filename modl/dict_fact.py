@@ -11,7 +11,8 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import cd_fast
 from sklearn.utils import check_random_state, gen_batches, check_array
 
-from .dict_fact_fast import dict_learning_dense, _update_subset, _get_simple_weights
+from .dict_fact_fast import dict_learning_dense, _update_subset, \
+    _get_simple_weights
 
 
 class DictMF(BaseEstimator):
@@ -197,6 +198,7 @@ class DictMF(BaseEstimator):
         self.A_ = np.zeros((self.n_components, self.n_components),
                            order='F')
         self.B_ = np.zeros((self.n_components, n_cols), order="F")
+        self.full_B_ = np.zeros((self.n_components, n_cols), order="F")
         self.counter_ = np.zeros(n_cols + 1, dtype='int')
 
         self.n_iter_ = np.zeros(1, dtype='long')
@@ -479,10 +481,22 @@ class DictMF(BaseEstimator):
             self.sample_learning_rate is None else self.sample_learning_rate
 
         w_A = _get_simple_weights(subset, self.counter_, len_batch,
-                     self.learning_rate, self.offset)
-        w_B = w_A * self.counter[0] / self.counter[1:]
-        w_B[np.isnan(w_B)] = 1
+                                  self.learning_rate, self.offset)
+        w_B = np.ones(n_cols)
+
         self.counter_[0] += len_batch
+
+        if self.full_B:
+            w_B[:] = w_A
+        else:
+            features_counter = self.counter_[1:]
+            w_B[features_counter != 0] = min(1, w_A * reduction)
+
+        # features_counter = self.counter_[1:]
+        # w_B[features_counter != 0] = w_A * self.counter_[0] / features_counter[
+        #     features_counter != 0]
+        # w_B = np.minimum(1, w_B)
+
         if self.full_B:
             self.counter_[1:] += len_batch
         else:
@@ -511,8 +525,6 @@ class DictMF(BaseEstimator):
             beta = np.array(Dx, order='F')
         else:
             beta = self.beta_[sample_subset].T
-        # beta *= l
-        # beta += average_beta * (1 - l)
 
         if self.pen_l1_ratio == 0:
             G.flat[::self.n_components + 1] += self.alpha
@@ -536,12 +548,18 @@ class DictMF(BaseEstimator):
         this_X /= reduction
         self.A_ *= 1 - w_A
         self.A_ += this_code.dot(this_code.T) * w_A / len_batch
+
+        self.full_B_ *= 1 - w_B
+        self.full_B_ += this_code.dot(full_X) * w_B / len_batch
+
         if self.full_B:
             self.B_ *= 1 - w_B
             self.B_ += this_code.dot(full_X) * w_B / len_batch
         else:
             self.B_[:, subset] *= 1 - w_B[subset]
-            self.B_[:, subset] += this_code.dot(this_X) * w_B[subset] / len_batch
+            self.B_[:, subset] += this_code.dot(this_X) * w_B[
+                subset] / len_batch
+
         if self.debug:
             dict_loss = .5 * np.sum(
                 self.D_.dot(self.D_.T) * self.A_) - np.sum(
