@@ -491,16 +491,16 @@ class DictMF(BaseEstimator):
                                   self.learning_rate, self.offset)
         w_B = np.ones(n_cols)
 
-        # if self.full_B:
-        #     w_B[:] = w_A
-        # else:
-        #     features_counter = self.counter_[1:]
-        #     w_B[features_counter != 0] = min(1, w_A * reduction)
+        if self.full_B:
+            w_B[:] = w_A
+        else:
+            features_counter = self.counter_[1:]
+            w_B[features_counter != 0] = min(1, w_A * reduction)
 
-        features_counter = self.counter_[1:]
-        w_B[features_counter != 0] = w_A * self.counter_[0] / features_counter[
-            features_counter != 0]
-        w_B = np.minimum(1, w_B)
+        # features_counter = self.counter_[1:]
+        # w_B[features_counter != 0] = w_A * self.counter_[0] / features_counter[
+        #     features_counter != 0]
+        # w_B = np.minimum(1, w_B)
 
         self.counter_[0] += len_batch
         if self.full_B:
@@ -514,8 +514,7 @@ class DictMF(BaseEstimator):
 
         if self.solver == 'masked':
             beta = np.array(Dx, order='F')
-            self.G_[:] = D_subset.dot(D_subset.T) * reduction
-            G = self.G_.T
+            G = D_subset.dot(D_subset.T) * reduction
         else: # ['average', 'gram']
             w_beta = np.power(self.row_counter_[sample_subset]
                               [:, np.newaxis] + 1, -sample_learning_rate)
@@ -553,7 +552,7 @@ class DictMF(BaseEstimator):
                     this_G, beta[:, i],
                     full_X[i], 100,
                     1e-3, self.random_state_, False, False)
-                print(n_iter)
+                # print(n_iter)
 
         this_code = self.code_[sample_subset]
 
