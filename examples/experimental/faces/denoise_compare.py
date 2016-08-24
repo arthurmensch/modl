@@ -23,7 +23,7 @@ class Callback(object):
         self.start_time = time()
         self.test_time = 0
 
-    def __call__(self, mf):
+    def __call__(self, mf, sample_subset):
         test_time = time()
         self.obj.append(mf.score(self.X_tr))
         beta = self.X_tr.dot(mf.components_.T)
@@ -36,7 +36,7 @@ class Callback(object):
         self.iter.append(mf.n_iter_[0])
 
 
-def single_run(replacement, full_B, masked_objective,
+def single_run(replacement, full_B, solver,
                coupled_subset, projection,
                reduction, learning_rate, data_tr, data_te):
     t0 = time()
@@ -51,9 +51,9 @@ def single_run(replacement, full_B, masked_objective,
                        projection=projection,
                        replacement=replacement,
                        coupled_subset=coupled_subset,
-                       masked_objective=masked_objective,
+                       solver=solver,
                        full_B=full_B,
-                       n_epochs=int(ceil(3 * reduction)), backend='python',
+                       n_epochs=int(ceil(4 * reduction)), backend='python',
                        callback=cb)
     V = estimator.fit(data_tr).components_
     dt = time() - t0
@@ -109,15 +109,15 @@ def main():
     print('done in %.2fs.' % (time() - t0))
 
     res = Parallel(n_jobs=2, verbose=10, max_nbytes=None)(
-        delayed(single_run)(replacement, full_B, masked_objective,
+        delayed(single_run)(replacement, full_B, solver,
                             coupled_subset,
                             projection,
                             reduction, learning_rate,
                             data_tr, data_te)
         for full_B in [False]
         for replacement in [True]
-        for masked_objective in [False]
-        for reduction in [1, 2, 3, 4]
+        for reduction in [6]
+        for solver in ['gram', 'average', 'masked']
         for coupled_subset in [True]
         for projection in ['partial']
         for learning_rate in [.9])
@@ -128,7 +128,7 @@ def main():
                     'coupled_subset': estimator.coupled_subset,
                     'projection': estimator.projection,
                     'reduction': estimator.reduction,
-                    'masked_objective': estimator.masked_objective,
+                    'solver': estimator.solver,
                     'full_B': estimator.full_B,
                     'iter': cb.iter, 'times': cb.times,
                     'obj': cb.obj}
@@ -139,10 +139,10 @@ def main():
     fig.subplots_adjust(left=0.15, right=0.6)
 
     for cb, estimator in res:
-        axes[0].plot(cb.times[1:], cb.obj[1:],
-                     label='Reduction: %s' % (
-                         estimator.reduction))
-        axes[1].plot(cb.times[1:], cb.diff[1:], label='beta_ variance')
+        axes[0].plot(cb.iter[1:], cb.obj[1:],
+                     label='Solver: %s' % (
+                         estimator.solver))
+        axes[1].plot(cb.iter[1:], cb.diff[1:], label='beta_ variance')
 
     axes[0].legend(loc='upper left', bbox_to_anchor=(1, 1))
     axes[0].set_ylabel('Function value')

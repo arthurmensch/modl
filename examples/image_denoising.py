@@ -91,7 +91,7 @@ def main():
                   reduction=6,
                   verbose=1,
                   projection='partial',
-                  solver='masked',
+                  solver='gram',
                   replacement=True,
                   coupled_subset=False,
                   backend='python',
@@ -99,7 +99,7 @@ def main():
                   full_B=True,
                   callback=cb,
                   random_state=0)
-    for i in range(100):
+    for i in range(30):
         dico.partial_fit(data)
     V = dico.components_
     dt = time() - t0

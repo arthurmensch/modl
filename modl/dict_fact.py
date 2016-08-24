@@ -62,34 +62,34 @@ class DictMF(BaseEstimator):
             Learned dictionary
     """
 
-    def __init__(self, alpha=1.0,
+    def __init__(self,
                  n_components=30,
+                 alpha=1.0,
+                 l1_ratio=0,
+                 pen_l1_ratio=0,
                  # Hyper-parameters
                  learning_rate=1.,
                  batch_size=1,
                  offset=0,
+                 sample_learning_rate=None,
                  # Reduction parameter
                  reduction=1,
-                 projection='partial',
-                 coupled_subset=True,
+                 solver='beta',
+                 full_B=False,
                  replacement=False,
+                 coupled_subset=True,
+                 projection='partial',
                  fit_intercept=False,
                  # Dict parameter
                  dict_init=None,
-                 l1_ratio=0,
                  # For variance reduction
                  n_samples=None,
                  # Generic parameters
                  max_n_iter=0,
                  n_epochs=1,
-                 pen_l1_ratio=0,
-                 sample_learning_rate=None,
-                 full_B=False,
-                 solver='beta',
                  random_state=None,
                  verbose=0,
                  backend='c',
-                 debug=False,
                  callback=None):
 
         self.fit_intercept = fit_intercept
@@ -120,7 +120,6 @@ class DictMF(BaseEstimator):
         self.verbose = verbose
 
         self.backend = backend
-        self.debug = debug
 
         self.callback = callback
 
@@ -215,10 +214,6 @@ class DictMF(BaseEstimator):
 
         self.code_ = np.zeros((self.n_samples_, self.n_components))
 
-        if self.debug:
-            self.loss_ = np.empty(self.max_n_iter)
-            self.loss_indep_ = 0.
-
     def _init_arrays(self, X):
         n_rows, n_cols = X.shape
         if self.fit_intercept:
@@ -279,11 +274,6 @@ class DictMF(BaseEstimator):
         if reset or not self._is_initialized():
             if self.backend not in ['python', 'c']:
                 raise ValueError("Invalid backend %s" % self.backend)
-
-            if self.debug and self.backend == 'c':
-                raise NotImplementedError(
-                    "Recording objective loss is only available"
-                    "with backend == 'python'")
 
             self._init(X)
             self._init_arrays(X)
@@ -566,7 +556,6 @@ class DictMF(BaseEstimator):
                     this_G, beta[:, i],
                     this_X[i], 100,
                     1e-3, self.random_state_, True, False)
-                # print(n_iter)
 
         this_code = self.code_[sample_subset]
 
@@ -585,14 +574,6 @@ class DictMF(BaseEstimator):
             self.B_[:, subset] += this_code.T.dot(this_X) * w_B[
                 subset] / len_batch
 
-        if self.debug:
-            dict_loss = .5 * np.sum(
-                self.D_.dot(self.D_.T) * self.A_) - np.sum(
-                self.D_ * self.B_)
-            self.loss_indep_ *= (1 - w)
-            self.loss_indep_ += (.5 * np.sum(this_X ** 2) +
-                                 self.alpha * np.sum(this_code ** 2)) * w
-            self.loss_[self.n_iter_[0]] = self.loss_indep_ + dict_loss
 
     def _update_dict_slow(self, subset, D_range):
         """Update dictionary from statistic
