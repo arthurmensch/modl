@@ -73,14 +73,11 @@ cpdef void _get_weights(double[:] w, int[:] subset, long[:] counter, long batch_
         else:
             w[jj + 1] = min(1, w[0] * float(counter[0]) / counter[j + 1])
 
-cpdef double _get_simple_weights(int[:] subset, long[:] counter, long batch_size,
+cpdef double _get_simple_weights(long count, long batch_size,
            double learning_rate, double offset):
-    cdef int len_subset = subset.shape[0]
-    cdef int full_count = counter[0]
-    cdef int count
-    cdef int i, jj, j
+    cdef int i
     cdef double w = 1
-    for i in range(full_count + 1, full_count + 1 + batch_size):
+    for i in range(count, count + batch_size):
         w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
     w = 1 - w
     return w
