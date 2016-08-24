@@ -79,9 +79,6 @@ class DictMF(BaseEstimator):
                  subset_sampling='random',  # ['random', 'cyclic']
                  dict_subset_sampling='independent',
                  # ['independent', 'coupled']
-                 projection='partial',  # ['partial', 'full']
-                 clean_D=True,
-                 scale_G=False,
                  scale_transform=True,
                  # Dict parameter
                  dict_init=None,
@@ -112,9 +109,7 @@ class DictMF(BaseEstimator):
         self.subset_sampling = subset_sampling
         self.dict_subset_sampling = dict_subset_sampling
         self.weights = weights
-        self.projection = projection
-        self.clean_D = clean_D
-        self.scale_G = scale_G
+
         self.scale_transform = scale_transform
 
         self.max_n_iter = max_n_iter
@@ -130,23 +125,20 @@ class DictMF(BaseEstimator):
 
     @property
     def components_(self):
-        if self.scale_transform:
-            return enet_scale(self.D_, radius=1, l1_ratio=self.l1_ratio)
-        else:
-            return self.D_
+        return self.D_
 
-    def _get_projection(self):
-        projections = {
-            'full': 1,
-            'partial': 2,
-        }
-        return projections[self.projection]
+    # def _get_projection(self):
+    #     projections = {
+    #         'full': 1,
+    #         'partial': 2,
+    #     }
+    #     return projections[self.projection]
 
     def _init(self, X):
         """Initialize statistic and dictionary"""
-        if self.projection not in ['partial', 'full']:
-            raise ValueError("projection should be in {'partial', 'full'},"
-                             " got %s" % self.projection)
+        # if self.projection not in ['partial', 'full']:
+        #     raise ValueError("projection should be in {'partial', 'full'},"
+        #                      " got %s" % self.projection)
         # TODO
 
         X = check_array(X, dtype='float', order='F')
@@ -191,8 +183,6 @@ class DictMF(BaseEstimator):
                                         order="F")
         if self.solver == 'gram':
             self.G_ = self.D_.dot(self.D_.T).T
-            self.G_scale_ = np.zeros((self.n_samples_, self.n_components),
-                                     order="F")
 
         if self.solver == 'average':
             self.G_average_ = np.zeros((self.n_samples_, self.n_components,
@@ -220,10 +210,8 @@ class DictMF(BaseEstimator):
             self._w_temp = np.zeros(self._len_subset + 1)
             self._R = np.empty((self.n_components, n_cols), order='F')
             self._norm_temp = np.zeros(self.n_components)
-            if self.projection == 'full':
-                self._proj_temp = np.zeros(n_cols)
-            else:
-                self._proj_temp = np.zeros(self._len_subset)
+            self._proj_temp = np.zeros(self._len_subset)
+
         self._subset_range = np.arange(n_cols, dtype='i4')
         self.random_state_.shuffle(self._subset_range)
         self._temp_subset = np.empty(n_cols, dtype='i4')
@@ -289,14 +277,14 @@ class DictMF(BaseEstimator):
             Code obtained projecting X on the dictionary
         """
         self._check_fitted()
-        return self._dense_transform(X)
-
-    def _dense_transform(self, X, y=None):
         X = check_array(X, order='F', dtype='float64')
         n_rows, n_cols = X.shape
-        D = self.components_
+        D = self.D_
         Dx = (X.dot(D.T)).T
-        G = D.dot(D.T)
+        if self.solver == 'gram':
+            G = self.G_.T
+        else:
+            G = D.dot(D.T)
         if self.pen_l1_ratio == 0:
             if self.solver == 'gram':
                 G = G.copy()
@@ -484,15 +472,8 @@ class DictMF(BaseEstimator):
                                                            np.newaxis]
                 G = self.G_average_[sample_subset]
             else:  # ['gram']
-                if self.scale_G:
-                    this_scale = np.sum(D_subset ** 2,
-                                        axis=1) * reduction / np.diag(self.G_)
-                    self.G_scale_[sample_subset] *= 1 - w_sample
-                    self.G_scale_[sample_subset] += this_scale * w_sample
-                    scale = self.G_scale_[sample_subset]
                 G = self.G_.T
-        if (self.pen_l1_ratio == 0
-            and self.solver == 'gram' and not self.scale_G):
+        if self.pen_l1_ratio == 0 and self.solver == 'gram':
             this_G = G.copy()
             this_G.flat[::self.n_components + 1] += self.alpha
             self.code_[sample_subset] = linalg.solve(this_G,
@@ -504,11 +485,6 @@ class DictMF(BaseEstimator):
             for i in range(len_batch):
                 if self.solver == 'average':
                     this_G = G[i]
-                elif self.solver == 'gram':
-                    if self.scale_G:
-                        this_G = G * scale[i]
-                    else:
-                        this_G = G
                 else:
                     this_G = G
                 if self.pen_l1_ratio == 0:
@@ -571,43 +547,37 @@ class DictMF(BaseEstimator):
         n_cols = self.D_.shape[1]
         D_subset = self.D_[:, subset]
 
-        if self.projection == 'full':
-            norm = enet_norm(self.D_, self.l1_ratio)
-        else:
-            norm = enet_norm(D_subset, self.l1_ratio)
+        norm = enet_norm(D_subset, self.l1_ratio)
+        if self.solver == 'gram':
+            self.G_ -= D_subset.dot(D_subset.T)
+
+        # Cleaning D from unused atom
+        non_active = np.logical_or(norm < 1e-20, np.diag(self.A_) < 1e-20)
+        if np.sum(non_active) > 0:
             if self.solver == 'gram':
-                self.G_ -= D_subset.dot(D_subset.T)
-        if self.clean_D:
-            non_active = np.logical_or(norm < 1e-20, np.diag(self.A_) < 1e-20)
-            if np.sum(non_active) > 0:
-                if self.solver == 'gram':
-                    self.G_[non_active, :] += D_subset.dot(
-                        D_subset[non_active].T).T
-                    self.G_[:, non_active] = self.G_[non_active, :].T
+                self.G_[non_active, :] += D_subset.dot(
+                    D_subset[non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
 
-                self.D_[non_active] = self.random_state_.randn(n_cols)
-                self.D_[non_active] = enet_scale(self.D_[non_active],
-                                                 l1_ratio=self.l1_ratio)
-                self.A_[non_active, :] = 0
-                self.A_[:, non_active] = 0
-                self.B_[non_active, :] = 0
+            self.D_[non_active] = self.random_state_.randn(n_cols)
+            self.D_[non_active] = enet_scale(self.D_[non_active],
+                                             l1_ratio=self.l1_ratio)
+            self.A_[non_active, :] = 0
+            self.A_[:, non_active] = 0
+            self.B_[non_active, :] = 0
 
-                if self.solver == 'gram':
-                    self.G_[non_active, :] = self.D_.dot(
-                        self.D_[non_active].T).T
-                    self.G_[:, non_active] = self.G_[non_active, :].T
+            if self.solver == 'gram':
+                self.G_[non_active, :] = self.D_.dot(
+                    self.D_[non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
 
-                if self.projection == 'partial':
-                    D_subset[non_active] = self.D_[non_active][:, subset]
-                    norm[non_active] = enet_norm(D_subset[non_active],
-                                                 self.l1_ratio)
-                    if self.solver == 'gram':
-                        self.G_[non_active, :] -= D_subset.dot(D_subset[
-                                                                   non_active].T).T
-                        self.G_[:, non_active] = self.G_[non_active, :].T
-                else:
-                    norm[non_active] = enet_norm(self.D_[non_active],
-                                                 self.l1_ratio)
+            D_subset[non_active] = self.D_[non_active][:, subset]
+            norm[non_active] = enet_norm(D_subset[non_active],
+                                         self.l1_ratio)
+            if self.solver == 'gram':
+                self.G_[non_active, :] -= D_subset.dot(D_subset[
+                                                           non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
 
         R = self.B_[:, subset] - np.dot(D_subset.T, self.A_).T
 
@@ -617,31 +587,20 @@ class DictMF(BaseEstimator):
             ger(1.0, self.A_[k], D_subset[k], a=R, overwrite_a=True)
             if self.A_[k, k] > 1e-20:
                 D_subset[k] = R[k] / self.A_[k, k]
-            if self.projection == 'full':
-                self.D_[k][subset] = D_subset[k]
-                self.D_[k] = enet_projection(self.D_[k],
-                                             norm[k],
-                                             self.l1_ratio)
-                D_subset[k] = self.D_[k][subset]
-            else:
-                D_subset[k] = enet_projection(D_subset[k], norm[k],
-                                              self.l1_ratio)
+            D_subset[k] = enet_projection(D_subset[k], norm[k],
+                                          self.l1_ratio)
             ger(-1.0, self.A_[k], D_subset[k], a=R, overwrite_a=True)
-        # print((self.D_ ** 2).sum(axis=1))
-        if self.projection == 'full':
-            if self.solver == 'gram':
-                self.G_ = self.D_.dot(self.D_.T).T
-        else:
-            self.D_[:, subset] = D_subset
-            if self.solver == 'gram':
-                self.G_ += D_subset.dot(D_subset.T)
+        self.D_[:, subset] = D_subset
+        if self.solver == 'gram':
+            self.G_ += D_subset.dot(D_subset.T)
 
     def score(self, X):
         code = self.transform(X)
-        loss = np.sum((X - code.T.dot(self.components_)) ** 2) / 2
-        regul = self.alpha * (self.pen_l1_ratio * np.sum(np.abs(code))
-                              + (1 - self.pen_l1_ratio) * np.sum(
-            code ** 2) / 2)
+        norm_D = enet_norm(self.D_, self.l1_ratio)
+        loss = np.sum((X - code.T.dot(self.D_)) ** 2) / 2
+        norm_abs_code = np.sum(norm_D * np.sum(np.abs(code), axis=1))
+        regul = self.alpha * norm_abs_code * (self.pen_l1_ratio
+                              + (1 - self.pen_l1_ratio) * norm_abs_code / 2)
         return (loss + regul) / X.shape[0]
 
     def _callback(self):
