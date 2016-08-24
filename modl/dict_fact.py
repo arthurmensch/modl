@@ -79,7 +79,6 @@ class DictMF(BaseEstimator):
                  subset_sampling='random',  # ['random', 'cyclic']
                  dict_subset_sampling='independent',
                  # ['independent', 'coupled']
-                 scale_transform=True,
                  # Dict parameter
                  dict_init=None,
                  # For variance reduction
@@ -109,8 +108,6 @@ class DictMF(BaseEstimator):
         self.subset_sampling = subset_sampling
         self.dict_subset_sampling = dict_subset_sampling
         self.weights = weights
-
-        self.scale_transform = scale_transform
 
         self.max_n_iter = max_n_iter
         self.n_epochs = n_epochs
@@ -583,7 +580,7 @@ class DictMF(BaseEstimator):
 
         ger, = linalg.get_blas_funcs(('ger',), (self.A_, D_subset))
         for k in D_range:
-            # R = self.B_[k][subset] - np.dot(D_subset.T, self.A_[k]).T
+            # R{k] = self.B_[k][subset] - np.dot(D_subset.T, self.A_[k]).T
             ger(1.0, self.A_[k], D_subset[k], a=R, overwrite_a=True)
             if self.A_[k, k] > 1e-20:
                 D_subset[k] = R[k] / self.A_[k, k]
@@ -597,6 +594,7 @@ class DictMF(BaseEstimator):
     def score(self, X):
         code = self.transform(X)
         norm_D = enet_norm(self.D_, self.l1_ratio)
+        norm_D = 1
         loss = np.sum((X - code.T.dot(self.D_)) ** 2) / 2
         norm_abs_code = np.sum(norm_D * np.sum(np.abs(code), axis=1))
         regul = self.alpha * norm_abs_code * (self.pen_l1_ratio

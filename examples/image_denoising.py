@@ -1,5 +1,6 @@
 from time import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 from modl.dict_fact import DictMF
 from scipy import misc
@@ -77,16 +78,15 @@ def main():
                   pen_l1_ratio=.9,
                   batch_size=10,
                   learning_rate=1,
-                  reduction=2,
+                  reduction=1,
                   verbose=4,
-                  solver='gram',
+                  solver='masked',
                   weights='sync',
                   subset_sampling='random',
                   dict_subset_sampling='independent',
-                  scale_transform=True,
                   backend='python',
                   n_samples=2000,
-                  callback=cb,
+                  callback=None,
                   random_state=0)
     for i in range(10):
         dico.partial_fit(data)
@@ -94,18 +94,18 @@ def main():
     dt = time() - t0
     print('done in %.2fs.' % dt)
 
-    # plt.figure(figsize=(4.2, 4))
-    # for i, comp in enumerate(V[:100]):
-    #     plt.subplot(10, 10, i + 1)
-    #     plt.imshow(comp.reshape(patch_size), cmap=plt.cm.gray_r,
-    #                interpolation='nearest')
-    #     plt.xticks(())
-    #     plt.yticks(())
-    # plt.suptitle('Dictionary learned from face patches\n' +
-    #              'Train time %.1fs on %d patches' % (dt, len(data)),
-    #              fontsize=16)
-    # plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
-    #
+    plt.figure(figsize=(4.2, 4))
+    for i, comp in enumerate(V[:100]):
+        plt.subplot(10, 10, i + 1)
+        plt.imshow(comp.reshape(patch_size), cmap=plt.cm.gray_r,
+                   interpolation='nearest')
+        plt.xticks(())
+        plt.yticks(())
+    plt.suptitle('Dictionary learned from face patches\n' +
+                 'Train time %.1fs on %d patches' % (dt, len(data)),
+                 fontsize=16)
+    plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
+
     # fig, axes = plt.subplots(2, 1, sharex=True)
     # axes[0].plot(cb.iter[1:], cb.obj[1:])
     # axes[0].set_ylabel('Function value')
@@ -116,8 +116,8 @@ def main():
     # axes[1].set_xscale('log')
     # axes[1].set_xlabel('Iter')
     # axes[1].set_ylabel('Residual')
-    #
-    # plt.show()
+
+    plt.show()
 
 if __name__ == '__main__':
     main()
