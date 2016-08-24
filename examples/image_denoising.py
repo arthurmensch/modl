@@ -18,11 +18,12 @@ class Callback(object):
         self.iter = []
         self.beta_var = []
         self.B_var = []
+        self.G_var = []
         self.R = []
         self.start_time = time()
         self.test_time = 0
 
-    def __call__(self, mf):
+    def __call__(self, mf, sample_subset=None):
         test_time = time()
         self.obj.append(mf.score(self.X_tr))
         beta = self.X_tr.dot(mf.components_.T)
@@ -33,6 +34,8 @@ class Callback(object):
         scale[scale == 0] = 1
         R /= scale
         self.R.append(np.sum(R ** 2))
+        G = mf.D_.dot(mf.D_.T)
+        self.G_var.append(np.sum((G - mf.G_beta_[sample_subset]) ** 2) / np.sum(G ** 2) / sample_subset.shape[0])
         self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
@@ -85,10 +88,10 @@ def main():
                   pen_l1_ratio=0.9,
                   batch_size=10,
                   learning_rate=1,
-                  reduction=4,
-                  verbose=5,
+                  reduction=6,
+                  verbose=1,
                   projection='partial',
-                  solver='gram',
+                  solver='masked',
                   replacement=True,
                   coupled_subset=False,
                   backend='python',
@@ -96,7 +99,7 @@ def main():
                   full_B=True,
                   callback=cb,
                   random_state=0)
-    for i in range(10):
+    for i in range(100):
         dico.partial_fit(data)
     V = dico.components_
     dt = time() - t0
@@ -114,7 +117,7 @@ def main():
                  fontsize=16)
     plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
-    fig, axes = plt.subplots(4, 1, sharex=True)
+    fig, axes = plt.subplots(5, 1, sharex=True)
     axes[0].plot(cb.iter[1:], cb.obj[1:])
     axes[0].legend()
     axes[0].set_ylabel('Function value')
@@ -128,6 +131,11 @@ def main():
     axes[3].plot(cb.iter[1:], cb.R[1:])
     axes[3].set_xlabel('Iter')
     axes[3].set_ylabel('Residual')
+
+    axes[4].plot(cb.iter[1:], cb.G_var[1:])
+    axes[4].set_xlabel('Iter')
+    axes[4].set_ylabel('G variance')
+
     plt.show()
 
 if __name__ == '__main__':

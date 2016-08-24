@@ -134,7 +134,7 @@ class DictMF(BaseEstimator):
 
     @property
     def components_(self):
-        return self.D_
+        return enet_scale(self.D_, radius=1, l1_ratio=self.l1_ratio)
 
     def _get_projection(self):
         projections = {
@@ -208,6 +208,8 @@ class DictMF(BaseEstimator):
         self.row_counter_ = np.zeros(self.n_samples_, dtype='int')
         self.beta_ = np.zeros((self.n_samples_, self.n_components),
                               order="F")
+        self.scale_ = np.zeros((self.n_samples_, self.n_components),
+                              order="C")
         self.G_beta_ = np.zeros((self.n_samples_, self.n_components, self.n_components),
                               order="C")
 
@@ -318,14 +320,15 @@ class DictMF(BaseEstimator):
     def _dense_transform(self, X, y=None):
         X = check_array(X, order='F', dtype='float64')
         n_rows, n_cols = X.shape
-        Dx = (X.dot(self.D_.T)).T
-        if self.solver == 'gram':
-            G = self.G_.T
-        else:
-            G = self.D_.dot(self.D_.T)
+        D = self.components_
+        Dx = (X.dot(D.T)).T
+        # if self.solver == 'gram':
+        #     G = self.G_.T
+        # else:
+        G = D.dot(D.T)
         if self.pen_l1_ratio == 0:
-            if self.solver == 'gram':
-                G = G.copy()
+            # if self.solver == 'gram':
+            G = G.copy()
             G.flat[::self.n_components + 1] += self.alpha
             code = linalg.solve(G, Dx, sym_pos=True,
                                 overwrite_a=True, check_finite=False)
@@ -409,12 +412,6 @@ class DictMF(BaseEstimator):
             batches = gen_batches(len(row_range), self.batch_size)
 
             for batch in batches:
-                if self.verbose:
-                    if self.n_iter_[0] - old_n_iter >= new_verbose_iter_:
-                        print("Iteration %i" % self.n_iter_[0])
-                        new_verbose_iter_ += n_rows // self.verbose
-                        self._callback()
-
                 row_batch = row_range[batch]
                 len_batch = row_batch.shape[0]
 
@@ -441,6 +438,13 @@ class DictMF(BaseEstimator):
                                        sample_subset[row_batch],
                                        full_X=X[row_batch]
                                        )
+
+                if self.verbose:
+                    if self.n_iter_[0] - old_n_iter >= new_verbose_iter_:
+                        print("Iteration %i" % self.n_iter_[0])
+                        new_verbose_iter_ += n_rows // self.verbose
+                        self._callback(sample_subset[row_batch])
+
                 if self.coupled_subset:
                     dict_subset = subset
                 else:
@@ -515,6 +519,8 @@ class DictMF(BaseEstimator):
         if self.solver == 'masked':
             beta = np.array(Dx, order='F')
             G = D_subset.dot(D_subset.T) * reduction
+            # Debugging purpose
+            self.G_beta_[sample_subset] = G
         else: # ['average', 'gram']
             w_beta = np.power(self.row_counter_[sample_subset]
                               [:, np.newaxis] + 1, -sample_learning_rate)
@@ -528,11 +534,19 @@ class DictMF(BaseEstimator):
                 self.G_beta_[sample_subset] += self.G_ * w_beta[:, np.newaxis]
                 G = self.G_beta_[sample_subset]
             else: # ['gram']
-                G = self.G_.T
+                this_scale = np.sum(D_subset ** 2, axis=1) * reduction / np.diag(self.G_)
+                # this_scale = np.ones(self.n_components)
+                self.scale_[sample_subset] *= 1 - w_beta
+                self.scale_[sample_subset] += this_scale * w_beta
+                G = self.G_.T.copy()
+                # Debugging purpose
+                self.G_beta_[sample_subset] = D_subset.dot(D_subset.T) * reduction
 
         for i in range(len_batch):
             if self.solver == 'average':
                 this_G = G[i]
+            elif self.solver == 'gram':
+                this_G = G * self.scale_[sample_subset[i]]
             else:
                 this_G = G
             if self.pen_l1_ratio == 0:
@@ -544,14 +558,14 @@ class DictMF(BaseEstimator):
                                                             overwrite_a=False,
                                                             check_finite=False)
             else:
-                self.code_[sample_subset[i]],\
+                self.code_[sample_subset[i]], \
                 tol, gap, n_iter = cd_fast.enet_coordinate_descent_gram(
                     self.code_[sample_subset[i]],
                     self.alpha * self.pen_l1_ratio,
                     self.alpha * (1 - self.pen_l1_ratio),
                     this_G, beta[:, i],
-                    full_X[i], 100,
-                    1e-3, self.random_state_, False, False)
+                    this_X[i], 100,
+                    1e-3, self.random_state_, True, False)
                 # print(n_iter)
 
         this_code = self.code_[sample_subset]
@@ -560,8 +574,8 @@ class DictMF(BaseEstimator):
         self.A_ *= 1 - w_A
         self.A_ += this_code.T.dot(this_code) * w_A / len_batch
 
-        # self.full_B_ *= 1 - w_B
-        # self.full_B_ += this_code.T.dot(full_X) * w_B / len_batch
+        self.full_B_ *= 1 - w_B
+        self.full_B_ += this_code.T.dot(full_X) * w_B / len_batch
 
         if self.full_B:
             self.B_ *= 1 - w_B
@@ -605,8 +619,8 @@ class DictMF(BaseEstimator):
             norm = enet_norm(self.D_, self.l1_ratio)
         else:
             norm = enet_norm(D_subset, self.l1_ratio)
-            if self.solver == 'gram':
-                self.G_ -= D_subset.dot(D_subset.T)
+            # if self.solver == 'gram':
+            self.G_ -= D_subset.dot(D_subset.T)
 
         clean = True
         if clean:
@@ -658,6 +672,7 @@ class DictMF(BaseEstimator):
                 D_subset[k] = enet_projection(D_subset[k], norm[k],
                                               self.l1_ratio)
             ger(-1.0, self.A_[k], D_subset[k], a=R, overwrite_a=True)
+        # print((self.D_ ** 2).sum(axis=1))
         if self.projection == 'full':
             if self.solver == 'gram':
                 self.G_ = self.D_.dot(self.D_.T).T
@@ -674,6 +689,6 @@ class DictMF(BaseEstimator):
             code ** 2) / 2)
         return loss + regul
 
-    def _callback(self):
+    def _callback(self, sample_subset=None):
         if self.callback is not None:
-            self.callback(self)
+            self.callback(self, sample_subset)
