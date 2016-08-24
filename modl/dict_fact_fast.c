@@ -2891,7 +2891,7 @@ static double __pyx_f_4modl_14dict_fact_fast__get_simple_weights(long __pyx_v_co
  *            double learning_rate, double offset):
  *     cdef int i
  *     cdef double w = 1             # <<<<<<<<<<<<<<
- *     for i in range(count, count + batch_size):
+ *     for i in range(count + 1 - batch_size, count + 1):
  *         w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
  */
   __pyx_v_w = 1.0;
@@ -2899,17 +2899,17 @@ static double __pyx_f_4modl_14dict_fact_fast__get_simple_weights(long __pyx_v_co
   /* "modl/dict_fact_fast.pyx":80
  *     cdef int i
  *     cdef double w = 1
- *     for i in range(count, count + batch_size):             # <<<<<<<<<<<<<<
+ *     for i in range(count + 1 - batch_size, count + 1):             # <<<<<<<<<<<<<<
  *         w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
  *     w = 1 - w
  */
-  __pyx_t_1 = (__pyx_v_count + __pyx_v_batch_size);
-  for (__pyx_t_2 = __pyx_v_count; __pyx_t_2 < __pyx_t_1; __pyx_t_2+=1) {
+  __pyx_t_1 = (__pyx_v_count + 1);
+  for (__pyx_t_2 = ((__pyx_v_count + 1) - __pyx_v_batch_size); __pyx_t_2 < __pyx_t_1; __pyx_t_2+=1) {
     __pyx_v_i = __pyx_t_2;
 
     /* "modl/dict_fact_fast.pyx":81
  *     cdef double w = 1
- *     for i in range(count, count + batch_size):
+ *     for i in range(count + 1 - batch_size, count + 1):
  *         w *= (1 - pow((1 + offset) / (offset + i), learning_rate))             # <<<<<<<<<<<<<<
  *     w = 1 - w
  *     return w
@@ -2918,7 +2918,7 @@ static double __pyx_f_4modl_14dict_fact_fast__get_simple_weights(long __pyx_v_co
   }
 
   /* "modl/dict_fact_fast.pyx":82
- *     for i in range(count, count + batch_size):
+ *     for i in range(count + 1 - batch_size, count + 1):
  *         w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
  *     w = 1 - w             # <<<<<<<<<<<<<<
  *     return w

@@ -77,7 +77,7 @@ cpdef double _get_simple_weights(long count, long batch_size,
            double learning_rate, double offset):
     cdef int i
     cdef double w = 1
-    for i in range(count, count + batch_size):
+    for i in range(count + 1 - batch_size, count + 1):
         w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
     w = 1 - w
     return w

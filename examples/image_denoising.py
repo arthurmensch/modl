@@ -1,6 +1,5 @@
 from time import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 from modl.dict_fact import DictMF
 from scipy import misc
@@ -19,7 +18,7 @@ class Callback(object):
         self.start_time = time()
         self.test_time = 0
 
-    def __call__(self, mf, sample_subset=None):
+    def __call__(self, mf):
         test_time = time()
         self.obj.append(mf.score(self.X_tr))
         R = (mf.B_ - mf.A_.dot(mf.D_))
@@ -75,16 +74,19 @@ def main():
     cb = Callback(data)
     dico = DictMF(n_components=100, alpha=1,
                   l1_ratio=0,
-                  pen_l1_ratio=0.9,
+                  pen_l1_ratio=.9,
                   batch_size=10,
                   learning_rate=1,
-                  reduction=6,
-                  verbose=5,
+                  reduction=2,
+                  verbose=4,
                   projection='partial',
-                  solver='vector',
+                  solver='gram',
                   weights='sync',
                   subset_sampling='random',
                   dict_subset_sampling='independent',
+                  clean_D=False,
+                  scale_G=False,
+                  scale_transform=True,
                   backend='python',
                   n_samples=2000,
                   callback=cb,
@@ -95,28 +97,30 @@ def main():
     dt = time() - t0
     print('done in %.2fs.' % dt)
 
-    plt.figure(figsize=(4.2, 4))
-    for i, comp in enumerate(V[:100]):
-        plt.subplot(10, 10, i + 1)
-        plt.imshow(comp.reshape(patch_size), cmap=plt.cm.gray_r,
-                   interpolation='nearest')
-        plt.xticks(())
-        plt.yticks(())
-    plt.suptitle('Dictionary learned from face patches\n' +
-                 'Train time %.1fs on %d patches' % (dt, len(data)),
-                 fontsize=16)
-    plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
-
-    fig, axes = plt.subplots(2, 1, sharex=True)
-    axes[0].plot(cb.iter[1:], cb.obj[1:])
-    axes[0].set_ylabel('Function value')
-    axes[0].legend()
-    axes[1].plot(cb.iter[1:], cb.R[1:])
-    axes[1].set_xscale('log')
-    axes[1].set_xlabel('Iter')
-    axes[1].set_ylabel('Residual')
-
-    plt.show()
+    # plt.figure(figsize=(4.2, 4))
+    # for i, comp in enumerate(V[:100]):
+    #     plt.subplot(10, 10, i + 1)
+    #     plt.imshow(comp.reshape(patch_size), cmap=plt.cm.gray_r,
+    #                interpolation='nearest')
+    #     plt.xticks(())
+    #     plt.yticks(())
+    # plt.suptitle('Dictionary learned from face patches\n' +
+    #              'Train time %.1fs on %d patches' % (dt, len(data)),
+    #              fontsize=16)
+    # plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
+    #
+    # fig, axes = plt.subplots(2, 1, sharex=True)
+    # axes[0].plot(cb.iter[1:], cb.obj[1:])
+    # axes[0].set_ylabel('Function value')
+    # # axes[0].set_ylim([8, 10])
+    # # axes[0].set_xlim([1e3, 1e5])
+    # axes[0].legend()
+    # axes[1].plot(cb.iter[1:], cb.R[1:])
+    # axes[1].set_xscale('log')
+    # axes[1].set_xlabel('Iter')
+    # axes[1].set_ylabel('Residual')
+    #
+    # plt.show()
 
 if __name__ == '__main__':
     main()
