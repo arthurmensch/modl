@@ -36,7 +36,8 @@ class Callback(object):
         self.iter.append(mf.n_iter_[0])
 
 
-def single_run(replacement, full_B, coupled_subset, projection,
+def single_run(replacement, full_B, masked_objective,
+               coupled_subset, projection,
                reduction, learning_rate, data_tr, data_te):
     t0 = time()
     cb = Callback(data_tr)
@@ -50,6 +51,7 @@ def single_run(replacement, full_B, coupled_subset, projection,
                        projection=projection,
                        replacement=replacement,
                        coupled_subset=coupled_subset,
+                       masked_objective=masked_objective,
                        full_B=full_B,
                        n_epochs=int(ceil(3 * reduction)), backend='python',
                        callback=cb)
@@ -107,16 +109,18 @@ def main():
     print('done in %.2fs.' % (time() - t0))
 
     res = Parallel(n_jobs=2, verbose=10, max_nbytes=None)(
-        delayed(single_run)(replacement, full_B, coupled_subset,
+        delayed(single_run)(replacement, full_B, masked_objective,
+                            coupled_subset,
                             projection,
                             reduction, learning_rate,
                             data_tr, data_te)
-        for full_B in [True]
+        for full_B in [False]
         for replacement in [True]
-        for reduction in [1, 3]
-        for coupled_subset in [False]
+        for masked_objective in [False]
+        for reduction in [1, 2, 3, 4]
+        for coupled_subset in [True]
         for projection in ['partial']
-        for learning_rate in [1])
+        for learning_rate in [.9])
 
     full_res_dict = []
     for cb, estimator in res:
@@ -124,6 +128,7 @@ def main():
                     'coupled_subset': estimator.coupled_subset,
                     'projection': estimator.projection,
                     'reduction': estimator.reduction,
+                    'masked_objective': estimator.masked_objective,
                     'full_B': estimator.full_B,
                     'iter': cb.iter, 'times': cb.times,
                     'obj': cb.obj}
@@ -135,8 +140,8 @@ def main():
 
     for cb, estimator in res:
         axes[0].plot(cb.times[1:], cb.obj[1:],
-                     label='full_B: %s' % (
-                         estimator.full_B))
+                     label='Reduction: %s' % (
+                         estimator.reduction))
         axes[1].plot(cb.times[1:], cb.diff[1:], label='beta_ variance')
 
     axes[0].legend(loc='upper left', bbox_to_anchor=(1, 1))

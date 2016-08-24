@@ -208,6 +208,8 @@ class DictMF(BaseEstimator):
         self.row_counter_ = np.zeros(self.n_samples_, dtype='int')
         self.beta_ = np.zeros((self.n_samples_, self.n_components),
                               order="F")
+        self.G_beta_ = np.zeros((self.n_samples_, self.n_components, self.n_components),
+                              order="C")
 
         self.code_ = np.zeros((self.n_samples_, self.n_components))
 
@@ -484,17 +486,16 @@ class DictMF(BaseEstimator):
                                   self.learning_rate, self.offset)
         w_B = np.ones(n_cols)
 
+        # if self.full_B:
+        #     w_B[:] = w_A
+        # else:
+        #     features_counter = self.counter_[1:]
+        #     w_B[features_counter != 0] = min(1, w_A * reduction)
 
-        if self.full_B:
-            w_B[:] = w_A
-        else:
-            features_counter = self.counter_[1:]
-            w_B[features_counter != 0] = min(1, w_A * reduction)
-
-        # features_counter = self.counter_[1:]
-        # w_B[features_counter != 0] = w_A * self.counter_[0] / features_counter[
-        #     features_counter != 0]
-        # w_B = np.minimum(1, w_B)
+        features_counter = self.counter_[1:]
+        w_B[features_counter != 0] = w_A * self.counter_[0] / features_counter[
+            features_counter != 0]
+        w_B = np.minimum(1, w_B)
 
         self.counter_[0] += len_batch
         if self.full_B:
@@ -507,13 +508,12 @@ class DictMF(BaseEstimator):
 
         Dx = np.dot(D_subset, this_X.T)
 
-        if self.masked_objective:
-            G = D_subset.dot(D_subset.T) * reduction
-        else:
-            if self.pen_l1_ratio == 0:
-                G = self.G_.copy()
-            else:
-                G = self.G_.T
+        # if self.masked_objective:
+        #     G = D_subset.dot(D_subset.T) * reduction
+        # else:
+        #         G = self.G_.T
+
+        G = D_subset.dot(D_subset.T) * reduction
 
         w_beta = np.power(self.row_counter_[sample_subset]
                           [:, np.newaxis] + 1, -sample_learning_rate)
@@ -521,12 +521,19 @@ class DictMF(BaseEstimator):
         self.beta_[sample_subset] *= 1 - w_beta
         self.beta_[sample_subset] += Dx.T * w_beta
 
+        self.G_beta_[sample_subset] *= 1 - w_beta[:, np.newaxis]
+        self.G_beta_[sample_subset] += G * w_beta[:, np.newaxis]
+
         if self.masked_objective:
             beta = np.array(Dx, order='F')
         else:
             beta = self.beta_[sample_subset].T
+            G = self.G_beta_[sample_subset]
+            if self.pen_l1_ratio == 0:
+                G = G.copy()
 
         if self.pen_l1_ratio == 0:
+            G = G.copy()
             G.flat[::self.n_components + 1] += self.alpha
             this_code = linalg.solve(G,
                                      beta,
@@ -538,7 +545,7 @@ class DictMF(BaseEstimator):
                 cd_fast.enet_coordinate_descent_gram(
                     this_code[i], self.alpha * self.pen_l1_ratio,
                                   self.alpha * (1 - self.pen_l1_ratio),
-                    G, beta[:, i],
+                    G[i], beta[:, i],
                     this_X[i], 100,
                     1e-3, self.random_state_, False, False)
             this_code = this_code.T
