@@ -1,10 +1,15 @@
 # encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
+
+
 ctypedef np.uint32_t UINT32_t
 
 cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
-           double learning_rate, double offset)
+           double learning_rate, double offset) nogil
 
-cpdef void _update_code(double[::1, :] this_X,
+cpdef void _update_code(double[::1, :] full_X,
                         long[:] subset,
                         long[:] this_sample_subset,
                         double alpha,
@@ -20,18 +25,19 @@ cpdef void _update_code(double[::1, :] this_X,
                         double[::1, :] B_,
                         double[::1, :] G_,
                         double[:, :] Dx_average_,
-                        double[:, :, :] G_average_,
+                        double[:, :, ::1] G_average_,
                         long[:] counter_,
                         long[:] row_counter_,
                         double[::1, :] D_subset,
                         double[::1, :] Dx,
                         double[::1, :] G_temp,
-                        double[::1, :] full_X,
+                        double[::1, :] this_X,
                         object rng) except *
 
 cpdef void _update_dict(double[::1, :] D_,
                   long[:] subset,
                   double l1_ratio,
+                  long solver,
                   double[::1, :] A_,
                   double[::1, :] B_,
                   double[::1, :] G_,
@@ -52,4 +58,4 @@ cpdef void _update_subset(bint replacement,
                    long[:] _subset_range,
                    long[:] _subset_lim,
                    long[:] _temp_subset,
-                   UINT32_t random_seed)
+                   UINT32_t random_seed) nogil

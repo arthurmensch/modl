@@ -1,4 +1,7 @@
 # encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 
 cimport numpy as np
 import numpy as np
@@ -37,14 +40,14 @@ cdef inline UINT32_t rand_long(UINT32_t end, UINT32_t* random_state) nogil:
     return our_rand_r(random_state) % end
 
 
-cdef void _shuffle(long[:] arr, UINT32_t* random_state):
+cdef void _shuffle(long[:] arr, UINT32_t* random_state) nogil:
     cdef long len_arr = arr.shape[0]
     cdef long i, j
     for i in range(len_arr -1, 0, -1):
         j = rand_long(i + 1, random_state)
         arr[i], arr[j] = arr[j], arr[i]
 
-cdef void _shuffle_long(long[:] arr, UINT32_t* random_state):
+cdef void _shuffle_long(long[:] arr, UINT32_t* random_state) nogil:
     cdef long len_arr = arr.shape[0]
     cdef long i, j
     for i in range(len_arr -1, 0, -1):
@@ -52,7 +55,7 @@ cdef void _shuffle_long(long[:] arr, UINT32_t* random_state):
         arr[i], arr[j] = arr[j], arr[i]
 
 cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
-           double learning_rate, double offset):
+           double learning_rate, double offset) nogil:
     cdef long len_subset = subset.shape[0]
     cdef double reduction = (counter.shape[0] - 1) / float(len_subset)
     cdef long full_count = counter[0]
@@ -70,7 +73,7 @@ cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch
             w[jj + 1] = min(1, w[0] * float(counter[0]) / counter[j + 1])
 
 cpdef double _get_simple_weights(long count, long batch_size,
-           double learning_rate, double offset):
+           double learning_rate, double offset) nogil:
     cdef long i
     cdef double w = 1
     for i in range(count + 1 - batch_size, count + 1):
@@ -78,7 +81,7 @@ cpdef double _get_simple_weights(long count, long batch_size,
     w = 1 - w
     return w
 
-cpdef void _update_code(double[::1, :] this_X,
+cpdef void _update_code(double[::1, :] full_X,
                         long[:] subset,
                         long[:] this_sample_subset,
                         double alpha,
@@ -94,13 +97,13 @@ cpdef void _update_code(double[::1, :] this_X,
                         double[::1, :] B_,
                         double[::1, :] G_,
                         double[:, :] Dx_average_,
-                        double[:, :, :] G_average_,
+                        double[:, :, ::1] G_average_,
                         long[:] counter_,
                         long[:] row_counter_,
                         double[::1, :] D_subset,
                         double[::1, :] Dx,
                         double[::1, :] G_temp,
-                        double[::1, :] full_X,
+                        double[::1, :] this_X,
                         object rng) except *:
     """
     Compute code for a mini-batch and update algorithm statistics accordingly
@@ -140,26 +143,28 @@ cpdef void _update_code(double[::1, :] this_X,
     cdef double* this_X_ptr = &this_X[0, 0]
     cdef double* full_X_ptr = &full_X[0, 0]
     cdef int info = 0
-    cdef int ii, jj, i, j, k, m
+    cdef int ii, jj, i, j, k, m, p
     cdef int nnz
     cdef double v
     cdef int last = 0
     cdef double one_m_w_A, w_sample, w_A_batch, w_norm
     cdef double reduction = float(n_cols) / len_subset
 
-    print('D_subset')
+    for ii in range(len_batch):
+        for jj in range(len_subset):
+            j = subset[jj]
+            this_X[ii, jj] = full_X[ii, j]
+
     for jj in range(len_subset):
         j = subset[jj]
         for k in range(n_components):
             D_subset[k, jj] = D_[k, j]
 
-    print('this_X')
     for jj in range(len_subset):
         for ii in range(len_batch):
             this_X[ii, jj] *= reduction
 
     # Dx = np.dot(D_subset, this_X.T)
-    print('Dx')
     dgemm(&NTRANS, &TRANS,
           &n_components, &len_batch, &len_subset,
           &oned,
@@ -170,7 +175,6 @@ cpdef void _update_code(double[::1, :] this_X,
           )
 
     if solver == 1:
-        print('G')
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
               &reduction,
@@ -188,7 +192,6 @@ cpdef void _update_code(double[::1, :] this_X,
                 Dx_average_[i, p] += Dx[p, ii] * w_sample
                 Dx[p, ii] = Dx_average_[i, p]
         if solver == 3:
-            print('G')
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &len_subset,
                   &reduction,
@@ -204,15 +207,17 @@ cpdef void _update_code(double[::1, :] this_X,
                         G_average_[i, p, q] *= 1 - w_sample
                         G_average_[i, p, q] += G_temp[p, q] * w_sample
         else:
-            for p in range(n_components):
-                for q in range(n_components):
-                    G_temp[p, q] = G_[p, q]
+            if pen_l1_ratio == 0:
+                for p in range(n_components):
+                    for q in range(n_components):
+                        G_temp[p, q] = G_[p, q]
+            else:
+                G_temp = G_
 
     if pen_l1_ratio == 0:
         if solver == 1 or solver == 2:
             for p in range(n_components):
                 G_temp[p, p] += alpha
-            print('solve')
             dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
                   Dx_ptr, &n_components,
                   &info)
@@ -234,13 +239,10 @@ cpdef void _update_code(double[::1, :] this_X,
                 for k in range(n_components):
                     code_[i, k] = Dx[k, ii]
     else:
-        for ii in range(len_batch):
+        for ii in range(len_batch, nogil=True):
             i = this_sample_subset[ii]
             if solver == 3:
-                for p in range(n_components):
-                    for q in range(n_components):
-                        G_temp[p, q] = G_average_[i, p, q]
-            print('lasso')
+                G_temp = G_average_[i].T
             cd_fast.enet_coordinate_descent_gram(
                 code_[i], alpha * pen_l1_ratio,
                                 alpha * (1 - pen_l1_ratio),
@@ -261,7 +263,6 @@ cpdef void _update_code(double[::1, :] this_X,
     one_m_w_A = 1 - w_A
     # A_ *= 1 - w_A
     # A_ += this_code.dot(this_code.T) * w_A / batch_size
-    print('A')
     dgemm(&NTRANS, &TRANS,
           &n_components, &n_components, &len_batch,
           &w_A_batch,
@@ -271,12 +272,11 @@ cpdef void _update_code(double[::1, :] this_X,
           A_ptr, &n_components
           )
     if weights == 1:
-        print('B')
         dgemm(&NTRANS, &NTRANS,
               &n_components, &n_cols, &len_batch,
               &w_A_batch,
               Dx_ptr, &n_components,
-              full_X_ptr, &n_cols,
+              full_X_ptr, &len_batch,
               &one_m_w_A,
               B_ptr, &n_components)
     else:
@@ -289,7 +289,6 @@ cpdef void _update_code(double[::1, :] this_X,
                 D_subset[k, jj] = B_[k, j] * (1 - w_B)
             for ii in range(len_batch):
                 this_X[ii, jj] *= w_B / len_batch
-        print('B')
         dgemm(&NTRANS, &NTRANS,
               &n_components, &len_subset, &len_batch,
               &oned,
@@ -305,6 +304,7 @@ cpdef void _update_code(double[::1, :] this_X,
 cpdef void _update_dict(double[::1, :] D_,
                   long[:] subset,
                   double l1_ratio,
+                  long solver,
                   double[::1, :] A_,
                   double[::1, :] B_,
                   double[::1, :] G_,
@@ -324,8 +324,6 @@ cpdef void _update_dict(double[::1, :] D_,
     cdef double* G_ptr = &G_[0, 0]
     cdef double old_norm = 0
     cdef unsigned long k, kk, j, jj
-
-    print('R, D_subset')
     for k in range(n_components):
         for jj in range(len_subset):
             j = subset[jj]
@@ -335,15 +333,15 @@ cpdef void _update_dict(double[::1, :] D_,
     for kk in range(components_range_len):
         k = D_range[kk]
         norm_temp[k] = enet_norm(D_subset[k, :len_subset], l1_ratio)
-    print('G update 1')
-    dgemm(&NTRANS, &TRANS,
-          &n_components, &n_components, &len_subset,
-          &moned,
-          D_subset_ptr, &n_components,
-          D_subset_ptr, &n_components,
-          &oned,
-          G_ptr, &n_components
-          )
+    if solver == 2:
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &n_components, &len_subset,
+              &moned,
+              D_subset_ptr, &n_components,
+              D_subset_ptr, &n_components,
+              &oned,
+              G_ptr, &n_components
+              )
 
     # R = B - AQ
     dgemm(&NTRANS, &NTRANS,
@@ -361,8 +359,9 @@ cpdef void _update_dict(double[::1, :] D_,
              &one, D_subset_ptr + k, &n_components, R_ptr, &n_components)
 
         for jj in range(len_subset):
-            if A_[k, k] != 0:
+            if A_[k, k] > 1e-12:
                 D_subset[k, jj] = R[k, jj] / A_[k, k]
+                # print(D_subset[k, jj])
 
         enet_projection_inplace(D_subset[k, :len_subset],
                                 proj_temp[:len_subset],
@@ -378,15 +377,15 @@ cpdef void _update_dict(double[::1, :] D_,
         j = subset[jj]
         for kk in range(n_components):
             D_[kk, j] = D_subset[kk, jj]
-    print('G update 2')
-    dgemm(&NTRANS, &TRANS,
-          &n_components, &n_components, &len_subset,
-          &oned,
-          D_subset_ptr, &n_components,
-          D_subset_ptr, &n_components,
-          &oned,
-          G_ptr, &n_components
-          )
+    if solver == 2:
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &n_components, &len_subset,
+              &oned,
+              D_subset_ptr, &n_components,
+              D_subset_ptr, &n_components,
+              &oned,
+              G_ptr, &n_components
+              )
 
 cpdef void _predict(double[:] X_data,
              long[:] X_indices,
@@ -439,7 +438,7 @@ def dict_learning(double[:, ::1] X,
                     double[::1, :] B_,
                     double[::1, :] G_,
                     double[:, :] Dx_average_,
-                    double[:, :, :] G_average_,
+                    double[:, :, ::1] G_average_,
                     long[:] n_iter_,
                     long[:] counter_,
                     long[:] row_counter_,
@@ -483,7 +482,6 @@ def dict_learning(double[:, ::1] X,
     rng = np.random.RandomState(random_seed)
 
     for i in range(n_batches):
-        print('stuff')
         if verbose and n_iter_[0] - old_n_iter >= new_verbose_iter_:
             print("Iteration %i" % n_iter_[0])
             new_verbose_iter_ += n_rows // verbose
@@ -493,9 +491,7 @@ def dict_learning(double[:, ::1] X,
         if stop > len_row_range:
             stop = len_row_range
         len_batch = stop - start
-        print('try')
         row_batch = row_range[start:stop]
-        print('subset')
         _update_subset(subset_sampling == 2,
                        len_subset,
                        subset_range,
@@ -510,16 +506,12 @@ def dict_learning(double[:, ::1] X,
             counter_[j + 1] += len_batch
 
         for ii in range(len_batch):
-            i = sample_subset[ii]
+            i = sample_subset[row_batch[ii]]
+            this_sample_subset[ii] = i
             row_counter_[i] += 1
-        print('this_X')
-        for ii in range(len_batch):
-            for jj in range(len_subset):
-                j = subset[jj]
-                this_X[ii, jj] = X[row_batch[ii], j]
-            this_sample_subset[ii] = sample_subset[row_batch[ii]]
-        print('code')
-        _update_code(this_X,
+            for jj in range(n_cols):
+                full_X[ii, jj] = X[row_batch[ii], jj]
+        _update_code(full_X,
                      subset,
                      this_sample_subset[:len_batch],
                      alpha,
@@ -541,13 +533,13 @@ def dict_learning(double[:, ::1] X,
                      D_subset,
                      Dx,
                      G_temp,
-                     full_X,
+                     this_X,
                      rng)
         _shuffle(D_range, &random_seed)
-        print('dict')
         _update_dict(D_,
                      subset,
                      l1_ratio,
+                     solver,
                      A_,
                      B_,
                      G_,
@@ -564,7 +556,7 @@ cpdef void _update_subset(bint replacement,
                    long[:] _subset_range,
                    long[:] _subset_lim,
                    long[:] _temp_subset,
-                   UINT32_t random_seed):
+                   UINT32_t random_seed) nogil:
     cdef long n_cols = _subset_range.shape[0]
     cdef long remainder
     if replacement:
