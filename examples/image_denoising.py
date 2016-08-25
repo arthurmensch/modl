@@ -2,9 +2,10 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from modl.dict_fact import DictMF
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
+
+from modl.dict_fact import DictMF
 
 class Callback(object):
     """Utility class for plotting RMSE"""
@@ -51,7 +52,7 @@ def main():
     # Extract all reference patches from the left half of the image
     print('Extracting reference patches...')
     t0 = time()
-    tile = 1
+    tile = 4
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
                               max_patches=2000, random_state=0)
@@ -75,20 +76,20 @@ def main():
     cb = Callback(data)
     dico = DictMF(n_components=100, alpha=1,
                   l1_ratio=0,
-                  pen_l1_ratio=.9,
+                  pen_l1_ratio=0,
                   batch_size=10,
-                  learning_rate=1,
-                  reduction=1,
+                  learning_rate=.8,
+                  reduction=6,
                   verbose=4,
                   solver='masked',
                   weights='sync',
                   subset_sampling='random',
                   dict_subset_sampling='independent',
-                  backend='python',
+                  backend='c',
                   n_samples=2000,
-                  callback=None,
+                  # callback=cb,
                   random_state=0)
-    for i in range(10):
+    for i in range(1):
         dico.partial_fit(data)
     V = dico.components_
     dt = time() - t0
@@ -106,16 +107,16 @@ def main():
                  fontsize=16)
     plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
-    # fig, axes = plt.subplots(2, 1, sharex=True)
-    # axes[0].plot(cb.iter[1:], cb.obj[1:])
-    # axes[0].set_ylabel('Function value')
-    # # axes[0].set_ylim([8, 10])
-    # # axes[0].set_xlim([1e3, 1e5])
-    # axes[0].legend()
-    # axes[1].plot(cb.iter[1:], cb.R[1:])
-    # axes[1].set_xscale('log')
-    # axes[1].set_xlabel('Iter')
-    # axes[1].set_ylabel('Residual')
+    fig, axes = plt.subplots(2, 1, sharex=True)
+    axes[0].plot(cb.iter[1:], cb.obj[1:])
+    axes[0].set_ylabel('Function value')
+    # axes[0].set_ylim([8, 10])
+    # axes[0].set_xlim([1e3, 1e5])
+    axes[0].legend()
+    axes[1].plot(cb.iter[1:], cb.R[1:])
+    axes[1].set_xscale('log')
+    axes[1].set_xlabel('Iter')
+    axes[1].set_ylabel('Residual')
 
     plt.show()
 
