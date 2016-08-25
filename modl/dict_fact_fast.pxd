@@ -3,7 +3,6 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
-
 ctypedef np.uint32_t UINT32_t
 
 cpdef void _get_weights(double[:] w, long[:] subset, long[:] counter, long batch_size,
@@ -30,7 +29,7 @@ cpdef void _update_code(double[::1, :] full_X,
                         long[:] row_counter_,
                         double[::1, :] D_subset,
                         double[::1, :] Dx,
-                        double[::1, :] G_temp,
+                        double[:, ::1] G_temp,
                         double[::1, :] this_X,
                         object rng) except *
 

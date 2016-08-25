@@ -8,7 +8,7 @@ import numpy as np
 from libc.math cimport pow, ceil, floor
 from scipy.linalg.cython_blas cimport dgemm, dger
 from scipy.linalg.cython_lapack cimport dposv
-from sklearn.linear_model import cd_fast
+from sklearn.linear_model.cd_fast import enet_coordinate_descent_gram
 
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
@@ -102,7 +102,7 @@ cpdef void _update_code(double[::1, :] full_X,
                         long[:] row_counter_,
                         double[::1, :] D_subset,
                         double[::1, :] Dx,
-                        double[::1, :] G_temp,
+                        double[:, ::1] G_temp,
                         double[::1, :] this_X,
                         object rng) except *:
     """
@@ -147,7 +147,7 @@ cpdef void _update_code(double[::1, :] full_X,
     cdef int nnz
     cdef double v
     cdef int last = 0
-    cdef double one_m_w_A, w_sample, w_A_batch, w_norm
+    cdef double one_m_w_A, w_sample, w_A_batch, w_norm, w_A, w_B
     cdef double reduction = float(n_cols) / len_subset
 
     for ii in range(len_batch):
@@ -212,10 +212,24 @@ cpdef void _update_code(double[::1, :] full_X,
                     for q in range(n_components):
                         G_temp[p, q] = G_[p, q]
             else:
-                G_temp = G_
+                G_temp = G_.T
 
     if pen_l1_ratio == 0:
-        if solver == 1 or solver == 2:
+        if solver == 3:
+            for ii in range(len_batch):
+                i = this_sample_subset[ii]
+                for p in range(n_components):
+                    for q in range(n_components):
+                        G_temp[p, q] = G_average_[i, p, q]
+                    G_temp[p, p] += alpha
+                dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
+                      Dx_ptr + ii * n_components, &one,
+                      &info)
+                for p in range(n_components):
+                    G_temp[p, p] -= alpha
+            if info != 0:
+                raise ValueError
+        else:
             for p in range(n_components):
                 G_temp[p, p] += alpha
             dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
@@ -223,32 +237,22 @@ cpdef void _update_code(double[::1, :] full_X,
                   &info)
             if info != 0:
                 raise ValueError
-        else:
-            for ii in range(len_batch):
-                i = this_sample_subset[ii]
-                for p in range(n_components):
-                    for q in range(n_components):
-                        G_temp[p, q] = G_average_[i, p, q]
-                    G_temp[p, p] += alpha
-            dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
-                  Dx_ptr + ii * n_components, &one,
-                  &info)
-            if info != 0:
-                raise ValueError
-            for ii in range(len_batch):
-                for k in range(n_components):
-                    code_[i, k] = Dx[k, ii]
+        for ii in range(len_batch):
+            for k in range(n_components):
+                code_[i, k] = Dx[k, ii]
+
     else:
-        for ii in range(len_batch, nogil=True):
+        for ii in range(len_batch):
             i = this_sample_subset[ii]
             if solver == 3:
-                G_temp = G_average_[i].T
-            cd_fast.enet_coordinate_descent_gram(
+                G_temp = G_average_[i]
+            enet_coordinate_descent_gram(
                 code_[i], alpha * pen_l1_ratio,
                                 alpha * (1 - pen_l1_ratio),
-                np.asarray(G_temp.T), np.asarray(Dx[:, ii], order='C'),
+                np.asarray(G_temp),
+                np.asarray(Dx[:, ii], order='C'),
                 np.asarray(this_X[ii], order='C'), 100,
-                1e-3, rng, True, False)
+                1e-2, rng, True, False)
             for p in range(n_components):
                 Dx[p, ii] = code_[i, p]
     for jj in range(len_subset):
@@ -284,9 +288,9 @@ cpdef void _update_code(double[::1, :] full_X,
         # Reuse D_subset as B_subset
         for jj in range(len_subset):
             j = subset[jj]
-            w_B = min(1, w_A * counter_[0] + counter_[j + 1])
+            w_B = min(1., w_A * counter_[0] / counter_[j + 1])
             for k in range(n_components):
-                D_subset[k, jj] = B_[k, j] * (1 - w_B)
+                D_subset[k, jj] = B_[k, j] * (1. - w_B)
             for ii in range(len_batch):
                 this_X[ii, jj] *= w_B / len_batch
         dgemm(&NTRANS, &NTRANS,
@@ -444,7 +448,7 @@ def dict_learning(double[:, ::1] X,
                     long[:] row_counter_,
                     double[::1, :] D_subset,
                     double[::1, :] Dx,
-                    double[::1, :] G_temp,
+                    double[:, ::1] G_temp,
                     double[::1, :] this_X,
                     double[::1, :] full_X,
                     long[:] subset_range,

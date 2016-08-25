@@ -52,7 +52,7 @@ def main():
     # Extract all reference patches from the left half of the image
     print('Extracting reference patches...')
     t0 = time()
-    tile = 1
+    tile = 6
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
                               max_patches=2000, random_state=0)
@@ -75,13 +75,13 @@ def main():
 
     cb = Callback(data)
     dico = DictMF(n_components=100, alpha=1,
-                  l1_ratio=0.9,
-                  pen_l1_ratio=0,
+                  l1_ratio=0,
+                  pen_l1_ratio=1,
                   batch_size=10,
                   learning_rate=.8,
-                  reduction=3,
+                  reduction=2,
                   verbose=1,
-                  solver='gram',
+                  solver='average',
                   weights='sync',
                   subset_sampling='random',
                   dict_subset_sampling='independent',
@@ -89,7 +89,7 @@ def main():
                   n_samples=2000,
                   # callback=cb,
                   random_state=0)
-    for i in range(10):
+    for i in range(2):
         dico.partial_fit(data)
     V = dico.components_
     dt = time() - t0
