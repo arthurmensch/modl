@@ -67,4 +67,5 @@ MANIFEST
 
 .json
 .html
+.c
 cython_debug/
