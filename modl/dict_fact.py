@@ -7,12 +7,11 @@ from math import floor
 import numpy as np
 from scipy import linalg
 from sklearn.base import BaseEstimator
-from sklearn.linear_model import cd_fast
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
 from .dict_fact_fast import dict_learning, _update_subset, \
-    _get_simple_weights
+    _get_simple_weights, enet_coordinate_descent_gram, sparse_coding
 
 
 class DictMF(BaseEstimator):
@@ -70,6 +69,7 @@ class DictMF(BaseEstimator):
                  alpha=1.0,
                  l1_ratio=0,
                  pen_l1_ratio=0,
+                 tol=1e-3,
                  # Hyper-parameters
                  learning_rate=1.,
                  batch_size=1,
@@ -92,6 +92,7 @@ class DictMF(BaseEstimator):
                  random_state=None,
                  verbose=0,
                  backend='c',
+                 n_threads=1,
                  callback=None):
 
         self.batch_size = batch_size
@@ -103,6 +104,7 @@ class DictMF(BaseEstimator):
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.pen_l1_ratio = pen_l1_ratio
+        self.tol = tol
 
         self.dict_init = dict_init
         self.n_components = n_components
@@ -121,6 +123,8 @@ class DictMF(BaseEstimator):
         self.verbose = verbose
         self.backend = backend
 
+        self.n_threads = n_threads
+
         self.callback = callback
 
     @property
@@ -138,7 +142,8 @@ class DictMF(BaseEstimator):
     def _get_weights(self):
         weights = {
             'sync': 1,
-            'async': 2,
+            'async_freq': 2,
+            'async_prob': 3
         }
         return weights[self.weights]
 
@@ -207,9 +212,9 @@ class DictMF(BaseEstimator):
             self.G_ = self.D_.dot(self.D_.T).T
 
         if self.solver == 'average':
-            self.G_average_ = np.zeros((self.n_samples_, self.n_components,
-                                        self.n_components),
-                                       order="C")
+            self.G_average_ = np.zeros((self.n_components,
+                                        self.n_components, self.n_samples_),
+                                       order="F")
 
         self.n_iter_ = np.zeros(1, dtype='long')
 
@@ -224,7 +229,7 @@ class DictMF(BaseEstimator):
             self._Dx = np.empty((self.n_components, self.batch_size),
                                 order='F')
             self._G_temp = np.empty((self.n_components, self.n_components),
-                                    order='C')
+                                    order='F')
             self._this_X = np.empty((self.batch_size, n_cols),
                                     order='F')
             self._full_X = np.empty((self.batch_size, n_cols),
@@ -235,6 +240,9 @@ class DictMF(BaseEstimator):
             self._R = np.empty((self.n_components, n_cols), order='F')
             self._norm_temp = np.zeros(self.n_components)
             self._proj_temp = np.zeros(n_cols)
+
+        self._H = np.empty((self.batch_size, self.n_components))
+        self._XtA = np.empty((self.batch_size, self.n_components))
 
         self._this_sample_subset = np.empty(self.batch_size, dtype='long')
 
@@ -298,25 +306,46 @@ class DictMF(BaseEstimator):
             Code obtained projecting X on the dictionary
         """
         self._check_fitted()
-        X = check_array(X, order='F', dtype='float64')
+        X = check_array(X, order='C', dtype='float64')
         n_rows, n_cols = X.shape
         D = self.components_
         Dx = (X.dot(D.T)).T
-        G = D.dot(D.T)
+        G = D.dot(D.T).T
         if self.pen_l1_ratio == 0:
             G = G.copy()
             G.flat[::self.n_components + 1] += self.alpha
             code = linalg.solve(G, Dx, sym_pos=True,
                                 overwrite_a=True, check_finite=False)
         else:
-            random_state = check_random_state(self.random_state)
-            code = np.ones((self.n_components, n_rows), order='F')
-            for i in range(n_rows):
-                cd_fast.enet_coordinate_descent_gram(
-                    code[:, i], self.alpha * self.pen_l1_ratio,
-                                self.alpha * (1 - self.pen_l1_ratio),
-                    G, Dx[:, i], X[i], 100,
-                    1e-3, random_state, True, False)
+            code = np.ones((n_rows, self.n_components), order='C')
+            if self.backend == 'python':
+                for i in range(n_rows):
+                    random_seed = self.random_state_.randint(
+                        np.iinfo(np.uint32).max)
+                    enet_coordinate_descent_gram(
+                        code[i], self.alpha * self.pen_l1_ratio,
+                                 self.alpha * (1 - self.pen_l1_ratio),
+                        G, Dx[:, i], X[i],
+                        self._H[0],
+                        self._XtA[0],
+                        100,
+                        self.tol, random_seed, True, False)
+            else:
+                H = np.empty((n_rows, self.n_components), order='C')
+                XtA = np.empty((n_rows, self.n_components), order='C')
+                random_seed = self.random_state_.randint(
+                    np.iinfo(np.uint32).max)
+                sparse_coding(self.alpha,
+                              self.pen_l1_ratio,
+                              self.tol,
+                              code,
+                              H,
+                              XtA,
+                              random_seed,
+                              G,
+                              Dx,
+                              X,
+                              self.n_threads)
         return code
 
     def partial_fit(self, X, y=None, sample_subset=None, check_input=True):
@@ -350,6 +379,7 @@ class DictMF(BaseEstimator):
                           self.offset,
                           self.l1_ratio,
                           self.pen_l1_ratio,
+                          self.tol,
                           self.reduction,
                           self._get_solver(),
                           self._get_weights(),
@@ -361,7 +391,8 @@ class DictMF(BaseEstimator):
                           self.B_,
                           self.G_ if self.solver == 'gram'
                           else DictMF._dummy_2d_float,
-                          self.Dx_average_ if self.solver in ['gram', 'average']
+                          self.Dx_average_ if self.solver in ['gram',
+                                                              'average']
                           else DictMF._dummy_2d_float,
                           self.G_average_ if self.solver == 'average'
                           else DictMF._dummy_3d_float,
@@ -373,15 +404,20 @@ class DictMF(BaseEstimator):
                           self._G_temp,
                           self._this_X,
                           self._full_X,
+                          self._H,
+                          self._XtA,
                           self._subset_range,
                           self._subset_temp,
                           self._subset_lim,
+                          self._dict_subset_range,
+                          self._dict_subset_lim,
                           self._this_sample_subset,
                           self._R,
                           self._D_range,
                           self._norm_temp,
                           self._proj_temp,
                           self.verbose,
+                          self.n_threads,
                           random_seed,
                           self._callback,
                           )
@@ -431,11 +467,11 @@ class DictMF(BaseEstimator):
                     random_seed = self.random_state_.randint(
                         np.iinfo(np.uint32).max)
                     _update_subset(self.subset_sampling != 'cyclic',
-                                   len_subset,
-                                   self._dict_subset_range,
-                                   self._dict_subset_lim,
-                                   self._subset_temp,
-                                   random_seed)
+                                    len_subset,
+                                    self._dict_subset_range,
+                                    self._dict_subset_lim,
+                                    self._subset_temp,
+                                    random_seed)
                     dict_subset = self._dict_subset_range[
                                   self._dict_subset_lim[0]:
                                   self._dict_subset_lim[1]]
@@ -472,21 +508,23 @@ class DictMF(BaseEstimator):
         Dx = np.dot(this_X, D_subset.T).T
 
         if self.solver == 'masked':
-            G_temp = D_subset.dot(D_subset.T) * reduction
+            G_temp = D_subset.dot(D_subset.T).T * reduction
         else:  # ['full', 'gram']
             w_sample = np.power(self.row_counter_[this_sample_subset]
-                                [:, np.newaxis], -self.sample_learning_rate_)
-            self.Dx_average_[this_sample_subset] *= 1 - w_sample
-            self.Dx_average_[this_sample_subset] += Dx.T * w_sample
+                                , -self.sample_learning_rate_)
+            self.Dx_average_[this_sample_subset] *= 1 - w_sample[:, np.newaxis]
+            self.Dx_average_[this_sample_subset] += Dx.T * w_sample[:, np.newaxis]
             Dx = self.Dx_average_[this_sample_subset].T
             if self.solver == 'average':
                 G_temp = D_subset.dot(D_subset.T) * reduction
-                self.G_average_[this_sample_subset] *= 1 - w_sample[:,
-                                                           np.newaxis]
-                self.G_average_[this_sample_subset] += G_temp * w_sample[:,
-                                                                np.newaxis]
+                self.G_average_[:, :, this_sample_subset] *= 1 - w_sample[
+                                                                 np.newaxis, np.newaxis, :]
+                self.G_average_[:, :, this_sample_subset] += G_temp[:, :, np.newaxis] * w_sample[
+                                                                      np.newaxis,
+                                                                      np.newaxis,
+                                                                      :]
             else:  # ['gram']
-                G_temp = self.G_.T
+                G_temp = self.G_
         if self.pen_l1_ratio == 0:
             if self.solver in ['gram', 'masked']:
                 G_temp = G_temp.copy()
@@ -498,7 +536,8 @@ class DictMF(BaseEstimator):
                                                               check_finite=False).T
             else:
                 for ii in range(len_batch):
-                    G_temp = self.G_average_[this_sample_subset[ii]].copy()
+                    G_temp = self.G_average_[:, :,
+                             this_sample_subset[ii]].copy()
                     G_temp.flat[::self.n_components + 1] += self.alpha
                     self.code_[
                         this_sample_subset[ii]] = linalg.solve(G_temp,
@@ -509,14 +548,19 @@ class DictMF(BaseEstimator):
         else:
             for ii in range(len_batch):
                 if self.solver == 'average':
-                    G_temp = self.G_average_[this_sample_subset[ii]]
-                cd_fast.enet_coordinate_descent_gram(
+                    G_temp = self.G_average_[:, :, this_sample_subset[ii]]
+                random_seed = self.random_state_.randint(
+                    np.iinfo(np.uint32).max)
+                enet_coordinate_descent_gram(
                     self.code_[this_sample_subset[ii]],
                     self.alpha * self.pen_l1_ratio,
                     self.alpha * (1 - self.pen_l1_ratio),
                     G_temp, Dx[:, ii],
-                    this_X[ii], 100,
-                    1e-3, self.random_state_, True, False)
+                    this_X[ii],
+                    self._H,
+                    self._XtA,
+                    1000,
+                    self.tol, random_seed, True, False)
         this_X /= reduction
         w_A = _get_simple_weights(self.counter_[0], len_batch,
                                   self.learning_rate, self.offset)
@@ -529,12 +573,11 @@ class DictMF(BaseEstimator):
             self.B_ *= 1 - w_A
             self.B_ += this_code.T.dot(full_X) * w_A / len_batch
         else:
-            use_freq = True
-            if use_freq:
+            if self.weights == 'async_freq':
                 w_B = w_A * self.counter_[0] / self.counter_[subset + 1]
                 w_B = np.minimum(1, w_B)
             else:
-                w_B = min(1, w_A * reduction)
+                w_B = min(1., w_A * reduction)
             self.B_[:, subset] *= 1 - w_B
             self.B_[:, subset] += this_code.T.dot(this_X) * w_B / len_batch
 
@@ -564,32 +607,32 @@ class DictMF(BaseEstimator):
             self.G_ -= D_subset.dot(D_subset.T)
 
         # Cleaning D from unused atom
-        # non_active = np.logical_or(norm < 1e-20, np.diag(self.A_) < 1e-20)
-        # if np.sum(non_active) > 0:
-        #     if self.solver == 'gram':
-        #         self.G_[non_active, :] += D_subset.dot(
-        #             D_subset[non_active].T).T
-        #         self.G_[:, non_active] = self.G_[non_active, :].T
-        #
-        #     self.D_[non_active] = self.random_state_.randn(n_cols)
-        #     self.D_[non_active] = enet_scale(self.D_[non_active],
-        #                                      l1_ratio=self.l1_ratio)
-        #     self.A_[non_active, :] = 0
-        #     self.A_[:, non_active] = 0
-        #     self.B_[non_active, :] = 0
-        #
-        #     if self.solver == 'gram':
-        #         self.G_[non_active, :] = self.D_.dot(
-        #             self.D_[non_active].T).T
-        #         self.G_[:, non_active] = self.G_[non_active, :].T
-        #
-        #     D_subset[non_active] = self.D_[non_active][:, subset]
-        #     norm[non_active] = enet_norm(D_subset[non_active],
-        #                                  self.l1_ratio)
-        #     if self.solver == 'gram':
-        #         self.G_[non_active, :] -= D_subset.dot(D_subset[
-        #                                                    non_active].T).T
-        #         self.G_[:, non_active] = self.G_[non_active, :].T
+        non_active = np.logical_or(norm < 1e-20, np.diag(self.A_) < 1e-20)
+        if np.sum(non_active) > 0:
+            if self.solver == 'gram':
+                self.G_[non_active, :] += D_subset.dot(
+                    D_subset[non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
+
+            self.D_[non_active] = self.random_state_.randn(n_cols)
+            self.D_[non_active] = enet_scale(self.D_[non_active],
+                                             l1_ratio=self.l1_ratio)
+            self.A_[non_active, :] = 0
+            self.A_[:, non_active] = 0
+            self.B_[non_active, :] = 0
+
+            if self.solver == 'gram':
+                self.G_[non_active, :] = self.D_.dot(
+                    self.D_[non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
+
+            D_subset[non_active] = self.D_[non_active][:, subset]
+            norm[non_active] = enet_norm(D_subset[non_active],
+                                         self.l1_ratio)
+            if self.solver == 'gram':
+                self.G_[non_active, :] -= D_subset.dot(D_subset[
+                                                           non_active].T).T
+                self.G_[:, non_active] = self.G_[non_active, :].T
 
         R = self.B_[:, subset] - np.dot(D_subset.T, self.A_).T
 
@@ -608,7 +651,7 @@ class DictMF(BaseEstimator):
 
     def score(self, X):
         code = self.transform(X)
-        loss = np.sum((X - code.T.dot(self.components_)) ** 2) / 2
+        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio

@@ -52,10 +52,10 @@ def main():
     # Extract all reference patches from the left half of the image
     print('Extracting reference patches...')
     t0 = time()
-    tile = 6
+    tile = 4
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                              max_patches=2000, random_state=0)
+                              max_patches=10000, random_state=0)
     tiled_data = np.empty((data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
     for i in range(tile):
         for j in range(tile):
@@ -71,29 +71,30 @@ def main():
     # Learn the dictionary from reference patches
 
     print('Learning the dictionary...')
-    t0 = time()
 
-    cb = Callback(data)
+    cb = Callback(data[:1000])
     dico = DictMF(n_components=100, alpha=1,
                   l1_ratio=0,
-                  pen_l1_ratio=1,
-                  batch_size=10,
-                  learning_rate=.8,
+                  pen_l1_ratio=.9,
+                  batch_size=200,
+                  learning_rate=1,
                   reduction=2,
                   verbose=1,
-                  solver='average',
-                  weights='sync',
+                  solver='gram',
+                  weights='async_prob',
                   subset_sampling='random',
                   dict_subset_sampling='independent',
                   backend='c',
-                  n_samples=2000,
-                  # callback=cb,
+                  # n_samples=2000,
+                  callback=cb,
+                  n_threads=4,
                   random_state=0)
-    for i in range(2):
+    t0 = time()
+    for i in range(10):
         dico.partial_fit(data)
     V = dico.components_
-    dt = time() - t0
-    print('done in %.2fs.' % dt)
+    dt = cb.times[-1] if dico.callback != None else time() - t0
+    print('done in %.2fs., test time: %.2fs' % (dt, cb.test_time))
 
     plt.figure(figsize=(4.2, 4))
     for i, comp in enumerate(V[:100]):
@@ -108,11 +109,11 @@ def main():
     plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
     fig, axes = plt.subplots(2, 1, sharex=True)
-    axes[0].plot(cb.iter[1:], cb.obj[1:])
+    axes[0].plot(cb.iter[1:], np.array(cb.obj[1:]))
     axes[0].set_ylabel('Function value')
     # axes[0].set_ylim([8, 10])
     # axes[0].set_xlim([1e3, 1e5])
-    axes[0].legend()
+    # axes[0].legend()
     axes[1].plot(cb.iter[1:], cb.R[1:])
     axes[1].set_xscale('log')
     axes[1].set_xlabel('Iter')

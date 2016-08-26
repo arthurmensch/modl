@@ -6,7 +6,10 @@ def configuration(parent_package='', top_path=None):
     config = Configuration('modl', parent_package, top_path)
     config.add_extension('dict_fact_fast',
                          sources=['dict_fact_fast.c'],
-                         include_dirs=[numpy.get_include()])
+                         include_dirs=[numpy.get_include()],
+                         extra_compile_args=['-fopenmp'],
+                         extra_link_args=['-fopenmp']
+                         )
 
     config.add_subpackage('tests')
     config.add_subpackage('_utils')
