@@ -22,6 +22,8 @@ clean:
 	rm -f modl/impl/*.html
 	rm -f `find modl -name "*.pyc"`
 	rm -f `find modl -name "*.so"`
+	rm -f `find modl -name "*.c"`
+	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.html/g`
 	rm -rf htmlcov
 	rm -rf build
 	rm -rf coverage .coverage
@@ -41,31 +43,9 @@ test-coverage:
 
 test: test-code
 
-# Datasets...
-# from Mathieu Blondel
 datadir:
 	mkdir -p $(DATADIR)
 	mkdir -p $(MRIDATADIR)
-
-download-movielens100k: datadir
-	./download.sh http://www.mblondel.org/data/movielens100k.tar.bz2
-	tar xvfj movielens100k.tar.bz2
-	mv movielens100k $(DATADIR)
-
-download-movielens1m: datadir
-	./download.sh http://www.mblondel.org/data/movielens1m.tar.bz2
-	tar xvfj movielens1m.tar.bz2
-	mv movielens1m $(DATADIR)
-
-download-movielens10m: datadir
-	./download.sh http://www.mblondel.org/data/movielens10m.tar.bz2
-	tar xvfj movielens10m.tar.bz2
-	mv movielens10m $(DATADIR)
-
-download-netflix: datadir
-    ./download.sh http://www.amensch.fr/data/netflix.tar.bz2
-	tar xvfj netflix.tar.bz2
-	mv movielens10m $(DATADIR)
 
 download-hcp-extra: datadir
     ./download.sh http://www.amensch.fr/data/hcp_extra.tar.bz2

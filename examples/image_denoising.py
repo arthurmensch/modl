@@ -55,7 +55,7 @@ def main():
     tile = 4
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                              max_patches=10000, random_state=0)
+                              max_patches=2000, random_state=0)
     tiled_data = np.empty((data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
     for i in range(tile):
         for j in range(tile):
@@ -72,22 +72,23 @@ def main():
 
     print('Learning the dictionary...')
 
-    cb = Callback(data[:1000])
+    cb = Callback(data[:2000])
     dico = DictMF(n_components=100, alpha=1,
                   l1_ratio=0,
                   pen_l1_ratio=.9,
-                  batch_size=200,
+                  batch_size=10,
                   learning_rate=1,
-                  reduction=2,
+                  reduction=6,
                   verbose=1,
                   solver='gram',
                   weights='async_prob',
                   subset_sampling='random',
                   dict_subset_sampling='independent',
-                  backend='c',
+                  backend='python',
                   # n_samples=2000,
                   callback=cb,
-                  n_threads=4,
+                  n_threads=4
+                  ,
                   random_state=0)
     t0 = time()
     for i in range(10):

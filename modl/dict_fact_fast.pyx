@@ -288,7 +288,7 @@ cdef int _update_code(double[::1, :] full_X,
                     H[ii],
                     XtA[ii],
                     1000,
-                    tol, random_seed, 0, 1)
+                    tol, random_seed, 0, 0)
                 for p in range(n_components):
                     Dx[p, ii] = code_[i, p]
     for jj in range(len_subset):
@@ -511,7 +511,7 @@ def dict_learning(double[:, ::1] X,
                 stop = len_row_range
             len_batch = stop - start
             row_batch = row_range[start:stop]
-            _update_subset_(subset_sampling == 2,
+            _update_subset_(subset_sampling == 1,
                            len_subset,
                            subset_range,
                            subset_lim,
@@ -561,7 +561,7 @@ def dict_learning(double[:, ::1] X,
             _shuffle(D_range, &random_seed)
 
             if dict_subset_sampling == 1:
-                _update_subset_(subset_sampling == 2,
+                _update_subset_(subset_sampling == 1,
                                len_subset,
                                dict_subset_range,
                                dict_subset_lim,
@@ -817,4 +817,4 @@ cpdef void sparse_coding(double alpha,
                         H[i],
                         XtA[i],
                         1000,
-                        tol, &this_random_seed, 1, 0)
+                        tol, &this_random_seed, 0, 0)

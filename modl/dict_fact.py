@@ -329,7 +329,7 @@ class DictMF(BaseEstimator):
                         self._H[0],
                         self._XtA[0],
                         100,
-                        self.tol, random_seed, True, False)
+                        self.tol, random_seed, 0, 0)
             else:
                 H = np.empty((n_rows, self.n_components), order='C')
                 XtA = np.empty((n_rows, self.n_components), order='C')
@@ -467,11 +467,11 @@ class DictMF(BaseEstimator):
                     random_seed = self.random_state_.randint(
                         np.iinfo(np.uint32).max)
                     _update_subset(self.subset_sampling != 'cyclic',
-                                    len_subset,
-                                    self._dict_subset_range,
-                                    self._dict_subset_lim,
-                                    self._subset_temp,
-                                    random_seed)
+                                   len_subset,
+                                   self._dict_subset_range,
+                                   self._dict_subset_lim,
+                                   self._subset_temp,
+                                   random_seed)
                     dict_subset = self._dict_subset_range[
                                   self._dict_subset_lim[0]:
                                   self._dict_subset_lim[1]]
@@ -513,16 +513,19 @@ class DictMF(BaseEstimator):
             w_sample = np.power(self.row_counter_[this_sample_subset]
                                 , -self.sample_learning_rate_)
             self.Dx_average_[this_sample_subset] *= 1 - w_sample[:, np.newaxis]
-            self.Dx_average_[this_sample_subset] += Dx.T * w_sample[:, np.newaxis]
+            self.Dx_average_[this_sample_subset] += Dx.T * w_sample[:,
+                                                           np.newaxis]
             Dx = self.Dx_average_[this_sample_subset].T
             if self.solver == 'average':
                 G_temp = D_subset.dot(D_subset.T) * reduction
                 self.G_average_[:, :, this_sample_subset] *= 1 - w_sample[
-                                                                 np.newaxis, np.newaxis, :]
-                self.G_average_[:, :, this_sample_subset] += G_temp[:, :, np.newaxis] * w_sample[
-                                                                      np.newaxis,
-                                                                      np.newaxis,
-                                                                      :]
+                                                                 np.newaxis,
+                                                                 np.newaxis, :]
+                self.G_average_[:, :, this_sample_subset] += G_temp[:, :,
+                                                             np.newaxis] * w_sample[
+                                                                           np.newaxis,
+                                                                           np.newaxis,
+                                                                           :]
             else:  # ['gram']
                 G_temp = self.G_
         if self.pen_l1_ratio == 0:
@@ -557,10 +560,10 @@ class DictMF(BaseEstimator):
                     self.alpha * (1 - self.pen_l1_ratio),
                     G_temp, Dx[:, ii],
                     this_X[ii],
-                    self._H,
-                    self._XtA,
+                    self._H[ii],
+                    self._XtA[ii],
                     1000,
-                    self.tol, random_seed, True, False)
+                    self.tol, random_seed, 0, 0)
         this_X /= reduction
         w_A = _get_simple_weights(self.counter_[0], len_batch,
                                   self.learning_rate, self.offset)
@@ -607,32 +610,32 @@ class DictMF(BaseEstimator):
             self.G_ -= D_subset.dot(D_subset.T)
 
         # Cleaning D from unused atom
-        non_active = np.logical_or(norm < 1e-20, np.diag(self.A_) < 1e-20)
-        if np.sum(non_active) > 0:
-            if self.solver == 'gram':
-                self.G_[non_active, :] += D_subset.dot(
-                    D_subset[non_active].T).T
-                self.G_[:, non_active] = self.G_[non_active, :].T
-
-            self.D_[non_active] = self.random_state_.randn(n_cols)
-            self.D_[non_active] = enet_scale(self.D_[non_active],
-                                             l1_ratio=self.l1_ratio)
-            self.A_[non_active, :] = 0
-            self.A_[:, non_active] = 0
-            self.B_[non_active, :] = 0
-
-            if self.solver == 'gram':
-                self.G_[non_active, :] = self.D_.dot(
-                    self.D_[non_active].T).T
-                self.G_[:, non_active] = self.G_[non_active, :].T
-
-            D_subset[non_active] = self.D_[non_active][:, subset]
-            norm[non_active] = enet_norm(D_subset[non_active],
-                                         self.l1_ratio)
-            if self.solver == 'gram':
-                self.G_[non_active, :] -= D_subset.dot(D_subset[
-                                                           non_active].T).T
-                self.G_[:, non_active] = self.G_[non_active, :].T
+        # non_active = np.logical_or(norm < 1e-20, np.diag(self.A_) < 1e-20)
+        # if np.sum(non_active) > 0:
+        #     if self.solver == 'gram':
+        #         self.G_[non_active, :] += D_subset.dot(
+        #             D_subset[non_active].T).T
+        #         self.G_[:, non_active] = self.G_[non_active, :].T
+        #
+        #     self.D_[non_active] = self.random_state_.randn(n_cols)
+        #     self.D_[non_active] = enet_scale(self.D_[non_active],
+        #                                      l1_ratio=self.l1_ratio)
+        #     self.A_[non_active, :] = 0
+        #     self.A_[:, non_active] = 0
+        #     self.B_[non_active, :] = 0
+        #
+        #     if self.solver == 'gram':
+        #         self.G_[non_active, :] = self.D_.dot(
+        #             self.D_[non_active].T).T
+        #         self.G_[:, non_active] = self.G_[non_active, :].T
+        #
+        #     D_subset[non_active] = self.D_[non_active][:, subset]
+        #     norm[non_active] = enet_norm(D_subset[non_active],
+        #                                  self.l1_ratio)
+        #     if self.solver == 'gram':
+        #         self.G_[non_active, :] -= D_subset.dot(D_subset[
+        #                                                    non_active].T).T
+        #         self.G_[:, non_active] = self.G_[non_active, :].T
 
         R = self.B_[:, subset] - np.dot(D_subset.T, self.A_).T
 
