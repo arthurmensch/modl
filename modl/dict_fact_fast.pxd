@@ -3,6 +3,8 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 
+# noinspection PyUnresolvedReferences
+cimport numpy as np
 ctypedef np.uint32_t UINT32_t
 
 cdef void _update_subset_(bint replacement,
