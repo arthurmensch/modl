@@ -78,20 +78,20 @@ def main():
                   pen_l1_ratio=.9,
                   batch_size=10,
                   learning_rate=1,
-                  reduction=6,
+                  reduction=2,
                   verbose=1,
                   solver='gram',
-                  weights='async_prob',
+                  weights='sync',
                   subset_sampling='random',
-                  dict_subset_sampling='independent',
-                  backend='python',
+                  dict_subset_sampling='coupled',
+                  backend='c',
                   # n_samples=2000,
                   callback=cb,
-                  n_threads=4
-                  ,
+                  n_threads=1,
+                  tol=1e-2,
                   random_state=0)
     t0 = time()
-    for i in range(10):
+    for i in range(3):
         dico.partial_fit(data)
     V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0

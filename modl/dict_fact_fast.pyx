@@ -7,8 +7,10 @@ from cython.parallel import parallel, prange
 from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
-
 from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
+
+from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
+from libc.stdio cimport printf
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -177,13 +179,20 @@ cdef int _update_code(double[::1, :] full_X,
     cdef double* this_X_ptr = &this_X[0, 0]
     cdef double* full_X_ptr = &full_X[0, 0]
     cdef int info = 0
-    cdef int ii, jj, i, j, k, m, p
+    cdef int ii, jj, i, j, k, m, p, q
     cdef int nnz
     cdef double v
     cdef int last = 0
     cdef double one_m_w, w_sample, w_batch, w_norm, w_A, w_B
     cdef double reduction = float(n_cols) / len_subset
+    cdef int subset_thread_size = int(ceil(float(n_cols) / num_threads))
+    cdef int this_subset_thread_size
+    cdef double this_X_norm
+    cdef timeval tv0, tv1
+    cdef timezone tz
+    cdef suseconds_t aggregation_time, coding_time, prepare_time
 
+    gettimeofday(&tv0, &tz)
     for ii in range(len_batch):
         for jj in range(len_subset):
             j = subset[jj]
@@ -194,9 +203,11 @@ cdef int _update_code(double[::1, :] full_X,
         for k in range(n_components):
             D_subset[k, jj] = D_[k, j]
 
+    this_X_norm = ddot(&len_subset, this_X_ptr, &one, this_X_ptr, &one) * reduction
     for jj in range(len_subset):
         for ii in range(len_batch):
             this_X[ii, jj] *= reduction
+
 
     # Dx = np.dot(D_subset, this_X.T)
     dgemm(&NTRANS, &TRANS,
@@ -247,7 +258,9 @@ cdef int _update_code(double[::1, :] full_X,
                         G_temp[p, q] = G_[p, q]
             else:
                 G_temp = G_
-
+    gettimeofday(&tv1, &tz)
+    prepare_time = tv1.tv_usec - tv0.tv_usec
+    gettimeofday(&tv0, &tz)
     if pen_l1_ratio == 0:
         if solver == 3:
             for ii in range(len_batch):
@@ -281,10 +294,10 @@ cdef int _update_code(double[::1, :] full_X,
                 i = this_sample_subset[ii]
                 enet_coordinate_descent_gram_(
                     code_[i], alpha * pen_l1_ratio,
-                                    alpha * (1 - pen_l1_ratio),
+                              alpha * (1 - pen_l1_ratio),
                     G_average_[:, :, i] if solver == 3 else G_temp,
                     Dx[:, ii],
-                    this_X[ii],
+                    this_X_norm,
                     H[ii],
                     XtA[ii],
                     1000,
@@ -294,7 +307,10 @@ cdef int _update_code(double[::1, :] full_X,
     for jj in range(len_subset):
         for ii in range(len_batch):
             this_X[ii, jj] /= reduction
+    gettimeofday(&tv1, &tz)
+    coding_time = tv1.tv_usec - tv0.tv_usec
 
+    gettimeofday(&tv0, &tz)
     w_A = _get_simple_weights(counter_[0], len_batch, learning_rate,
                               offset)
 
@@ -312,13 +328,20 @@ cdef int _update_code(double[::1, :] full_X,
           A_ptr, &n_components
           )
     if weights == 1:
-        dgemm(&NTRANS, &NTRANS,
-              &n_components, &n_cols, &len_batch,
-              &w_batch,
-              Dx_ptr, &n_components,
-              full_X_ptr, &len_batch,
-              &one_m_w,
-              B_ptr, &n_components)
+        with parallel(num_threads=num_threads):
+            for ii in prange(0, n_cols, subset_thread_size):
+                if n_cols - ii < subset_thread_size:
+                    this_subset_thread_size = n_cols - ii
+                else:
+                    this_subset_thread_size = subset_thread_size
+                # printf("%i, %i\n", ii, this_subset_thread_size)
+                dgemm(&NTRANS, &NTRANS,
+                      &n_components, &this_subset_thread_size, &len_batch,
+                      &w_batch,
+                      Dx_ptr, &n_components,
+                      full_X_ptr + ii * len_batch, &len_batch,
+                      &one_m_w,
+                      B_ptr + ii * n_components, &n_components)
     else:
         # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
         # Reuse D_subset as B_subset
@@ -343,6 +366,10 @@ cdef int _update_code(double[::1, :] full_X,
             j = subset[jj]
             for k in range(n_components):
                 B_[k, j] = D_subset[k, jj]
+    gettimeofday(&tv1, &tz)
+    aggregation_time = tv1.tv_usec - tv0.tv_usec
+    printf('Prepare time %i us, coding time %i us, aggregation time %i us\n',
+           prepare_time, coding_time, aggregation_time)
     return 0
 
 cdef void _update_dict(double[::1, :] D_,
@@ -368,12 +395,18 @@ cdef void _update_dict(double[::1, :] D_,
     cdef double* G_ptr = &G_[0, 0]
     cdef double old_norm = 0
     cdef unsigned long k, kk, j, jj
+
+    cdef timeval tv0, tv1
+    cdef timezone tz
+    cdef suseconds_t gram_time, bcd_time
+
     for k in range(n_components):
         for jj in range(len_subset):
             j = subset[jj]
             D_subset[k, jj] = D_[k, j]
             R[k, jj] = B_[k, j]
 
+    gettimeofday(&tv0, &tz)
     for kk in range(components_range_len):
         k = D_range[kk]
         norm_temp[k] = enet_norm(D_subset[k, :len_subset], l1_ratio)
@@ -386,6 +419,10 @@ cdef void _update_dict(double[::1, :] D_,
               &oned,
               G_ptr, &n_components
               )
+    gettimeofday(&tv1, &tz)
+    gram_time = tv1.tv_usec - tv0.tv_usec
+
+    gettimeofday(&tv0, &tz)
 
     # R = B - AQ
     dgemm(&NTRANS, &NTRANS,
@@ -421,6 +458,11 @@ cdef void _update_dict(double[::1, :] D_,
         j = subset[jj]
         for kk in range(n_components):
             D_[kk, j] = D_subset[kk, jj]
+    gettimeofday(&tv1, &tz)
+    bcd_time = tv1.tv_usec - tv0.tv_usec
+
+    gettimeofday(&tv0, &tz)
+
     if solver == 2:
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
@@ -430,6 +472,10 @@ cdef void _update_dict(double[::1, :] D_,
               &oned,
               G_ptr, &n_components
               )
+    gettimeofday(&tv1, &tz)
+    gram_time += tv1.tv_usec - tv0.tv_usec
+
+    printf('Gram time %i us, BCD time %i us\n', gram_time, bcd_time)
 
 def dict_learning(double[:, ::1] X,
                     long[:] row_range,
@@ -637,7 +683,11 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                                  double[:] XtA,
                                  int max_iter, double tol, UINT32_t random_seed,
                                  bint random, bint positive):
-    enet_coordinate_descent_gram_(w, alpha, beta, Q, q, y, H, XtA, max_iter,
+    cdef int n_samples = y.shape[0]
+    cdef double * y_ptr = &y[0]
+    cdef double y_norm2 = ddot(&n_samples, y_ptr, &one, y_ptr, &one)
+
+    enet_coordinate_descent_gram_(w, alpha, beta, Q, q, y_norm2, H, XtA, max_iter,
                                  tol,
                                  &random_seed,
                                  random,
@@ -647,7 +697,7 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
 cdef void enet_coordinate_descent_gram_(double[:] w, double alpha, double beta,
                                  double[::1, :] Q,
                                  double[:] q,
-                                 double[:] y,
+                                 double y_norm2,
                                  double[:] H,
                                  double[:] XtA,
                                  int max_iter, double tol, UINT32_t* random_seed,
@@ -665,7 +715,6 @@ cdef void enet_coordinate_descent_gram_(double[:] w, double alpha, double beta,
     """
 
     # get the data information into easy vars
-    cdef int n_samples = y.shape[0]
     cdef int n_features = Q.shape[0]
 
     # initial value "Q w" which will be kept of up to date in the iterations
@@ -690,13 +739,10 @@ cdef void enet_coordinate_descent_gram_(double[:] w, double alpha, double beta,
     cdef double* q_ptr = &q[0]
     cdef double* H_ptr = &H[0]
     cdef double* XtA_ptr = &XtA[0]
-    cdef double* y_ptr = &y[0]
-    cdef double y_norm2, w_norm2
+    cdef double w_norm2
     cdef double const
     cdef double q_dot_w
 
-    # with nogil:
-    y_norm2 = ddot(&n_samples, y_ptr, &one, y_ptr, &one)
     tol = tol * y_norm2
 
     dgemv(&NTRANS,
@@ -805,15 +851,19 @@ cpdef void sparse_coding(double alpha,
                          double[:, ::1] X,
                          int num_threads) nogil:
     cdef int n_rows = code.shape[0]
+    cdef int n_cols = X.shape[1]
     cdef int i
+    cdef double X_norm
+    cdef double * X_ptr = &X[0, 0]
     cdef UINT32_t this_random_seed
     with nogil, parallel(num_threads=num_threads):
         for i in prange(n_rows, schedule='static'):
+            X_norm = ddot(&n_rows, X_ptr + i * n_cols, &one, X_ptr +  i * n_cols, &one)
             this_random_seed = random_seed
             enet_coordinate_descent_gram_(
                         code[i], alpha * l1_ratio,
                                     alpha * (1 - l1_ratio),
-                        G, Dx[:, i], X[i],
+                        G, Dx[:, i], X_norm,
                         H[i],
                         XtA[i],
                         1000,

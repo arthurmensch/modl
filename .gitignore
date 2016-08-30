@@ -67,5 +67,6 @@ MANIFEST
 
 .json
 .html
-.c
+*.c
+!modl/new/randomkit/randomkit.c
 cython_debug/

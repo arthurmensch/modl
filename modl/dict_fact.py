@@ -230,12 +230,6 @@ class DictMF(BaseEstimator):
                                 order='F')
             self._G_temp = np.empty((self.n_components, self.n_components),
                                     order='F')
-            self._this_X = np.empty((self.batch_size, n_cols),
-                                    order='F')
-            self._full_X = np.empty((self.batch_size, n_cols),
-                                    order='F')
-            self._D_subset = np.empty((self.n_components, n_cols),
-                                      order='F')
 
             self._R = np.empty((self.n_components, n_cols), order='F')
             self._norm_temp = np.zeros(self.n_components)
