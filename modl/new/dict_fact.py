@@ -263,3 +263,7 @@ class DictFact(BaseEstimator):
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
                               + (1 - self.pen_l1_ratio) * norm2_code / 2)
         return (loss + regul) / X.shape[0]
+
+    @property
+    def components_(self):
+        return self.D

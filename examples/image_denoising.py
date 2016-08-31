@@ -5,7 +5,7 @@ import numpy as np
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 
-from modl.dict_fact import DictMF
+from modl.new.dict_fact import DictFact
 
 
 class Callback(object):
@@ -31,8 +31,8 @@ class Callback(object):
         # self.R.append(np.sum(R ** 2))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        # self.iter.append(mf.total_counter)
-        self.iter.append(mf.n_iter_[0])
+        self.iter.append(mf.total_counter)
+        # self.iter.append(mf.n_iter_[0])
 
 
 def main():
@@ -76,7 +76,7 @@ def main():
     print('Learning the dictionary...')
 
     cb = Callback(data[:500])
-    dico = DictMF(n_components=100, alpha=1,
+    dico = DictFact(n_components=100, alpha=1,
                     l1_ratio=0,
                     pen_l1_ratio=0.9,
                     batch_size=100,
@@ -89,8 +89,8 @@ def main():
                     dict_subset_sampling='coupled',
                     # n_samples=2000,
                     callback=cb,
-                    n_threads=2,
-                    backend='c',
+                    n_threads=1,
+                    # backend='c',
                     tol=1e-2,
                     random_state=0)
     t0 = time()
