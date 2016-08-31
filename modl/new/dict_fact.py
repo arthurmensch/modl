@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import linalg
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 from sklearn.utils import check_random_state
@@ -37,7 +38,8 @@ class DictFact(BaseEstimator):
                  random_state=None,
                  verbose=0,
                  n_threads=1,
-                 callback=None
+                 callback=None,
+                 **kwargs
                  ):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -252,20 +254,25 @@ class DictFact(BaseEstimator):
     def transform(self, X, y=None):
         if not self.initialized:
             raise ValueError()
-        X = check_array(X, dtype='float', order='C')
+        X = check_array(X, dtype='float64', order='C')
         return self._impl.transform(X)
+
 
     def score(self, X):
         code, D = self.transform(X)
-        # print(np.sum(D ** 2, axis=1))
         loss = np.sum((X - code.dot(D)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
                               + (1 - self.pen_l1_ratio) * norm2_code / 2)
-        # print(loss / X.shape[0])
         return (loss + regul) / X.shape[0]
 
     @property
     def components_(self):
-        return self.D
+        return enet_scale(self.D, 1, self.l1_ratio)
+
+    @property
+    def n_iter_(self):
+        return np.array([self.total_counter])
+
+DictMF = DictFact

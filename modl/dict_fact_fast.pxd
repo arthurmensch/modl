@@ -71,3 +71,15 @@ cdef void _update_dict(double[::1, :] D_,
                   double[::1, :] D_subset,
                   double[:] norm_temp,
                   double[:] proj_temp) nogil
+
+cpdef void sparse_coding(double alpha,
+                         double l1_ratio,
+                         double tol,
+                         double[:, ::1] code,
+                         double[:, ::1] H,
+                         double[:, ::1] XtA,
+                         UINT32_t random_seed,
+                         double[::1, :] G,
+                         double[::1, :] Dx,
+                         double[:, ::1] X,
+                         int num_threads) nogil

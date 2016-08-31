@@ -653,7 +653,7 @@ class DictMF(BaseEstimator):
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
                               + (1 - self.pen_l1_ratio) * norm2_code / 2)
-        return (loss + regul) / X.shape[0]
+        return loss / X.shape[0], regul / X.shape[0]
 
     def _callback(self):
         if self.callback is not None:

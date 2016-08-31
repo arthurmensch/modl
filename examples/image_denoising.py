@@ -6,8 +6,8 @@ from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn.utils import check_random_state
 
-from modl.new.dict_fact import DictFact
-from modl.dict_fact import DictMF
+from modl.new.dict_fact import DictMF
+# from modl.dict_fact import DictMF
 
 
 class Callback(object):
@@ -33,8 +33,7 @@ class Callback(object):
         # self.R.append(np.sum(R ** 2))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.iter.append(mf.total_counter)
-        # self.iter.append(mf.n_iter_[0])
+        self.iter.append(mf.n_iter_[0])
 
 
 def main():
@@ -59,7 +58,7 @@ def main():
     tile = 4
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                              max_patches=10000, random_state=0)
+                              max_patches=2000, random_state=0)
     tiled_data = np.empty(
         (data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
     for i in range(tile):
@@ -81,28 +80,26 @@ def main():
 
 
     cb = Callback(data[:500])
-    dico = DictFact(n_components=100, alpha=1,
+    dico = DictMF(n_components=100, alpha=1,
                     l1_ratio=0,
                     pen_l1_ratio=0.9,
-                    batch_size=50,
+                    batch_size=10,
                     learning_rate=.8,
                     sample_learning_rate=None,
                     reduction=6,
-                    verbose=1,
-                    solver='gram',
+                    verbose=2,
+                    solver='average',
                     weights='sync',
                     subset_sampling='random',
-                    dict_subset_sampling='coupled',
-                    # n_samples=2000,
+                    dict_subset_sampling='independent',
                     callback=cb,
                     n_threads=2,
-                    # backend='c',
+                    backend='c',
                     tol=1e-2,
-                    random_state=0,
-                    n_epochs=30)
+                    random_state=1,
+                    n_epochs=100)
     t0 = time()
     dico.fit(data)
-    # V = dico.D
     V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0
     print('done in %.2fs., test time: %.2fs' % (dt, cb.test_time))

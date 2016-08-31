@@ -7,6 +7,7 @@ cimport cython
 
 import numpy as np
 cimport numpy as np
+ctypedef np.uint32_t UINT32_t
 
 from libc.stdio cimport printf
 # noinspection PyUnresolvedReferences
@@ -19,7 +20,7 @@ from scipy.linalg.cython_lapack cimport dposv
 
 from modl._utils.enet_proj import enet_scale
 # noinspection PyUnresolvedReferences
-from .randomkit.random_fast cimport rk_interval, RandomStateMemoryView
+from .randomkit.random_fast cimport RandomStateMemoryView, RandomState
 from .._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 cdef char UP = 'U'
@@ -803,13 +804,13 @@ cdef class DictFactImpl(object):
                     X_norm = ddot(&n_features, X_ptr + i * n_features,
                                   &one, X_ptr + i * n_features, &one)
                     enet_coordinate_descent_gram(
-                                code[i], self.alpha * self.l1_ratio,
-                                            self.alpha * (1 - self.l1_ratio),
+                                code[i], self.alpha * self.pen_l1_ratio,
+                                            self.alpha * (1 - self.pen_l1_ratio),
                                 G, Dx[:, i],
                                 X_norm,
                                 H[t],
                                 XtA[t],
-                                100,
+                                1000,
                                 self.tol, self.random_state, 0, 0)
         return np.asarray(code), np.asarray(D)
 
