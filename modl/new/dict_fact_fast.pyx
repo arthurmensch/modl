@@ -1,19 +1,16 @@
 # encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 
-cimport cython
-
-import numpy as np
 cimport numpy as np
-
-from libc.stdio cimport printf
-from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
-from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
-
+import numpy as np
 from cython.parallel import parallel, prange
+from libc.stdio cimport printf
+from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
-from .randomkit.random_fast cimport rk_interval, RandomStateMemoryView
 from .._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 cdef char UP = 'U'
@@ -24,6 +21,8 @@ cdef int one = 1
 cdef double fzero = 0
 cdef double fone = 1
 cdef double fmone = -1
+
+cdef unsigned long max_int = np.iinfo(np.uint64).max
 
 cdef double abs_max(int n, double* a) nogil:
     """np.max(np.abs(a))"""
@@ -79,11 +78,11 @@ cdef class Sampler(object):
     cdef RandomStateMemoryView random_state
 
     def __init__(self, long n_features, long len_subset, long subset_sampling,
-                 int random_state):
+                 unsigned long random_seed):
         self.n_features = n_features
         self.len_subset = len_subset
         self.subset_sampling = subset_sampling
-        self.random_state = RandomStateMemoryView(seed=random_state)
+        self.random_state = RandomStateMemoryView(seed=random_seed)
         self.random_state.seed()
 
         self.feature_range = np.arange(n_features, dtype='long')
@@ -93,7 +92,7 @@ cdef class Sampler(object):
 
         self.random_state.shuffle(self.feature_range)
 
-    cpdef long[:] yield_subset(self):
+    cpdef long[:] yield_subset(self) nogil:
         cdef long remainder
         if self.subset_sampling == 2:
             self.random_state.shuffle(self.feature_range)
@@ -119,7 +118,7 @@ cdef class Sampler(object):
         return self.feature_range[self.lim_inf:self.lim_sup]
 
 
-cdef class DictFactNew(object):
+cdef class DictFactImpl(object):
 
     cdef readonly long batch_size
     cdef readonly double learning_rate
@@ -130,10 +129,12 @@ cdef class DictFactNew(object):
     cdef readonly double l1_ratio
     cdef readonly double pen_l1_ratio
     cdef readonly double tol
+
     cdef readonly long solver
     cdef readonly long subset_sampling
     cdef readonly long dict_subset_sampling
     cdef readonly long weights
+
     cdef readonly long max_n_iter
     cdef readonly long n_samples
     cdef readonly long n_features
@@ -148,22 +149,22 @@ cdef class DictFactNew(object):
     cdef readonly double[::1, :] B
     cdef readonly double[::1, :] G
 
-    cdef readonly long random_seed
+    cdef readonly unsigned long random_seed
 
 
-    cdef double[::1, :, :] G_average
-    cdef double[::1, :] Dx_average
+    cdef readonly double[::1, :, :] G_average
+    cdef readonly double[::1, :] Dx_average
 
-    cdef long[:] sample_counter
-    cdef long[:] feature_counter
-    cdef long total_counter
+    cdef readonly long[:] sample_counter
+    cdef readonly long[:] feature_counter
+    cdef readonly long total_counter
 
     cdef double[::1, :] this_X
     cdef double[::1, :] full_X
     cdef double[::1, :] D_subset
 
     cdef double[::1, :] Dx
-    cdef double[::1, :] G_temp
+    cdef double[::1, :, :] G_temp
     cdef double[::1, :] R
     cdef double[:] norm_temp
 
@@ -178,9 +179,10 @@ cdef class DictFactNew(object):
 
     cdef RandomStateMemoryView random_state
 
+    cdef object callback
 
     def __init__(self,
-                 double[:, :] dict_init,
+                 double[::1, :] D,
                  long n_samples,
                  double alpha=1.0,
                  double l1_ratio=0.,
@@ -199,14 +201,16 @@ cdef class DictFactNew(object):
                  long dict_subset_sampling=1,
                  # Dict parameter
                  # Generic parameters
-                 long max_n_iter=0,
-                 long random_seed=0,
+                 unsigned long random_seed=0,
                  long verbose=0,
-                 long n_threads=1):
-        self.n_samples = n_samples
-        self.n_components = dict_init.shape[0]
-        self.n_features = dict_init.shape[1]
+                 long n_threads=1,
+                 object callback=None):
 
+        self.n_samples = n_samples
+        self.n_components = D.shape[0]
+        self.n_features = D.shape[1]
+
+        self.reduction = reduction
         self.len_subset = int(ceil(self.n_features / reduction))
 
         self.batch_size = batch_size
@@ -214,7 +218,6 @@ cdef class DictFactNew(object):
         self.offset = offset
         self.sample_learning_rate = sample_learning_rate
 
-        self.reduction = reduction
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.pen_l1_ratio = pen_l1_ratio
@@ -225,7 +228,6 @@ cdef class DictFactNew(object):
         self.dict_subset_sampling = dict_subset_sampling
         self.weights = weights
 
-        self.max_n_iter = max_n_iter
 
         self.random_seed = random_seed
         self.verbose = verbose
@@ -235,7 +237,7 @@ cdef class DictFactNew(object):
         self.random_state = RandomStateMemoryView(seed=self.random_seed)
         self.random_state.seed()
 
-        self.D = np.array(dict_init, order='F')
+        self.D = D
         self.code = np.zeros((self.n_samples, self.n_components))
 
         self.A = np.zeros((self.n_components, self.n_components),
@@ -243,12 +245,18 @@ cdef class DictFactNew(object):
         self.B = np.zeros((self.n_components, self.n_features), order="F")
 
         if self.solver == 2:
-            self.G = self.D_.dot(self.D_.T).T
+            D_arr = np.array(self.D, order='F')
+            self.G = D_arr.dot(D_arr.T).T
+        else:
+            self.G = np.zeros((self.n_components, self.n_components), order='F')
 
         if self.solver == 3:
             self.G_average = np.zeros((self.n_components,
                                         self.n_components, self.n_samples),
                                        order="F")
+        if self.solver == 2 or self.solver == 3:
+            self.Dx_average = np.zeros((self.n_components, self.n_samples),
+                                        order="F")
 
         self.total_counter = 0
         self.sample_counter = np.zeros(self.n_samples, dtype='long')
@@ -260,28 +268,93 @@ cdef class DictFactNew(object):
                                   order='F')
         self.Dx = np.empty((self.n_components, self.batch_size),
                             order='F')
-        self.G_temp = np.empty((self.n_components, self.n_components),
-                                order='F')
+        if self.pen_l1_ratio == 0:
+            self.G_temp = np.empty((self.n_components, self.n_components,
+                                    self.n_threads),
+                                    order='F')
 
         self.R = np.empty((self.n_components, self.n_features), order='F')
         self.norm_temp = np.zeros(self.n_components)
         self.proj_temp = np.zeros(self.n_features)
 
-        self.H = np.empty((self.batch_size, self.n_components))
-        self.XtA = np.empty((self.batch_size, self.n_components))
+        self.H = np.empty((self.n_threads, self.n_components))
+        self.XtA = np.empty((self.n_threads, self.n_components))
 
         self.D_range = np.arange(self.n_components, dtype='long')
 
-        random_seed = self.random_state.randint(1000)
+        random_seed = self.random_state.randint(max_int)
         self.feature_sampler_1 = Sampler(self.n_features, self.len_subset,
                                     self.subset_sampling, random_seed)
         if self.dict_subset_sampling == 2:
-            random_seed = self.random_state.randint(1000)
+            random_seed = self.random_state.randint(max_int)
             self.feature_sampler_2 = Sampler(self.n_features, self.len_subset,
                                         self.subset_sampling, random_seed)
 
-    @cython.final
-    cpdef partial_fit(self, double[:, ::1] X, long[:] sample_indices):
+        self.callback = callback
+
+    cpdef void _set_impl_params(self,
+                           double alpha=1.0,
+                           double l1_ratio=0.,
+                           double pen_l1_ratio=0.,
+                           double tol=1e-3,
+                           # Hyper-parameters
+                                double learning_rate=1.,
+                           double sample_learning_rate=0.5,
+                           long batch_size=1,
+                           double offset=0,
+                           # Reduction parameter
+                           long reduction=1,
+                           long solver=1,
+                           long weights=1,
+                           long subset_sampling=1,
+                           long dict_subset_sampling=1,
+                           # Dict parameter
+                           # Generic parameters
+                           long verbose=0,
+                           long n_threads=1,
+                           object callback=None):
+        cdef long old_len_subset
+
+        self.weights = weights
+        self.subset_sampling = subset_sampling
+        self.dict_subset_sampling = dict_subset_sampling
+        self.solver = solver
+
+        if solver != 2 and self.G is not None:
+            self.G = None
+        if solver != 3 and self.G_average is not None:
+            self.G_average = None
+        if solver == 1 and self.Dx_average is not None:
+            self.Dx_average = None
+
+        self.alpha = alpha
+        self.l1_ratio = l1_ratio
+        self.pen_l1_ratio = pen_l1_ratio
+        self.tol = tol
+
+        self.reduction = reduction
+        old_len_subset = self.len_subset
+        self.len_subset = int(ceil(self.n_features / reduction))
+
+        if old_len_subset != self.len_subset:
+            random_seed = self.random_state.randint(max_int)
+            self.feature_sampler_1 = Sampler(self.n_features, self.len_subset,
+                                        self.subset_sampling, random_seed)
+            if self.dict_subset_sampling == 2:
+                random_seed = self.random_state.randint(max_int)
+                self.feature_sampler_2 = Sampler(self.n_features, self.len_subset,
+                                            self.subset_sampling, random_seed)
+
+        self.learning_rate = learning_rate
+        self.sample_learning_rate = sample_learning_rate
+        self.offset = offset
+
+        self.verbose = verbose
+        self.n_threads = n_threads
+
+        self.callback = callback
+
+    cpdef void partial_fit(self, double[:, ::1] X, long[:] sample_indices) except *:
         cdef int this_n_samples = X.shape[0]
         cdef int n_batches = int(ceil(this_n_samples / self.batch_size))
         cdef int start = 0
@@ -291,17 +364,20 @@ cdef class DictFactNew(object):
         cdef int old_total_counter = self.total_counter
         cdef int new_verbose_iter = 0
 
-        cdef int i, ii, jj, j
+        cdef int i, ii, jj, j, k, t
 
         cdef long[:] subset
 
         with nogil:
-            for i in range(n_batches):
+            for k in range(n_batches):
                 if self.verbose and self.total_counter\
                         - old_total_counter >= new_verbose_iter:
-                    print("Iteration %i" % self.total_counter)
-                    new_verbose_iter += self.n_samples // self.verbose
-                start = i * self.batch_size
+                    printf("Iteration %i\n", self.total_counter)
+                    new_verbose_iter += self.n_samples / self.verbose
+                    if self.callback is not None:
+                        with gil:
+                            self.callback()
+                start = k * self.batch_size
                 stop = start + self.batch_size
                 if stop > this_n_samples:
                     stop = this_n_samples
@@ -314,7 +390,7 @@ cdef class DictFactNew(object):
                     j = subset[jj]
                     self.feature_counter[j] += len_batch
 
-                for ii in range(len_batch):
+                for ii in range(start, stop):
                     i = sample_indices[ii]
                     self.sample_counter[i] += 1
                 self.update_code(subset, X[start:stop],
@@ -326,12 +402,13 @@ cdef class DictFactNew(object):
                 self.update_dict(subset)
 
     cdef int update_code(self, long[:] subset, double[:, ::1] X,
-     long[:] sample_indices) nogil except *:
+                         long[:] sample_indices) nogil except *:
         """
         Compute code for a mini-batch and update algorithm statistics accordingly
 
         Parameters
         ----------
+        sample_indices
         X: masked data matrix
         this_subset: indices (loci) of masked data
         alpha: regularization parameter
@@ -365,27 +442,33 @@ cdef class DictFactNew(object):
         cdef double* A_ptr = &self.A[0, 0]
         cdef double* B_ptr = &self.B[0, 0]
 
-        cdef double* G_ptr
+        cdef double* G_ptr = &self.G[0, 0]
 
         cdef double* Dx_ptr = &self.Dx[0, 0]
-        cdef double* G_temp_ptr = &self.G_temp[0, 0]
+        cdef double* G_temp_ptr
         cdef double* this_X_ptr = &self.this_X[0, 0]
         cdef double* X_ptr = &X[0, 0]
+        cdef double* G_average_ptr
 
         cdef int info = 0
-        cdef int ii, jj, i, j, k, m, p, q
+        cdef int ii, jj, i, j, k, m, p, q, t, start, stop, size
         cdef int nnz
         cdef double v
         cdef int last = 0
         cdef double one_m_w, w_sample, w_batch, w_norm, w_A, w_B
         cdef int this_subset_thread_size
         cdef double this_X_norm
+
+        cdef int sample_step = int(ceil(float(len_batch) / self.n_threads))
+        cdef int subset_step = int(ceil(float(n_features) / self.n_threads))
+
         cdef timeval tv0, tv1
         cdef timezone tz
         cdef suseconds_t aggregation_time, coding_time, prepare_time
-
-        if self.solver == 2:
-             G_ptr = &self.G[0, 0]
+        if self.solver == 3:
+            G_average_ptr = &self.G_average[0, 0, 0]
+        if self.pen_l1_ratio == 0:
+            G_temp_ptr = &self.G_temp[0, 0, 0]
 
         gettimeofday(&tv0, &tz)
         for ii in range(len_batch):
@@ -397,7 +480,6 @@ cdef class DictFactNew(object):
             j = subset[jj]
             for k in range(self.n_components):
                 self.D_subset[k, jj] = self.D[k, j]
-        this_X_norm = ddot(&len_subset, this_X_ptr, &one, this_X_ptr, &one) * reduction
         for jj in range(len_subset):
             for ii in range(len_batch):
                 self.this_X[ii, jj] *= reduction
@@ -413,71 +495,73 @@ cdef class DictFactNew(object):
               Dx_ptr, &n_components
               )
 
-        if self.solver == 1:
+        if self.solver == 1 or self.solver == 3:
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &len_subset,
                   &reduction,
                   D_subset_ptr, &n_components,
                   D_subset_ptr, &n_components,
                   &fzero,
-                  G_temp_ptr, &n_components
+                  G_ptr, &n_components
                   )
-        else:
+        if self.solver == 2 or self.solver == 3:
             for ii in range(len_batch):
                 i = sample_indices[ii]
                 w_sample = pow(self.sample_counter[i], -self.sample_learning_rate)
-                for p in range(n_components):
-                    self.Dx_average[i, p] *= 1 - w_sample
-                    self.Dx_average[i, p] += self.Dx[p, ii] * w_sample
-                    self.Dx[p, ii] = self.Dx_average[i, p]
-            if self.solver == 3:
-                dgemm(&NTRANS, &TRANS,
-                      &n_components, &n_components, &len_subset,
-                      &reduction,
-                      D_subset_ptr, &n_components,
-                      D_subset_ptr, &n_components,
-                      &fzero,
-                      G_temp_ptr, &n_components
-                      )
-                for ii in range(len_batch):
+                if self.solver == 3:
                     i = sample_indices[ii]
                     for p in range(n_components):
                         for q in range(n_components):
                             self.G_average[p, q, i] *= 1 - w_sample
-                            self.G_average[p, q, i] += self.G_temp[p, q] * w_sample
-            else:
-                if self.pen_l1_ratio == 0:
-                    for p in range(n_components):
-                        for q in range(n_components):
-                            self.G_temp[p, q] = self.G[p, q]
-                else:
-                    self.G_temp = self.G
+                            self.G_average[p, q, i] += self.G[p, q] * w_sample
+                for p in range(n_components):
+                    self.Dx_average[p, i] *= 1 - w_sample
+                    self.Dx_average[p, i] += self.Dx[p, ii] * w_sample
+                    self.Dx[p, ii] = self.Dx_average[p, i]
         gettimeofday(&tv1, &tz)
         prepare_time = tv1.tv_usec - tv0.tv_usec
         gettimeofday(&tv0, &tz)
         if self.pen_l1_ratio == 0:
             if self.solver == 3:
-                for ii in range(len_batch):
-                    i = sample_indices[ii]
-                    for p in range(n_components):
-                        for q in range(n_components):
-                            self.G_temp[p, q] = self.G_average[p, q, i]
-                        self.G_temp[p, p] += self.alpha
-                    dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
-                          Dx_ptr + ii * n_components, &one,
-                          &info)
-                    for p in range(n_components):
-                        self.G_temp[p, p] -= self.alpha
-                if info != 0:
-                    return -1
+                with parallel(num_threads=self.n_threads):
+                    for t in prange(self.n_threads, schedule='static'):
+                        start = t * sample_step
+                        stop = min(len_batch, (t + 1) * sample_step)
+                        for ii in range(start, stop):
+                            i = sample_indices[ii]
+                            for p in range(n_components):
+                                for q in range(n_components):
+                                    self.G_temp[p, q, t] = self.G_average[p, q,
+                                                                          i]
+                                self.G_temp[p, p, t] += self.alpha
+                            dposv(&UP, &n_components, &one, G_temp_ptr
+                                  + t * n_components * n_components,
+                                  &n_components,
+                                  Dx_ptr + ii * n_components, &n_components,
+                                  &info)
+                            for p in range(n_components):
+                                self.G_average[p, p, i] -= self.alpha
+                            if info != 0:
+                                with gil:
+                                    raise ValueError
             else:
-                for p in range(n_components):
-                    self.G_temp[p, p] += self.alpha
-                dposv(&UP, &n_components, &len_batch, G_temp_ptr, &n_components,
-                      Dx_ptr, &n_components,
-                      &info)
-                if info != 0:
-                    return -1
+                with parallel(num_threads=self.n_threads):
+                    for t in prange(self.n_threads, schedule='static'):
+                        for p in range(n_components):
+                            for q in range(n_components):
+                                self.G_temp[p, q, t] = self.G[p, q]
+                            self.G_temp[p, p, t] += self.alpha
+                        start = t * sample_step
+                        stop = min(len_batch, (t + 1) * sample_step)
+                        size = stop - start
+                        dposv(&UP, &n_components, &size,
+                              G_temp_ptr + t * n_components * n_components,
+                              &n_components,
+                              Dx_ptr + n_components * start, &n_components,
+                              &info)
+                        if info != 0:
+                            with gil:
+                                raise ValueError
             for ii in range(len_batch):
                 i = sample_indices[ii]
                 for k in range(n_components):
@@ -485,20 +569,29 @@ cdef class DictFactNew(object):
 
         else:
             with parallel(num_threads=self.n_threads):
-                for ii in prange(len_batch, schedule='static'):
-                    i = sample_indices[ii]
-                    enet_coordinate_descent_gram_(
-                        self.code[i], self.alpha * self.pen_l1_ratio,
-                                  self.alpha * (1 - self.pen_l1_ratio),
-                        self.G_average[:, :, i] if self.solver == 3 else self.G_temp,
-                        self.Dx[:, ii],
-                        this_X_norm,
-                        self.H[ii],
-                        self.XtA[ii],
-                        1000,
-                        self.tol, self.random_state, 0, 0)
-                    for p in range(n_components):
-                        self.Dx[p, ii] = self.code[i, p]
+                for t in prange(self.n_threads, schedule='static'):
+                    start = t * sample_step
+                    stop = min(len_batch, (t + 1) * sample_step)
+                    printf('%i %i\n', start, stop)
+                    for ii in range(start, stop):
+                        i = sample_indices[ii]
+                        this_X_norm = ddot(&len_subset,
+                                           this_X_ptr + ii * len_subset, &one,
+                                           this_X_ptr + ii * len_subset,
+                                           &one) * reduction
+                        enet_coordinate_descent_gram(
+                            self.code[i], self.alpha * self.pen_l1_ratio,
+                                      self.alpha * (1 - self.pen_l1_ratio),
+                            self.G_average[:, :, i] if self.solver == 3
+                            else self.G,
+                            self.Dx[:, ii],
+                            this_X_norm,
+                            self.H[t],
+                            self.XtA[t],
+                            1000,
+                            self.tol, self.random_state, 0, 0)
+                        for p in range(n_components):
+                            self.Dx[p, ii] = self.code[i, p]
         for jj in range(len_subset):
             for ii in range(len_batch):
                 self.this_X[ii, jj] /= reduction
@@ -524,19 +617,18 @@ cdef class DictFactNew(object):
               )
         if self.weights == 1:
             with parallel(num_threads=self.n_threads):
-                for ii in prange(0, n_features, subset_thread_size,
-                                 schedule='static'):
-                    if n_features - ii < subset_thread_size:
-                        this_subset_thread_size = n_features - ii
-                    else:
-                        this_subset_thread_size = subset_thread_size
-                    dgemm(&NTRANS, &NTRANS,
-                          &n_components, &this_subset_thread_size, &len_batch,
+                for t in prange(self.n_threads, schedule='static'):
+                    start = t * subset_step
+                    stop = min(n_features, (t + 1) * subset_step)
+                    size = stop - start
+                    # Hack as X is C-ordered
+                    dgemm(&NTRANS, &TRANS,
+                          &n_components, &size, &len_batch,
                           &w_batch,
                           Dx_ptr, &n_components,
-                          X_ptr + ii * len_batch, &len_batch,
+                          X_ptr + start, &n_features,
                           &one_m_w,
-                          B_ptr + ii * n_components, &n_components)
+                          B_ptr + start * n_components, &n_components)
         else:
             # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
             # Reuse D_subset as B_subset
@@ -565,9 +657,9 @@ cdef class DictFactNew(object):
                     self.B[k, j] = self.D_subset[k, jj]
         gettimeofday(&tv1, &tz)
         aggregation_time = tv1.tv_usec - tv0.tv_usec
-        printf('Prepare time %i us, coding time %i us,'
-               ' aggregation time %i us\n',
-               prepare_time, coding_time, aggregation_time)
+        # printf('Prepare time %i us, coding time %i us,'
+        #        ' aggregation time %i us\n',
+        #        prepare_time, coding_time, aggregation_time)
         return 0
 
     cdef void update_dict(self,
@@ -599,7 +691,8 @@ cdef class DictFactNew(object):
         gettimeofday(&tv0, &tz)
         for kk in range(self.n_components):
             k = self.D_range[kk]
-            self.norm_temp[k] = enet_norm(self.D_subset[k, :len_subset], self.l1_ratio)
+            self.norm_temp[k] = enet_norm(self.D_subset[k,
+                                          :len_subset], self.l1_ratio)
         if self.solver == 2:
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &len_subset,
@@ -665,12 +758,11 @@ cdef class DictFactNew(object):
         gettimeofday(&tv1, &tz)
         gram_time += tv1.tv_usec - tv0.tv_usec
 
-        printf('Gram time %i us, BCD time %i us\n', gram_time, bcd_time)
+        # printf('Gram time %i us, BCD time %i us\n', gram_time, bcd_time)
 
-    @cython.final
-    cpdef double[:, ::1] transform(self, double[:, ::1] X):
+    cpdef double[:, ::1] transform(self, double[:, ::1] X) except *:
         cdef int n_samples = X.shape[0]
-        cdef int i
+        cdef int i, t, start, stop
         cdef double X_norm
         cdef double * X_ptr = &X[0, 0]
 
@@ -679,22 +771,26 @@ cdef class DictFactNew(object):
         cdef double[:, ::1] H = np.empty((n_samples, self.n_components))
         cdef double[:, ::1] XtA = np.empty((n_samples, self.n_components))
 
+        cdef int sample_step = int(ceil(float(n_samples) / self.n_threads))
+
         with nogil, parallel(num_threads=self.n_threads):
-            for i in prange(n_samples, schedule='static'):
-                X_norm = ddot(&n_samples, X_ptr + i * n_samples,
-                              &one, X_ptr +  + i * n_samples, &one)
-                with gil:
-                    enet_coordinate_descent_gram_(
+            for t in prange(self.n_threads, schedule='static'):
+                start = t * sample_step
+                stop = min(n_samples, (t + 1) * sample_step)
+                for i in range(start, stop):
+                    X_norm = ddot(&n_samples, X_ptr + i * n_samples,
+                                  &one, X_ptr +  + i * n_samples, &one)
+                    enet_coordinate_descent_gram(
                                 self.code[i], self.alpha * self.l1_ratio,
                                             self.alpha * (1 - self.l1_ratio),
                                 self.G, self.Dx[:, i], X_norm,
-                                H[i],
-                                XtA[i],
+                                H[t],
+                                XtA[t],
                                 1000,
                                 self.tol, self.random_state, 0, 0)
         return code
 
-cdef void enet_coordinate_descent_gram_(double[:] w, double alpha, double beta,
+cdef void enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                                  double[::1, :] Q,
                                  double[:] q,
                                  double y_norm2,
@@ -702,7 +798,7 @@ cdef void enet_coordinate_descent_gram_(double[:] w, double alpha, double beta,
                                  double[:] XtA,
                                  int max_iter, double tol,
                                  RandomStateMemoryView random_state,
-                                 bint random, bint positive):
+                                 bint random, bint positive) nogil:
     """Cython version of the coordinate descent algorithm
         for Elastic-Net regression
 

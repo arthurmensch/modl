@@ -9,8 +9,8 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('new', parent_package, top_path)
 
-    extensions = [Extension('modl/new/dict_fact_fast_new',
-                            sources=['modl/new/dict_fact_fast_new.pyx'],
+    extensions = [Extension('modl/new/dict_fact_fast',
+                            sources=['modl/new/dict_fact_fast.pyx'],
                             include_dirs=[numpy.get_include(),
                                           'modl/new/randomkit'],
                             # extra_compile_args=['-fopenmp'],

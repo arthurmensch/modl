@@ -5,7 +5,8 @@ import numpy as np
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 
-from modl.dict_fact import DictMF
+from modl.new.dict_fact import DictFact
+
 
 class Callback(object):
     """Utility class for plotting RMSE"""
@@ -16,18 +17,18 @@ class Callback(object):
         self.obj = []
         self.times = []
         self.iter = []
-        self.R = []
+        # self.R = []
         self.start_time = time()
         self.test_time = 0
 
     def __call__(self, mf):
         test_time = time()
         self.obj.append(mf.score(self.X_tr))
-        R = (mf.B_ - mf.A_.dot(mf.D_))
-        scale = np.diag(mf.A_).copy()[:, np.newaxis]
-        scale[scale == 0] = 1
-        R /= scale
-        self.R.append(np.sum(R ** 2))
+        # R = (mf.B_ - mf.A_.dot(mf.D_))
+        # scale = np.diag(mf.A_).copy()[:, np.newaxis]
+        # scale[scale == 0] = 1
+        # R /= scale
+        # self.R.append(np.sum(R ** 2))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
         self.iter.append(mf.n_iter_[0] + 1)
@@ -55,8 +56,9 @@ def main():
     tile = 4
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                              max_patches=2000, random_state=0)
-    tiled_data = np.empty((data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
+                              max_patches=10000, random_state=0)
+    tiled_data = np.empty(
+        (data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
     for i in range(tile):
         for j in range(tile):
             tiled_data[:, i::tile, j::tile] = data
@@ -73,27 +75,26 @@ def main():
     print('Learning the dictionary...')
 
     cb = Callback(data[:2000])
-    dico = DictMF(n_components=100, alpha=1,
-                  l1_ratio=0,
-                  pen_l1_ratio=.9,
-                  batch_size=10,
-                  learning_rate=1,
-                  reduction=2,
-                  verbose=1,
-                  solver='gram',
-                  weights='sync',
-                  subset_sampling='random',
-                  dict_subset_sampling='coupled',
-                  backend='c',
-                  # n_samples=2000,
-                  callback=cb,
-                  n_threads=1,
-                  tol=1e-2,
-                  random_state=0)
+    dico = DictFact(n_components=100, alpha=1,
+                    l1_ratio=0,
+                    pen_l1_ratio=0.9,
+                    batch_size=100,
+                    learning_rate=1,
+                    reduction=4,
+                    verbose=3,
+                    solver='gram',
+                    weights='sync',
+                    subset_sampling='cyclic',
+                    dict_subset_sampling='coupled',
+                    # n_samples=2000,
+                    # callback=cb,
+                    n_threads=3,
+                    tol=1e-2,
+                    random_state=0)
     t0 = time()
-    for i in range(3):
+    for i in range(20):
         dico.partial_fit(data)
-    V = dico.components_
+    V = dico.D
     dt = cb.times[-1] if dico.callback != None else time() - t0
     print('done in %.2fs., test time: %.2fs' % (dt, cb.test_time))
 
@@ -109,18 +110,12 @@ def main():
                  fontsize=16)
     plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
-    fig, axes = plt.subplots(2, 1, sharex=True)
-    axes[0].plot(cb.iter[1:], np.array(cb.obj[1:]))
-    axes[0].set_ylabel('Function value')
-    # axes[0].set_ylim([8, 10])
-    # axes[0].set_xlim([1e3, 1e5])
-    # axes[0].legend()
-    axes[1].plot(cb.iter[1:], cb.R[1:])
-    axes[1].set_xscale('log')
-    axes[1].set_xlabel('Iter')
-    axes[1].set_ylabel('Residual')
+    fig, axes = plt.subplots(1, 1, sharex=True)
+    axes.plot(cb.iter[1:], np.array(cb.obj[1:]))
+    axes.set_ylabel('Function value')
     #
     plt.show()
+
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,9 @@
 import numpy as np
-from modl.new.dict_fact_new import DictFactNew
-from modl.new.dict_fact_new import Sampler
+from modl.new.dict_fact_fast_new import DictFactImpl
+from modl.new.dict_fact_fast_new import Sampler
+from modl.new.dict_fact_new import DictFact
 from numpy.testing import assert_array_equal
+
 
 def test_sampler():
     s = Sampler(1000, 100, False, 0)
@@ -24,8 +26,16 @@ def test_sampler():
 
 def test_dict_fact_fast_new():
     # Smoke test
-    dict_init = np.random.randn(100, 200)
-    dl = DictFactNew(dict_init, n_samples=200)
+    dict_init = np.random.randn(200, 100).T
+    dl = DictFactImpl(dict_init, n_samples=200)
     X = np.random.randn(100, 200)
 
     dl.partial_fit(X, np.arange(200))
+
+def test_dict_fact():
+    # Smoke test
+    dl = DictFact(n_samples=200, solver='average')
+    X = np.random.randn(100, 200)
+
+    dl.fit(X)
+    print(dl.G_average)
