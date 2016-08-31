@@ -5,7 +5,7 @@ import numpy as np
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 
-from modl.new.dict_fact import DictFact
+from modl.dict_fact import DictMF
 
 
 class Callback(object):
@@ -31,7 +31,8 @@ class Callback(object):
         # self.R.append(np.sum(R ** 2))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_[0] + 1)
+        # self.iter.append(mf.total_counter)
+        self.iter.append(mf.n_iter_[0])
 
 
 def main():
@@ -74,27 +75,29 @@ def main():
 
     print('Learning the dictionary...')
 
-    cb = Callback(data[:2000])
-    dico = DictFact(n_components=100, alpha=1,
+    cb = Callback(data[:500])
+    dico = DictMF(n_components=100, alpha=1,
                     l1_ratio=0,
                     pen_l1_ratio=0.9,
                     batch_size=100,
-                    learning_rate=1,
-                    reduction=4,
-                    verbose=3,
-                    solver='gram',
+                    learning_rate=.9,
+                    reduction=6,
+                    verbose=2,
+                    solver='masked',
                     weights='sync',
                     subset_sampling='cyclic',
                     dict_subset_sampling='coupled',
                     # n_samples=2000,
-                    # callback=cb,
-                    n_threads=3,
+                    callback=cb,
+                    n_threads=2,
+                    backend='c',
                     tol=1e-2,
                     random_state=0)
     t0 = time()
-    for i in range(20):
+    for i in range(10):
         dico.partial_fit(data)
-    V = dico.D
+    # V = dico.D
+    V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0
     print('done in %.2fs., test time: %.2fs' % (dt, cb.test_time))
 

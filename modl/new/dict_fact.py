@@ -230,14 +230,23 @@ class DictFact(BaseEstimator):
         """
         X = check_array(X, dtype='float', order='C')
         self._initialize(X)
+        random_state = check_random_state(self.random_state)
+        sample_indices = np.arange(X.shape[0])
+        random_order = np.arange(X.shape[0])
         if self.max_n_iter > 0:
             while self._impl.total_count < self.max_n_iter:
-                self.partial_fit(X, check_input=False)
+                random_state.shuffle(random_order)
+                sample_indices = sample_indices[random_order]
+                X = X[random_order]
+                self.partial_fit(X, sample_indices=sample_indices,
+                                 check_input=False)
         else:
             for i in range(self.n_epochs):
-                # random_state = check_random_state(self.random_state)
-                # random_state.shuffle(X)
-                self.partial_fit(X, check_input=False)
+                random_state.shuffle(random_order)
+                sample_indices = sample_indices[random_order]
+                X = X[random_order]
+                self.partial_fit(X, sample_indices=sample_indices,
+                                 check_input=False)
         return self
 
     def transform(self, X, y=None):
@@ -247,8 +256,8 @@ class DictFact(BaseEstimator):
         return self._impl.transform(X)
 
     def score(self, X):
-        code = self.transform(X)
-        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
+        code, D = self.transform(X)
+        loss = np.sum((X - code.dot(D)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio

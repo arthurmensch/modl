@@ -5,12 +5,11 @@
 
 from cython.parallel import parallel, prange
 from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
+from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
-from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
-from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
-from libc.stdio cimport printf
+from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -368,8 +367,8 @@ cdef int _update_code(double[::1, :] full_X,
                 B_[k, j] = D_subset[k, jj]
     gettimeofday(&tv1, &tz)
     aggregation_time = tv1.tv_usec - tv0.tv_usec
-    printf('Prepare time %i us, coding time %i us, aggregation time %i us\n',
-           prepare_time, coding_time, aggregation_time)
+    # printf('Prepare time %i us, coding time %i us, aggregation time %i us\n',
+    #        prepare_time, coding_time, aggregation_time)
     return 0
 
 cdef void _update_dict(double[::1, :] D_,
@@ -475,7 +474,7 @@ cdef void _update_dict(double[::1, :] D_,
     gettimeofday(&tv1, &tz)
     gram_time += tv1.tv_usec - tv0.tv_usec
 
-    printf('Gram time %i us, BCD time %i us\n', gram_time, bcd_time)
+    # printf('Gram time %i us, BCD time %i us\n', gram_time, bcd_time)
 
 def dict_learning(double[:, ::1] X,
                     long[:] row_range,
@@ -858,7 +857,7 @@ cpdef void sparse_coding(double alpha,
     cdef UINT32_t this_random_seed
     with nogil, parallel(num_threads=num_threads):
         for i in prange(n_rows, schedule='static'):
-            X_norm = ddot(&n_rows, X_ptr + i * n_cols, &one, X_ptr +  i * n_cols, &one)
+            X_norm = ddot(&n_cols, X_ptr + i * n_cols, &one, X_ptr +  i * n_cols, &one)
             this_random_seed = random_seed
             enet_coordinate_descent_gram_(
                         code[i], alpha * l1_ratio,

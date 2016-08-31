@@ -11,6 +11,7 @@ from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
+from modl._utils.enet_proj import enet_scale
 from .._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 cdef char UP = 'U'
@@ -572,7 +573,6 @@ cdef class DictFactImpl(object):
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * sample_step
                     stop = min(len_batch, (t + 1) * sample_step)
-                    printf('%i %i\n', start, stop)
                     for ii in range(start, stop):
                         i = sample_indices[ii]
                         this_X_norm = ddot(&len_subset,
@@ -760,35 +760,65 @@ cdef class DictFactImpl(object):
 
         # printf('Gram time %i us, BCD time %i us\n', gram_time, bcd_time)
 
-    cpdef double[:, ::1] transform(self, double[:, ::1] X) except *:
+    def transform(self, double[:, ::1] X):
         cdef int n_samples = X.shape[0]
         cdef int i, t, start, stop
+        cdef int n_features = self.n_features
+        cdef int n_components = self.n_components
         cdef double X_norm
+        cdef double[::1, :] D =  np.asarray(enet_scale(self.D, 1,
+                                                     self.l1_ratio),
+                                            order='F')
+        cdef double[:, ::1] code = np.ones((n_samples, self.n_components))
+        cdef double[::1, :] G = np.empty((self.n_components,
+                                          self.n_components), order='F')
+        cdef double[::1, :] Dx = np.empty((self.n_components,
+                                          n_samples), order='F')
         cdef double * X_ptr = &X[0, 0]
-
-        cdef double[:, ::1] code = np.empty((n_samples, self.n_components))
-
-        cdef double[:, ::1] H = np.empty((n_samples, self.n_components))
-        cdef double[:, ::1] XtA = np.empty((n_samples, self.n_components))
+        cdef double* Dx_ptr = &Dx[0, 0]
+        cdef double* G_ptr = &G[0, 0]
+        cdef double* D_ptr = &D[0, 0]
 
         cdef int sample_step = int(ceil(float(n_samples) / self.n_threads))
+
+        Dx = np.asarray(X).dot(np.asarray(D).T).T
+        G = np.asarray(D).dot(np.asarray(D).T).T
+        # dgemm(&NTRANS, &TRANS,
+        #       &n_components, &n_components, &n_features,
+        #       &fone,
+        #       D_ptr, &n_components,
+        #       D_ptr, &n_components,
+        #       &fzero,
+        #       G_ptr, &n_components
+        #       )
+
+        # Dx = D.dot(X.T)
+        # dgemm(&NTRANS, &NTRANS,
+        #       &n_components, &n_samples, &n_features,
+        #       &fone,
+        #       D_ptr, &n_components,
+        #       X_ptr, &n_features,
+        #       &fzero,
+        #       Dx_ptr, &n_components
+        #       )
 
         with nogil, parallel(num_threads=self.n_threads):
             for t in prange(self.n_threads, schedule='static'):
                 start = t * sample_step
                 stop = min(n_samples, (t + 1) * sample_step)
                 for i in range(start, stop):
-                    X_norm = ddot(&n_samples, X_ptr + i * n_samples,
-                                  &one, X_ptr +  + i * n_samples, &one)
+                    X_norm = ddot(&n_features, X_ptr + i * n_features,
+                                  &one, X_ptr + i * n_features, &one)
                     enet_coordinate_descent_gram(
-                                self.code[i], self.alpha * self.l1_ratio,
+                                code[i], self.alpha * self.l1_ratio,
                                             self.alpha * (1 - self.l1_ratio),
-                                self.G, self.Dx[:, i], X_norm,
-                                H[t],
-                                XtA[t],
-                                1000,
+                                G, Dx[:, i],
+                                X_norm,
+                                self.H[t],
+                                self.XtA[t],
+                                100,
                                 self.tol, self.random_state, 0, 0)
-        return code
+        return np.asarray(code), np.asarray(D)
 
 cdef void enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                                  double[::1, :] Q,

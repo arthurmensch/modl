@@ -13,8 +13,8 @@ def configuration(parent_package='', top_path=None):
                             sources=['modl/new/dict_fact_fast.pyx'],
                             include_dirs=[numpy.get_include(),
                                           'modl/new/randomkit'],
-                            # extra_compile_args=['-fopenmp'],
-                            # extra_link_args=['-fopenmp']
+                            extra_compile_args=['-fopenmp'],
+                            extra_link_args=['-fopenmp']
                             )]
     config.ext_modules += cythonize(extensions)
 
