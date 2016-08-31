@@ -658,3 +658,7 @@ class DictMF(BaseEstimator):
     def _callback(self):
         if self.callback is not None:
             self.callback(self)
+
+    @property
+    def total_counter(self):
+        return self.n_iter[0]

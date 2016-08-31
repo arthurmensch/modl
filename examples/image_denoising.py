@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
+from sklearn.utils import check_random_state
 
 from modl.new.dict_fact import DictFact
 
@@ -83,19 +84,25 @@ def main():
                     learning_rate=.9,
                     reduction=6,
                     verbose=2,
-                    solver='masked',
+                    solver='gram',
                     weights='sync',
-                    subset_sampling='cyclic',
-                    dict_subset_sampling='coupled',
+                    subset_sampling='random',
+                    dict_subset_sampling='independent',
                     # n_samples=2000,
                     callback=cb,
-                    n_threads=1,
+                    n_threads=2,
                     # backend='c',
                     tol=1e-2,
                     random_state=0)
     t0 = time()
-    for i in range(10):
-        dico.partial_fit(data)
+    sample_indices = np.arange(data.shape[0])
+    random_order = np.arange(data.shape[0])
+    random_state = check_random_state(0)
+    for i in range(5):
+        random_state.shuffle(random_order)
+        sample_indices = sample_indices[random_order]
+        data = data[random_order]
+        dico.partial_fit(data, sample_indices=sample_indices)
     # V = dico.D
     V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0

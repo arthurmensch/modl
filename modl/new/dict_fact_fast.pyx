@@ -2,21 +2,16 @@
 # cython: cdivision=True
 # cython: boundscheck=False
 # cython: wraparound=False
-cimport cython
 
-import numpy as np
 cimport numpy as np
-
-from libc.stdio cimport printf
-from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
-from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
-
+import numpy as np
 from cython.parallel import parallel, prange
+from libc.stdio cimport printf
+from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
 from modl._utils.enet_proj import enet_scale
-from .randomkit.random_fast cimport rk_interval, RandomStateMemoryView
 from .._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 cdef char UP = 'U'
@@ -100,7 +95,7 @@ cdef class Sampler(object):
 
     cpdef long[:] yield_subset(self) nogil:
         cdef long remainder
-        if self.subset_sampling == 2:
+        if self.subset_sampling == 1:
             self.random_state.shuffle(self.feature_range)
             self.lim_inf = 0
             self.lim_sup = self.len_subset
@@ -291,7 +286,7 @@ cdef class DictFactImpl(object):
         random_seed = self.random_state.randint(max_int)
         self.feature_sampler_1 = Sampler(self.n_features, self.len_subset,
                                     self.subset_sampling, random_seed)
-        if self.dict_subset_sampling == 2:
+        if self.dict_subset_sampling == 1:
             random_seed = self.random_state.randint(max_int)
             self.feature_sampler_2 = Sampler(self.n_features, self.len_subset,
                                         self.subset_sampling, random_seed)
@@ -403,7 +398,7 @@ cdef class DictFactImpl(object):
                                  sample_indices[start:stop])
                 self.random_state.shuffle(self.D_range)
 
-                if self.dict_subset_sampling == 2:
+                if self.dict_subset_sampling == 1:
                     subset = self.feature_sampler_2.yield_subset()
                 self.update_dict(subset)
 
