@@ -257,11 +257,13 @@ class DictFact(BaseEstimator):
 
     def score(self, X):
         code, D = self.transform(X)
+        # print(np.sum(D ** 2, axis=1))
         loss = np.sum((X - code.dot(D)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
                               + (1 - self.pen_l1_ratio) * norm2_code / 2)
+        # print(loss / X.shape[0])
         return (loss + regul) / X.shape[0]
 
     @property

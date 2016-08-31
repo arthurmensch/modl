@@ -7,6 +7,7 @@ from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn.utils import check_random_state
 
 from modl.new.dict_fact import DictFact
+from modl.dict_fact import DictMF
 
 
 class Callback(object):
@@ -70,39 +71,37 @@ def main():
     data -= np.mean(data, axis=0)
     data /= np.std(data, axis=0)
     print('done in %.2fs.' % (time() - t0))
+    random_state = check_random_state(0)
+    random_state.shuffle(data)
 
     ###############################################################################
     # Learn the dictionary from reference patches
 
     print('Learning the dictionary...')
 
+
     cb = Callback(data[:500])
     dico = DictFact(n_components=100, alpha=1,
                     l1_ratio=0,
                     pen_l1_ratio=0.9,
-                    batch_size=100,
-                    learning_rate=.9,
+                    batch_size=50,
+                    learning_rate=.8,
+                    sample_learning_rate=None,
                     reduction=6,
-                    verbose=2,
+                    verbose=1,
                     solver='gram',
                     weights='sync',
                     subset_sampling='random',
-                    dict_subset_sampling='independent',
+                    dict_subset_sampling='coupled',
                     # n_samples=2000,
                     callback=cb,
                     n_threads=2,
                     # backend='c',
                     tol=1e-2,
-                    random_state=0)
+                    random_state=0,
+                    n_epochs=30)
     t0 = time()
-    sample_indices = np.arange(data.shape[0])
-    random_order = np.arange(data.shape[0])
-    random_state = check_random_state(0)
-    for i in range(5):
-        random_state.shuffle(random_order)
-        sample_indices = sample_indices[random_order]
-        data = data[random_order]
-        dico.partial_fit(data, sample_indices=sample_indices)
+    dico.fit(data)
     # V = dico.D
     V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0

@@ -661,4 +661,4 @@ class DictMF(BaseEstimator):
 
     @property
     def total_counter(self):
-        return self.n_iter[0]
+        return self.n_iter_[0]

@@ -2,12 +2,14 @@
 # cython: cdivision=True
 # cython: boundscheck=False
 # cython: wraparound=False
+# noinspection PyUnresolvedReferences
 cimport cython
 
 import numpy as np
 cimport numpy as np
 
 from libc.stdio cimport printf
+# noinspection PyUnresolvedReferences
 from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
 from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
 
@@ -16,6 +18,7 @@ from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
 from modl._utils.enet_proj import enet_scale
+# noinspection PyUnresolvedReferences
 from .randomkit.random_fast cimport rk_interval, RandomStateMemoryView
 from .._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
@@ -50,7 +53,7 @@ cdef inline double fsign(double f) nogil:
     else:
         return -1.0
 
-cdef double max(int n, double* a) nogil:
+cdef double pmax(int n, double* a) nogil:
     """np.max(a)"""
     cdef int i
     cdef double m = a[0]
@@ -89,7 +92,6 @@ cdef class Sampler(object):
         self.len_subset = len_subset
         self.subset_sampling = subset_sampling
         self.random_state = RandomStateMemoryView(seed=random_seed)
-        self.random_state.seed()
 
         self.feature_range = np.arange(n_features, dtype='long')
         self.temp_subset = np.zeros(len_subset, dtype='long')
@@ -148,6 +150,7 @@ cdef class DictFactImpl(object):
     cdef readonly long len_subset
     cdef readonly long verbose
     cdef readonly long n_threads
+    cdef readonly long n_thread_batches
 
     cdef readonly double[::1, :] D
     cdef readonly double[:, ::1] code
@@ -239,9 +242,9 @@ cdef class DictFactImpl(object):
         self.verbose = verbose
 
         self.n_threads = n_threads
+        self.n_thread_batches = min(n_threads * 2, self.batch_size)
 
         self.random_state = RandomStateMemoryView(seed=self.random_seed)
-        self.random_state.seed()
 
         self.D = D
         self.code = np.zeros((self.n_samples, self.n_components))
@@ -276,15 +279,15 @@ cdef class DictFactImpl(object):
                             order='F')
         if self.pen_l1_ratio == 0:
             self.G_temp = np.empty((self.n_components, self.n_components,
-                                    self.n_threads),
+                                    self.n_thread_batches),
                                     order='F')
 
         self.R = np.empty((self.n_components, self.n_features), order='F')
         self.norm_temp = np.zeros(self.n_components)
         self.proj_temp = np.zeros(self.n_features)
 
-        self.H = np.empty((self.n_threads, self.n_components))
-        self.XtA = np.empty((self.n_threads, self.n_components))
+        self.H = np.empty((self.n_thread_batches, self.n_components))
+        self.XtA = np.empty((self.n_thread_batches, self.n_components))
 
         self.D_range = np.arange(self.n_components, dtype='long')
 
@@ -399,6 +402,7 @@ cdef class DictFactImpl(object):
                 for ii in range(start, stop):
                     i = sample_indices[ii]
                     self.sample_counter[i] += 1
+                # printf('%i %i %i\n', subset[0], subset[1], subset[2])
                 self.update_code(subset, X[start:stop],
                                  sample_indices[start:stop])
                 self.random_state.shuffle(self.D_range)
@@ -440,9 +444,6 @@ cdef class DictFactImpl(object):
         cdef int n_samples = self.n_samples
         cdef int n_features = self.n_features
         cdef double reduction = float(self.n_features) / self.len_subset
-        cdef int subset_thread_size = int(ceil(float(self.n_features)
-                                               / self.n_threads))
-
         cdef double* D_subset_ptr = &self.D_subset[0, 0]
         cdef double* D_ptr = &self.D[0, 0]
         cdef double* A_ptr = &self.A[0, 0]
@@ -465,7 +466,8 @@ cdef class DictFactImpl(object):
         cdef int this_subset_thread_size
         cdef double this_X_norm
 
-        cdef int sample_step = int(ceil(float(len_batch) / self.n_threads))
+        cdef int sample_step = int(ceil(float(len_batch)
+                                        / self.n_thread_batches))
         cdef int subset_step = int(ceil(float(n_features) / self.n_threads))
 
         cdef timeval tv0, tv1
@@ -530,7 +532,7 @@ cdef class DictFactImpl(object):
         if self.pen_l1_ratio == 0:
             if self.solver == 3:
                 with parallel(num_threads=self.n_threads):
-                    for t in prange(self.n_threads, schedule='static'):
+                    for t in prange(self.n_thread_batches, schedule='static'):
                         start = t * sample_step
                         stop = min(len_batch, (t + 1) * sample_step)
                         for ii in range(start, stop):
@@ -552,7 +554,7 @@ cdef class DictFactImpl(object):
                                     raise ValueError
             else:
                 with parallel(num_threads=self.n_threads):
-                    for t in prange(self.n_threads, schedule='static'):
+                    for t in prange(self.n_thread_batches, schedule='static'):
                         for p in range(n_components):
                             for q in range(n_components):
                                 self.G_temp[p, q, t] = self.G[p, q]
@@ -575,7 +577,7 @@ cdef class DictFactImpl(object):
 
         else:
             with parallel(num_threads=self.n_threads):
-                for t in prange(self.n_threads, schedule='static'):
+                for t in prange(self.n_thread_batches, schedule='static'):
                     start = t * sample_step
                     stop = min(len_batch, (t + 1) * sample_step)
                     for ii in range(start, stop):
@@ -774,41 +776,27 @@ cdef class DictFactImpl(object):
         cdef double[::1, :] D =  np.asarray(enet_scale(self.D, 1,
                                                      self.l1_ratio),
                                             order='F')
+        # cdef double[::1, :] D = self.D
         cdef double[:, ::1] code = np.ones((n_samples, self.n_components))
         cdef double[::1, :] G = np.empty((self.n_components,
                                           self.n_components), order='F')
         cdef double[::1, :] Dx = np.empty((self.n_components,
                                           n_samples), order='F')
+        cdef int n_thread_batches = min(self.n_threads * 2, n_samples)
+        cdef double[:, ::1] H = np.empty((n_thread_batches, self.n_components))
+        cdef double[:, ::1] XtA = np.empty((n_thread_batches, self.n_components))
         cdef double * X_ptr = &X[0, 0]
         cdef double* Dx_ptr = &Dx[0, 0]
         cdef double* G_ptr = &G[0, 0]
         cdef double* D_ptr = &D[0, 0]
 
-        cdef int sample_step = int(ceil(float(n_samples) / self.n_threads))
+        cdef int sample_step = int(ceil(float(n_samples) / n_thread_batches))
 
         Dx = np.asarray(X).dot(np.asarray(D).T).T
         G = np.asarray(D).dot(np.asarray(D).T).T
-        # dgemm(&NTRANS, &TRANS,
-        #       &n_components, &n_components, &n_features,
-        #       &fone,
-        #       D_ptr, &n_components,
-        #       D_ptr, &n_components,
-        #       &fzero,
-        #       G_ptr, &n_components
-        #       )
-
-        # Dx = D.dot(X.T)
-        # dgemm(&NTRANS, &NTRANS,
-        #       &n_components, &n_samples, &n_features,
-        #       &fone,
-        #       D_ptr, &n_components,
-        #       X_ptr, &n_features,
-        #       &fzero,
-        #       Dx_ptr, &n_components
-        #       )
 
         with nogil, parallel(num_threads=self.n_threads):
-            for t in prange(self.n_threads, schedule='static'):
+            for t in prange(n_thread_batches, schedule='static'):
                 start = t * sample_step
                 stop = min(n_samples, (t + 1) * sample_step)
                 for i in range(start, stop):
@@ -819,8 +807,8 @@ cdef class DictFactImpl(object):
                                             self.alpha * (1 - self.l1_ratio),
                                 G, Dx[:, i],
                                 X_norm,
-                                self.H[t],
-                                self.XtA[t],
+                                H[t],
+                                XtA[t],
                                 100,
                                 self.tol, self.random_state, 0, 0)
         return np.asarray(code), np.asarray(D)
@@ -938,7 +926,7 @@ cdef void enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
             for ii in range(n_features):
                 XtA[ii] = q[ii] - H[ii] - beta * w[ii]
             if positive:
-                dual_norm_XtA = max(n_features, XtA_ptr)
+                dual_norm_XtA = pmax(n_features, XtA_ptr)
             else:
                 dual_norm_XtA = abs_max(n_features, XtA_ptr)
 
