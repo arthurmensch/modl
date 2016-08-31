@@ -2,16 +2,21 @@
 # cython: cdivision=True
 # cython: boundscheck=False
 # cython: wraparound=False
+cimport cython
 
-cimport numpy as np
 import numpy as np
-from cython.parallel import parallel, prange
+cimport numpy as np
+
 from libc.stdio cimport printf
+from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
 from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
+
+from cython.parallel import parallel, prange
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
 from modl._utils.enet_proj import enet_scale
+from .randomkit.random_fast cimport rk_interval, RandomStateMemoryView
 from .._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
 
 cdef char UP = 'U'
