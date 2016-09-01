@@ -253,9 +253,17 @@ class DictFact(BaseEstimator):
         if not self.initialized:
             raise ValueError()
         X = check_array(X, dtype='float64', order='C')
-        code, scaled_D = self._impl.transform(X)
-        print('cool')
-        return np.asarray(code), np.asarray(scaled_D)
+        if self.pen_l1_ratio != 0:
+            code, scaled_D = self._impl.transform(X)
+            return np.asarray(code), np.asarray(scaled_D)
+        else:
+            D = self.scaled_D
+            Dx = (X.dot(D.T)).T
+            G = D.dot(D.T).T
+            G.flat[::self.n_components + 1] += self.alpha
+            code = linalg.solve(G, Dx, sym_pos=True,
+                                overwrite_a=True, check_finite=False)
+            return code.T, D
 
     def score(self, X):
         code, scaled_D = self.transform(X)

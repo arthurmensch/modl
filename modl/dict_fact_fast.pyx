@@ -106,6 +106,7 @@ cdef class DictFactImpl(object):
     cdef readonly long n_thread_batches
 
     cdef readonly double[::1, :] D
+    cdef readonly double[::1, :] _scaled_D
     cdef readonly double[:, ::1] code
     cdef readonly double[::1, :] A
     cdef readonly double[::1, :] B
@@ -812,27 +813,10 @@ cdef class DictFactImpl(object):
                                     XtA[t],
                                     1000,
                                     self.tol, self.random_state, 0, 0)
+            return code, D
         else:
-            G_temp = view.array((n_components, n_components),
-                                              sizeof(double),
-                                              format='d', mode='fortran')
-            G_temp_ptr = &G_temp[0, 0]
-            for q in range(n_components):
-                for p in range(n_components):
-                    G_temp[p, q] = G[p, q]
-                G_temp[p, p] += self.alpha
-            dposv(&UP, &n_components, &n_samples,
-                  G_temp_ptr,
-                  &n_components,
-                  Dx_ptr, &n_components,
-                  &info)
-            if info != 0:
-                raise ValueError(np.array(G_temp))
-            for ii in range(n_samples):
-                for p in range(n_components):
-                    code[ii, p] = Dx[p, ii]
-                    print(code[ii, p])
-        return code, D
+            raise ValueError('For some reason, I cannot make dposv work'
+                             'without double free bug')
 
 cdef void enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                                  double[::1, :] Q,

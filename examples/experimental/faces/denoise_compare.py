@@ -10,7 +10,7 @@ from joblib import delayed
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 
-from modl.dict_fact import DictMF
+from modl.dict_fact import DictFact
 
 
 class Callback(object):
@@ -37,7 +37,7 @@ def single_run(solver, weights,
                learning_rate, data_tr, data_te):
     t0 = time()
     cb = Callback(data_te)
-    estimator = DictMF(n_components=100, alpha=1,
+    estimator = DictFact(n_components=100, alpha=1,
                        l1_ratio=0,
                        pen_l1_ratio=.9,
                        batch_size=10,
@@ -107,18 +107,18 @@ def run(redundency=1):
     data_te = data[:1000]
     print('done in %.2fs.' % (time() - t0))
 
-    res = Parallel(n_jobs=4, verbose=10, max_nbytes=None)(
+    res = Parallel(n_jobs=2, verbose=10, max_nbytes=None)(
         delayed(single_run)(solver, weights,
                             reduction,
                             subset_sampling,
                             dict_subset_sampling,
                             learning_rate,
                             data_tr, data_tr)
-        for weights in ['async_freq', 'async_prob']
-        for reduction in [6]
+        for weights in ['async_freq']
+        for reduction in [6, 1]
         for solver in ['masked']
-        for subset_sampling in ['random', 'cyclic']
-        for dict_subset_sampling in ['independent', 'coupled']
+        for subset_sampling in ['random']
+        for dict_subset_sampling in ['coupled']
         for learning_rate in [1.])
 
     return res

@@ -74,18 +74,19 @@ t0 = time.time()
 data = faces_centered
 cb = Callback(data)
 
-estimator = DictFact(n_components=n_components, batch_size=10,
+estimator = DictFact(n_components=n_components, batch_size=20,
                      reduction=10,
                      l1_ratio=1,
-                     pen_l1_ratio=0,
+                     pen_l1_ratio=0.1,
                      alpha=0.001,
-                     max_n_iter=1000,
-                     solver='masked',
+                     max_n_iter=100000,
+                     solver='gram',
                      weights='async_prob',
                      verbose=1,
+                     n_threads=2,
                      learning_rate=.8,
                      random_state=2,
-                     # callback=cb
+                     callback=cb
                      )
 estimator.fit(data)
 train_time = (time.time() - t0)
@@ -97,18 +98,17 @@ components_ = estimator.components_
 plot_gallery('%s - Train time %.1fs' % (name, train_time),
              components_[:n_components])
 
-P = estimator.transform(data)
-# plot_gallery('Original faces',
-#              data[:n_components])
-# plot_gallery('Residual',
-#              data[:n_components] - P.T.dot(estimator.components_)[
-#                                    :n_components])
-# fig, axes = plt.subplots(1, 1, sharex=True)
-# axes.plot(cb.iter, cb.obj, label='Function value')
-# axes.legend()
-# axes.set_ylabel('Function value')
-# axes.set_xlabel('Iter')
-# axes.set_xscale('log')
-# axes.plot(cb.iter, cb.sparsity, label='sparsity')
+code, D = estimator.transform(data)
+plot_gallery('Original faces',
+             data[:n_components])
+plot_gallery('Residual',
+             data[:n_components] - code.dot(D)[
+                                   :n_components])
+fig, axes = plt.subplots(1, 1, sharex=True)
+axes.plot(cb.iter, cb.obj, label='Function value')
+axes.legend()
+axes.set_ylabel('Function value')
+axes.set_xlabel('Iter')
+axes.set_xscale('log')
 
-# plt.show()
+plt.show()
