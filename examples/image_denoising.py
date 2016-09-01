@@ -7,6 +7,8 @@ from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn.utils import check_random_state
 
 from modl.new.dict_fact import DictMF
+
+
 # from modl.dict_fact import DictMF
 
 
@@ -78,26 +80,25 @@ def main():
 
     print('Learning the dictionary...')
 
-
     cb = Callback(data[:500])
     dico = DictMF(n_components=100, alpha=1,
-                    l1_ratio=0,
-                    pen_l1_ratio=0.9,
-                    batch_size=10,
-                    learning_rate=.8,
-                    sample_learning_rate=None,
-                    reduction=6,
-                    verbose=2,
-                    solver='average',
-                    weights='sync',
-                    subset_sampling='random',
-                    dict_subset_sampling='independent',
-                    callback=cb,
-                    n_threads=2,
-                    backend='c',
-                    tol=1e-2,
-                    random_state=1,
-                    n_epochs=100)
+                  l1_ratio=0,
+                  pen_l1_ratio=0.9,
+                  batch_size=10,
+                  learning_rate=.8,
+                  sample_learning_rate=None,
+                  reduction=6,
+                  verbose=1,
+                  solver='gram',
+                  weights='sync',
+                  subset_sampling='random',
+                  dict_subset_sampling='independent',
+                  callback=cb,
+                  n_threads=2,
+                  backend='c',
+                  tol=1e-2,
+                  random_state=42,
+                  n_epochs=100)
     t0 = time()
     dico.fit(data)
     V = dico.components_

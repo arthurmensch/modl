@@ -102,7 +102,7 @@ cdef class RandomState:
         return (RandomState, (self.initial_seed, ))
 
 
-cdef class RandomStateMemoryView(RandomState):
+cdef class OurRandomState(RandomState):
     cdef void shuffle(self, long[:] x) nogil:
         cdef int i, j
         cdef int copy

@@ -14,14 +14,16 @@ from libc.stdio cimport printf
 from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
 from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
 
-from cython.parallel import parallel, prange
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
-from modl._utils.enet_proj import enet_scale
 # noinspection PyUnresolvedReferences
-from .randomkit.random_fast cimport RandomStateMemoryView, RandomState
-from .._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
+from .randomkit.random_fast cimport OurRandomState
+# noinspection PyUnresolvedReferences
+from .._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast
+
+from cython.parallel import parallel, prange
+from .._utils.enet_proj import enet_scale
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -85,14 +87,14 @@ cdef class Sampler(object):
     cdef long lim_sup
     cdef long lim_inf
 
-    cdef RandomStateMemoryView random_state
+    cdef OurRandomState random_state
 
     def __init__(self, long n_features, long len_subset, long subset_sampling,
                  unsigned long random_seed):
         self.n_features = n_features
         self.len_subset = len_subset
         self.subset_sampling = subset_sampling
-        self.random_state = RandomStateMemoryView(seed=random_seed)
+        self.random_state = OurRandomState(seed=random_seed)
 
         self.feature_range = np.arange(n_features, dtype='long')
         self.temp_subset = np.zeros(len_subset, dtype='long')
@@ -126,7 +128,7 @@ cdef class Sampler(object):
                 self.lim_sup = self.n_features
         return self.feature_range[self.lim_inf:self.lim_sup]
 
-
+@cython.final
 cdef class DictFactImpl(object):
 
     cdef readonly long batch_size
@@ -170,7 +172,8 @@ cdef class DictFactImpl(object):
     cdef readonly long total_counter
 
     cdef double[::1, :] this_X
-    cdef double[::1, :] full_X
+    cdef double[:, ::1] X_batch
+    cdef long[:] sample_indices_batch
     cdef double[::1, :] D_subset
 
     cdef double[::1, :] Dx
@@ -187,7 +190,7 @@ cdef class DictFactImpl(object):
     cdef Sampler feature_sampler_2
     cdef long[:] D_range
 
-    cdef RandomStateMemoryView random_state
+    cdef OurRandomState random_state
 
     cdef object callback
 
@@ -245,7 +248,7 @@ cdef class DictFactImpl(object):
         self.n_threads = n_threads
         self.n_thread_batches = min(n_threads * 2, self.batch_size)
 
-        self.random_state = RandomStateMemoryView(seed=self.random_seed)
+        self.random_state = OurRandomState(seed=self.random_seed)
 
         self.D = D
         self.code = np.zeros((self.n_samples, self.n_components))
@@ -272,6 +275,9 @@ cdef class DictFactImpl(object):
         self.sample_counter = np.zeros(self.n_samples, dtype='long')
         self.feature_counter = np.zeros(self.n_features, dtype='long')
 
+        self.X_batch = np.empty((self.batch_size, self.n_features),
+                                    order='C')
+        self.sample_indices_batch = np.empty(self.batch_size, dtype='long')
         self.this_X = np.empty((self.batch_size, self.n_features),
                                     order='F')
         self.D_subset = np.empty((self.n_components, self.n_features),
@@ -282,13 +288,14 @@ cdef class DictFactImpl(object):
             self.G_temp = np.empty((self.n_components, self.n_components,
                                     self.n_thread_batches),
                                     order='F')
+        else:
+            self.H = np.empty((self.n_thread_batches, self.n_components))
+            self.XtA = np.empty((self.n_thread_batches, self.n_components))
 
         self.R = np.empty((self.n_components, self.n_features), order='F')
         self.norm_temp = np.zeros(self.n_components)
         self.proj_temp = np.zeros(self.n_features)
 
-        self.H = np.empty((self.n_thread_batches, self.n_components))
-        self.XtA = np.empty((self.n_thread_batches, self.n_components))
 
         self.D_range = np.arange(self.n_components, dtype='long')
 
@@ -302,7 +309,7 @@ cdef class DictFactImpl(object):
 
         self.callback = callback
 
-    cpdef void _set_impl_params(self,
+    cpdef void set_impl_params(self,
                            double alpha=1.0,
                            double l1_ratio=0.,
                            double pen_l1_ratio=0.,
@@ -321,7 +328,6 @@ cdef class DictFactImpl(object):
                            # Dict parameter
                            # Generic parameters
                            long verbose=0,
-                           long n_threads=1,
                            object callback=None):
         cdef long old_len_subset
 
@@ -330,12 +336,29 @@ cdef class DictFactImpl(object):
         self.dict_subset_sampling = dict_subset_sampling
         self.solver = solver
 
-        if solver != 2 and self.G is not None:
-            self.G = None
-        if solver != 3 and self.G_average is not None:
+        if solver == 1 or solver == 2:
             self.G_average = None
-        if solver == 1 and self.Dx_average is not None:
+        if solver == 3 and self.G_average is None:
+            self.G_average = np.zeros((self.n_components,
+                                        self.n_components, self.n_samples),
+                                       order="F")
+        if solver == 1:
             self.Dx_average = None
+        if (solver == 1 or solver == 2) and self.Dx_average is None:
+            self.Dx_average = np.zeros((self.n_components, self.n_samples),
+                                        order="F")
+        if self.pen_l1_ratio != 0:
+            self.G_temp = None
+        if self.pen_l1_ratio == 0 and self.G_temp is None:
+            self.G_temp = np.empty((self.n_components, self.n_components,
+                                    self.n_thread_batches),
+                                    order='F')
+        if self.pen_l1_ratio == 0:
+            self.H = None
+            self.XtA = None
+        if self.pen_l1_ratio != 0 and self.H is None:
+            self.H = np.empty((self.n_thread_batches, self.n_components))
+            self.XtA = np.empty((self.n_thread_batches, self.n_components))
 
         self.alpha = alpha
         self.l1_ratio = l1_ratio
@@ -360,11 +383,11 @@ cdef class DictFactImpl(object):
         self.offset = offset
 
         self.verbose = verbose
-        self.n_threads = n_threads
 
         self.callback = callback
 
-    cpdef void partial_fit(self, double[:, ::1] X, long[:] sample_indices) except *:
+    cpdef void partial_fit(self, double[:, ::1] X, long[:] sample_indices,
+                           ) except *:
         cdef int this_n_samples = X.shape[0]
         cdef int n_batches = int(ceil(this_n_samples / self.batch_size))
         cdef int start = 0
@@ -374,9 +397,12 @@ cdef class DictFactImpl(object):
         cdef int old_total_counter = self.total_counter
         cdef int new_verbose_iter = 0
 
-        cdef int i, ii, jj, j, k, t
+        cdef int i, ii, jj, bb, j, k, t
 
         cdef long[:] subset
+
+        cdef long[:] random_order = np.arange(this_n_samples)
+        self.random_state.shuffle(random_order)
 
         with nogil:
             for k in range(n_batches):
@@ -400,17 +426,22 @@ cdef class DictFactImpl(object):
                     j = subset[jj]
                     self.feature_counter[j] += len_batch
 
-                for ii in range(start, stop):
-                    i = sample_indices[ii]
-                    self.sample_counter[i] += 1
-                # printf('%i %i %i\n', subset[0], subset[1], subset[2])
-                self.update_code(subset, X[start:stop],
-                                 sample_indices[start:stop])
+                for bb, ii in enumerate(range(start, stop)):
+                    self.sample_indices_batch[bb] =\
+                        sample_indices[random_order[ii]]
+                    self.X_batch[bb] = X[random_order[ii]]
+                    self.sample_counter[self.sample_indices_batch[bb]] += 1
+
+                self.update_code(subset, self.X_batch[:len_batch],
+                                 self.sample_indices_batch[:len_batch])
                 self.random_state.shuffle(self.D_range)
 
                 if self.dict_subset_sampling == 1:
                     subset = self.feature_sampler_2.yield_subset()
                 self.update_dict(subset)
+
+    cpdef double[::1, :] get_scaled_D(self):
+        return enet_scale(self.D, 1, self.l1_ratio)
 
     cdef int update_code(self, long[:] subset, double[:, ::1] X,
                          long[:] sample_indices) nogil except *:
@@ -699,7 +730,7 @@ cdef class DictFactImpl(object):
         gettimeofday(&tv0, &tz)
         for kk in range(self.n_components):
             k = self.D_range[kk]
-            self.norm_temp[k] = enet_norm(self.D_subset[k,
+            self.norm_temp[k] = enet_norm_fast(self.D_subset[k,
                                           :len_subset], self.l1_ratio)
         if self.solver == 2:
             dgemm(&NTRANS, &TRANS,
@@ -735,7 +766,7 @@ cdef class DictFactImpl(object):
                     self.D_subset[k, jj] = self.R[k, jj] / self.A[k, k]
                     # print(D_subset[k, jj])
 
-            enet_projection_inplace(self.D_subset[k, :len_subset],
+            enet_projection_fast(self.D_subset[k, :len_subset],
                                     self.proj_temp[:len_subset],
                                     self.norm_temp[k], self.l1_ratio)
             for jj in range(len_subset):
@@ -774,18 +805,18 @@ cdef class DictFactImpl(object):
         cdef int n_features = self.n_features
         cdef int n_components = self.n_components
         cdef double X_norm
-        cdef double[::1, :] D =  np.asarray(enet_scale(self.D, 1,
-                                                     self.l1_ratio),
-                                            order='F')
-        # cdef double[::1, :] D = self.D
+
+        cdef int n_thread_batches = min(self.n_threads * 2, n_samples)
+
+        cdef double[::1, :] D =  self.get_scaled_D()
         cdef double[:, ::1] code = np.ones((n_samples, self.n_components))
         cdef double[::1, :] G = np.empty((self.n_components,
                                           self.n_components), order='F')
         cdef double[::1, :] Dx = np.empty((self.n_components,
                                           n_samples), order='F')
-        cdef int n_thread_batches = min(self.n_threads * 2, n_samples)
         cdef double[:, ::1] H = np.empty((n_thread_batches, self.n_components))
         cdef double[:, ::1] XtA = np.empty((n_thread_batches, self.n_components))
+
         cdef double * X_ptr = &X[0, 0]
         cdef double* Dx_ptr = &Dx[0, 0]
         cdef double* G_ptr = &G[0, 0]
@@ -812,7 +843,7 @@ cdef class DictFactImpl(object):
                                 XtA[t],
                                 1000,
                                 self.tol, self.random_state, 0, 0)
-        return np.asarray(code), np.asarray(D)
+        return code, D
 
 cdef void enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                                  double[::1, :] Q,
@@ -821,7 +852,7 @@ cdef void enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                                  double[:] H,
                                  double[:] XtA,
                                  int max_iter, double tol,
-                                 RandomStateMemoryView random_state,
+                                 OurRandomState random_state,
                                  bint random, bint positive) nogil:
     """Cython version of the coordinate descent algorithm
         for Elastic-Net regression

@@ -62,7 +62,7 @@ cdef inline void swap(double[:] b, unsigned int i, unsigned int j,
     return
 
 
-cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,
+cpdef void enet_projection_fast(double[:] v, double[:] b, double radius,
                              double l1_ratio) nogil:
     cdef unsigned int m = v.shape[0]
     cdef UINT32_t random_state = 0
@@ -150,7 +150,7 @@ cpdef void enet_projection_inplace(double[:] v, double[:] b, double radius,
     return
 
 
-cpdef double enet_norm(double[:] v, double l1_ratio) nogil:
+cpdef double enet_norm_fast(double[:] v, double l1_ratio) nogil:
     """Returns the elastic net norm of a vector
 
     Parameters

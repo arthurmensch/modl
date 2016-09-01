@@ -9,7 +9,7 @@ from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
-from ._utils.enet_proj_fast cimport enet_projection_inplace, enet_norm
+from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -408,7 +408,7 @@ cdef void _update_dict(double[::1, :] D_,
     gettimeofday(&tv0, &tz)
     for kk in range(components_range_len):
         k = D_range[kk]
-        norm_temp[k] = enet_norm(D_subset[k, :len_subset], l1_ratio)
+        norm_temp[k] = enet_norm_fast(D_subset[k, :len_subset], l1_ratio)
     if solver == 2:
         dgemm(&NTRANS, &TRANS,
               &n_components, &n_components, &len_subset,
@@ -443,7 +443,7 @@ cdef void _update_dict(double[::1, :] D_,
                 D_subset[k, jj] = R[k, jj] / A_[k, k]
                 # print(D_subset[k, jj])
 
-        enet_projection_inplace(D_subset[k, :len_subset],
+        enet_projection_fast(D_subset[k, :len_subset],
                                 proj_temp[:len_subset],
                                 norm_temp[k], l1_ratio)
         for jj in range(len_subset):

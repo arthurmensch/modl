@@ -116,6 +116,10 @@ class DictFact(BaseEstimator):
     def feature_counter(self):
         return np.array(self._impl.feature_counter)
 
+    @property
+    def scaled_D(self):
+        return np.array(self._impl.get_scaled_D())
+
     def _initialize(self, X):
         """Initialize statistic and dictionary"""
         n_samples, n_features = X.shape
@@ -147,7 +151,7 @@ class DictFact(BaseEstimator):
                                   **params)
 
     def _update_impl_params(self):
-        self._impl._set_impl_params(**self._get_impl_params())
+        self._impl.set_impl_params(**self._get_impl_params())
 
     def _get_impl_params(self):
         solver = {
@@ -192,7 +196,6 @@ class DictFact(BaseEstimator):
 
                'reduction': self.reduction,
                'verbose': self.verbose,
-               'n_threads': self.n_threads,
                'callback': None if self.callback is None else lambda: self.callback(self)}
         return res
 
@@ -200,6 +203,9 @@ class DictFact(BaseEstimator):
         if self.initialized:
             if 'n_samples' in params:
                 raise ValueError('Cannot reset attribute n_samples after'
+                                 'initialization')
+            if 'n_threads' in params:
+                raise ValueError('Cannot reset attribute n_threads after'
                                  'initialization')
             super(self).set_params(self)
             self._update_impl_params()
@@ -232,21 +238,13 @@ class DictFact(BaseEstimator):
         """
         X = check_array(X, dtype='float', order='C')
         self._initialize(X)
-        random_state = check_random_state(self.random_state)
         sample_indices = np.arange(X.shape[0])
-        random_order = np.arange(X.shape[0])
         if self.max_n_iter > 0:
             while self._impl.total_count < self.max_n_iter:
-                random_state.shuffle(random_order)
-                sample_indices = sample_indices[random_order]
-                X = X[random_order]
                 self.partial_fit(X, sample_indices=sample_indices,
                                  check_input=False)
         else:
             for i in range(self.n_epochs):
-                random_state.shuffle(random_order)
-                sample_indices = sample_indices[random_order]
-                X = X[random_order]
                 self.partial_fit(X, sample_indices=sample_indices,
                                  check_input=False)
         return self
@@ -255,12 +253,12 @@ class DictFact(BaseEstimator):
         if not self.initialized:
             raise ValueError()
         X = check_array(X, dtype='float64', order='C')
-        return self._impl.transform(X)
-
+        code, scaled_D = self._impl.transform(X)
+        return np.asarray(code), np.asarray(scaled_D)
 
     def score(self, X):
-        code, D = self.transform(X)
-        loss = np.sum((X - code.dot(D)) ** 2) / 2
+        code, scaled_D = self.transform(X)
+        loss = np.sum((X - code.dot(self.scaled_D)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
@@ -269,10 +267,12 @@ class DictFact(BaseEstimator):
 
     @property
     def components_(self):
-        return enet_scale(self.D, 1, self.l1_ratio)
+        return self.scaled_D
 
+    # For compatibility
     @property
     def n_iter_(self):
         return np.array([self.total_counter])
 
+# For compatibility
 DictMF = DictFact
