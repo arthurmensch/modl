@@ -9,7 +9,7 @@ from sklearn.datasets import fetch_olivetti_faces
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
-from modl.dict_fact import DictMF
+from modl.dict_fact import DictFact
 
 
 def sqnorm(X):
@@ -154,7 +154,7 @@ def single_run(n_components, var_red, projection, coupled_subset, offset,
                alpha,
                data):
     cb = Callback(data)
-    estimator = DictMF(n_components=n_components, batch_size=10,
+    estimator = DictFact(n_components=n_components, batch_size=10,
                        reduction=reduction, l1_ratio=1, alpha=alpha,
                        coupled_subset=coupled_subset,
                        max_n_iter=20000,

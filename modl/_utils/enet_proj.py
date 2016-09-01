@@ -7,8 +7,7 @@ for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 import numpy as np
 from sklearn.utils import check_array
 
-from .enet_proj_fast import enet_norm_fast
-from .enet_proj_fast import enet_projection_fast
+from .enet_proj_fast import enet_norm_fast, enet_projection_fast
 
 
 def enet_projection(v, radius=1., l1_ratio=1, check_input=False):

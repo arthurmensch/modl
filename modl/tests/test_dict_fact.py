@@ -5,13 +5,11 @@ import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 from sklearn.utils import check_random_state
 
-from modl.dict_fact import DictMF
+from modl.dict_fact import DictFact
 
 rng_global = 0
 
-backends = ['c', 'python']
-
-var_reds = ['weight_based', 'sample_based', 'combo']
+solvers = ['masked', 'gram', 'average']
 
 
 def generate_sparse_synthetic(n_samples=200,
@@ -46,22 +44,12 @@ def generate_synthetic(n_samples=200,
     return X, Q
 
 
-# def test_compute_code():
-#     X, Q = generate_synthetic()
-#     P = compute_code(X, Q, alpha=1e-3)
-#     Y = P.T.dot(Q)
-#     assert_array_almost_equal(X, Y, decimal=2)
-
-@pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("var_red", var_reds)
-def test_dict_mf_reconstruction(backend, var_red):
-    if backend == 'c' and var_red == 'combo':
-        return
+@pytest.mark.parametrize("solver", solvers)
+def test_dict_mf_reconstruction(solver):
     X, Q = generate_synthetic()
-    dict_mf = DictMF(n_components=4, alpha=1e-4,
+    dict_mf = DictFact(n_components=4, alpha=1e-4,
                      max_n_iter=300, l1_ratio=0,
-                     backend=backend,
-                     var_red=var_red,
+                     solver=solver,
                      random_state=rng_global, reduction=1)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
@@ -69,18 +57,14 @@ def test_dict_mf_reconstruction(backend, var_red):
     assert_array_almost_equal(X, Y, decimal=1)
 
 
-@pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("var_red", var_reds)
-def test_dict_mf_reconstruction_reduction(backend, var_red):
-    if backend == 'c' and var_red == 'combo':
-        return
+@pytest.mark.parametrize("solver", solvers)
+def test_dict_mf_reconstruction_reduction(solver):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
-    dict_mf = DictMF(n_components=4, alpha=1e-6,
+    dict_mf = DictFact(n_components=4, alpha=1e-6,
                      max_n_iter=800, l1_ratio=0,
-                     backend=backend,
-                     var_red=var_red,
+                     solver=solver,
                      learning_rate=0.9,
                      random_state=rng_global, reduction=2)
     dict_mf.fit(X)
@@ -90,20 +74,14 @@ def test_dict_mf_reconstruction_reduction(backend, var_red):
     assert (rel_error < 0.06)
 
 
-@pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("var_red", var_reds)
-@pytest.mark.parametrize("replacement", [False, True])
-def test_dict_mf_reconstruction_reproductible(backend, var_red, replacement):
-    if backend == 'c' and var_red == 'combo':
-        return
+@pytest.mark.parametrize("solver", solvers)
+def test_dict_mf_reconstruction_reproductible(solver):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
-    dict_mf = DictMF(n_components=4, alpha=1e-6,
+    dict_mf = DictFact(n_components=4, alpha=1e-6,
                      max_n_iter=800, l1_ratio=0,
-                     backend=backend,
-                     replacement=replacement,
-                     var_red=var_red,
+                     solver=solver,
                      random_state=rng_global, reduction=2)
     dict_mf.fit(X)
     D1 = dict_mf.components_.copy()
@@ -116,18 +94,14 @@ def test_dict_mf_reconstruction_reproductible(backend, var_red, replacement):
     assert_array_equal(P1, P2)
 
 
-@pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("var_red", var_reds)
-def test_dict_mf_reconstruction_reduction_batch(backend, var_red):
-    if backend == 'c' and var_red == 'combo':
-        return
+@pytest.mark.parametrize("solver", solvers)
+def test_dict_mf_reconstruction_reduction_batch(solver):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
-    dict_mf = DictMF(n_components=4, alpha=1e-6,
+    dict_mf = DictFact(n_components=4, alpha=1e-6,
                      max_n_iter=400, l1_ratio=0,
-                     backend=backend,
-                     var_red=var_red,
+                     solver=solver,
                      random_state=3, batch_size=3,
                      coupled_subset=True,
                      learning_rate=0.9,
@@ -139,18 +113,14 @@ def test_dict_mf_reconstruction_reduction_batch(backend, var_red):
     assert (rel_error < 0.06)
 
 
-@pytest.mark.parametrize("backend", backends)
-@pytest.mark.parametrize("var_red", var_reds)
-def test_dict_mf_reconstruction_sparse_dict(backend, var_red):
-    if backend == 'c' and var_red == 'combo':
-        return
+@pytest.mark.parametrize("solver", solvers)
+def test_dict_mf_reconstruction_sparse_dict(solver):
     X, Q = generate_sparse_synthetic(300, 4)
     rng = check_random_state(0)
     dict_init = Q + rng.randn(*Q.shape) * 0.01
-    dict_mf = DictMF(n_components=4, alpha=1e-4, max_n_iter=400, l1_ratio=1,
+    dict_mf = DictFact(n_components=4, alpha=1e-4, max_n_iter=400, l1_ratio=1,
                      dict_init=dict_init,
-                     backend=backend,
-                     var_red=var_red,
+                     solver=solver,
                      random_state=rng_global)
     dict_mf.fit(X)
     Q_rec = dict_mf.components_

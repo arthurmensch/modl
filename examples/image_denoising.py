@@ -6,10 +6,7 @@ from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn.utils import check_random_state
 
-from modl.new.dict_fact import DictMF
-
-
-# from modl.dict_fact import DictMF
+from modl.dict_fact import DictFact
 
 
 class Callback(object):
@@ -28,14 +25,9 @@ class Callback(object):
     def __call__(self, mf):
         test_time = time()
         self.obj.append(mf.score(self.X_tr))
-        # R = (mf.B_ - mf.A_.dot(mf.D_))
-        # scale = np.diag(mf.A_).copy()[:, np.newaxis]
-        # scale[scale == 0] = 1
-        # R /= scale
-        # self.R.append(np.sum(R ** 2))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_[0])
+        self.iter.append(mf.total_counter)
 
 
 def main():
@@ -81,11 +73,11 @@ def main():
     print('Learning the dictionary...')
 
     cb = Callback(data[:500])
-    dico = DictMF(n_components=100, alpha=1,
+    dico = DictFact(n_components=100, alpha=1,
                   l1_ratio=0,
                   pen_l1_ratio=0.9,
                   batch_size=10,
-                  learning_rate=.8,
+                  learning_rate=.9,
                   sample_learning_rate=None,
                   reduction=6,
                   verbose=1,
@@ -98,7 +90,7 @@ def main():
                   backend='c',
                   tol=1e-2,
                   random_state=42,
-                  n_epochs=100)
+                  n_epochs=10)
     t0 = time()
     dico.fit(data)
     V = dico.components_

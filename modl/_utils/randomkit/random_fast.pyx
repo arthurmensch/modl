@@ -4,6 +4,7 @@
 # cython: wraparound=False
 #
 #  Copyright 2005 Robert Kern (robert.kern@gmail.com)
+cimport cython
 
 from libc cimport stdlib
 
@@ -117,3 +118,44 @@ cdef class OurRandomState(RandomState):
             x[j] = x_temp
             i = i - 1
         return
+
+@cython.final
+cdef class Sampler(object):
+    def __init__(self, long n_features, long len_subset, long subset_sampling,
+                 unsigned long random_seed):
+        self.n_features = n_features
+        self.len_subset = len_subset
+        self.subset_sampling = subset_sampling
+        self.random_state = OurRandomState(seed=random_seed)
+
+        self.feature_range = np.arange(n_features, dtype='long')
+        self.temp_subset = np.zeros(len_subset, dtype='long')
+        self.lim_sup = 0
+        self.lim_inf = 0
+
+        self.random_state.shuffle(self.feature_range)
+
+    cpdef long[:] yield_subset(self) nogil:
+        cdef long remainder
+        if self.subset_sampling == 1:
+            self.random_state.shuffle(self.feature_range)
+            self.lim_inf = 0
+            self.lim_sup = self.len_subset
+        else:
+            if self.n_features != self.len_subset:
+                self.lim_inf = self.lim_sup
+                remainder = self.n_features - self.lim_inf
+                if remainder == 0:
+                    self.random_state.shuffle(self.feature_range)
+                    self.lim_inf = 0
+                elif remainder < self.len_subset:
+                    self.temp_subset[:remainder] = self.feature_range[:remainder]
+                    self.feature_range[:remainder] = self.feature_range[self.lim_inf:]
+                    self.feature_range[self.lim_inf:] = self.temp_subset[:remainder]
+                    self.random_state.shuffle(self.feature_range[remainder:])
+                    self.lim_inf = 0
+                self.lim_sup = self.lim_inf + self.len_subset
+            else:
+                self.lim_inf = 0
+                self.lim_sup = self.n_features
+        return self.feature_range[self.lim_inf:self.lim_sup]

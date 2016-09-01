@@ -11,16 +11,16 @@ def configuration(parent_package='', top_path=None):
 
     extensions = [Extension('modl/dict_fact_fast',
                             sources=['modl/dict_fact_fast.pyx'],
-                            include_dirs=[numpy.get_include()],
-                            extra_compile_args=['-fopenmp'],
+                            include_dirs=[numpy.get_include(),
+                                          'modl/_utils/randomkit'],
+                            extra_compile_args=['-fopenmp -g'],
                             extra_link_args=['-fopenmp']
                             )]
-    config.ext_modules += cythonize(extensions)
+    config.ext_modules += cythonize(extensions, gdb_debug=True)
 
     config.add_subpackage('tests')
     config.add_subpackage('_utils')
     config.add_subpackage('datasets')
-    config.add_subpackage('new')
 
     return config
 
