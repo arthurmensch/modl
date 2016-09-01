@@ -29,31 +29,25 @@ class Callback(object):
         self.obj.append(mf.score(self.X_tr))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_[0])
+        self.iter.append(mf.total_counter)
 
 
-def single_run(solver, weights,
-               reduction, subset_sampling, dict_subset_sampling,
-               learning_rate, data_tr, data_te):
+def single_run(data_tr, data_te, **kwargs):
     t0 = time()
     cb = Callback(data_te)
     estimator = DictFact(n_components=100, alpha=1,
-                       l1_ratio=0,
-                       pen_l1_ratio=.9,
-                       batch_size=10,
-                       learning_rate=learning_rate,
-                       reduction=reduction,
-                       subset_sampling=subset_sampling,
-                       dict_subset_sampling=dict_subset_sampling,
-                       verbose=5,
-                       solver=solver,
-                       weights=weights,
-                       n_epochs=2, backend='c',
-                       callback=cb)
+                         l1_ratio=0,
+                         pen_l1_ratio=.9,
+                         learning_rate=0.9,
+                         batch_size=10,
+                         verbose=2,
+                         n_epochs=10,
+                         callback=cb,
+                         **kwargs)
     V = estimator.fit(data_tr).components_
     dt = time() - t0
     print('done in %.2fs.' % dt)
-    return cb, estimator
+    return cb, kwargs
 
 
 class MyEncoder(json.JSONEncoder):
@@ -75,10 +69,6 @@ def run(redundency=1):
     # a floating point representation with values between 0 and 1.
     face = face / 255
 
-    # downsample for higher speed
-    face = face[::2, ::2] + face[1::2, ::2] + face[::2, 1::2] + face[1::2,
-                                                                1::2]
-    face /= 4.0
     height, width = face.shape
 
     # Distort the right half of the image
@@ -106,46 +96,27 @@ def run(redundency=1):
     data_tr = data[:2000]
     data_te = data[:1000]
     print('done in %.2fs.' % (time() - t0))
-
-    res = Parallel(n_jobs=2, verbose=10, max_nbytes=None)(
-        delayed(single_run)(solver, weights,
-                            reduction,
-                            subset_sampling,
-                            dict_subset_sampling,
-                            learning_rate,
-                            data_tr, data_tr)
-        for weights in ['async_freq']
-        for reduction in [6, 1]
-        for solver in ['masked']
-        for subset_sampling in ['random']
-        for dict_subset_sampling in ['coupled']
-        for learning_rate in [1.])
+    exps = [{'reduction': 1, 'solver': 'masked'},
+            {'reduction': 4, 'solver': 'average'},
+            {'reduction': 4, 'solver': 'gram'}]
+    res = Parallel(n_jobs=3, verbose=10, max_nbytes=None,
+                   backend='threading')(
+        delayed(single_run)(data_tr, data_tr, **this_exp)
+        for this_exp in exps)
 
     return res
 
 
 def main():
     mem = Memory(cachedir=expanduser('~/cache'))
-    for redundency in [1]:
-        res = mem.cache(run)(redundency=redundency)
+    for redundency in [4]:
         res = run(redundency=redundency)
-        # full_res_dict = []
-        # for cb, estimator in res:
-        #     res_dict = {'solver': estimator.solver,
-        #                 'reduction': estimator.reduction,
-        #                 'iter': cb.iter, 'times': cb.times,
-        #                 'obj': cb.obj}
-        #     full_res_dict.append(res_dict)
-        # json.dump(full_res_dict, open('results.json', 'w+'), cls=MyEncoder)
         fig, ax = plt.subplots(1, 1, sharex=True)
         fig.subplots_adjust(left=0.15, right=0.6)
 
-        for cb, estimator in res:
+        for cb, kwargs in res:
             ax.plot(cb.iter[1:], cb.obj[1:],
-                    label='Solver: %s\n Sampling: %s %s %s' % (
-                        estimator.solver, estimator.weights,
-                        estimator.subset_sampling,
-                        estimator.dict_subset_sampling))
+                    label=str(kwargs))
 
         ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
         ax.set_ylabel('Function value')

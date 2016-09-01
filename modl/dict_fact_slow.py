@@ -10,11 +10,11 @@ from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches, check_array
 
 from modl._utils.enet_proj import enet_projection, enet_scale, enet_norm
-from .dict_fact_fast import dict_learning, _update_subset, \
-    _get_simple_weights, enet_coordinate_descent_gram, sparse_coding
+from .dict_fact_slow_ext import _update_subset,\
+    _get_simple_weights, enet_coordinate_descent_gram
 
 
-class DictMF(BaseEstimator):
+class DictFact(BaseEstimator):
     """Matrix factorization estimator based on masked online dictionary
      learning.
 
@@ -91,7 +91,6 @@ class DictMF(BaseEstimator):
                  n_epochs=1,
                  random_state=None,
                  verbose=0,
-                 backend='c',
                  n_threads=1,
                  callback=None):
 
@@ -121,7 +120,6 @@ class DictMF(BaseEstimator):
 
         self.random_state = random_state
         self.verbose = verbose
-        self.backend = backend
 
         self.n_threads = n_threads
 
@@ -130,6 +128,10 @@ class DictMF(BaseEstimator):
     @property
     def components_(self):
         return enet_scale(self.D_, 1, self.l1_ratio)
+
+    @property
+    def total_counter(self):
+        return self.n_iter_[0]
 
     def _get_solver(self):
         solver = {
@@ -219,22 +221,6 @@ class DictMF(BaseEstimator):
         self.n_iter_ = np.zeros(1, dtype='long')
 
         # Temporary array allocation
-        if self.backend == 'c':
-            self._this_X = np.empty((self.batch_size, n_cols),
-                                    order='F')
-            self._full_X = np.empty((self.batch_size, n_cols),
-                                    order='F')
-            self._D_subset = np.empty((self.n_components, n_cols),
-                                      order='F')
-            self._Dx = np.empty((self.n_components, self.batch_size),
-                                order='F')
-            self._G_temp = np.empty((self.n_components, self.n_components),
-                                    order='F')
-
-            self._R = np.empty((self.n_components, n_cols), order='F')
-            self._norm_temp = np.zeros(self.n_components)
-            self._proj_temp = np.zeros(n_cols)
-
         self._H = np.empty((self.batch_size, self.n_components))
         self._XtA = np.empty((self.batch_size, self.n_components))
 
@@ -312,34 +298,17 @@ class DictMF(BaseEstimator):
                                 overwrite_a=True, check_finite=False)
         else:
             code = np.ones((n_rows, self.n_components), order='C')
-            if self.backend == 'python':
-                for i in range(n_rows):
-                    random_seed = self.random_state_.randint(
-                        np.iinfo(np.uint32).max)
-                    enet_coordinate_descent_gram(
-                        code[i], self.alpha * self.pen_l1_ratio,
-                                 self.alpha * (1 - self.pen_l1_ratio),
-                        G, Dx[:, i], X[i],
-                        self._H[0],
-                        self._XtA[0],
-                        100,
-                        self.tol, random_seed, 0, 0)
-            else:
-                H = np.empty((n_rows, self.n_components), order='C')
-                XtA = np.empty((n_rows, self.n_components), order='C')
+            for i in range(n_rows):
                 random_seed = self.random_state_.randint(
                     np.iinfo(np.uint32).max)
-                sparse_coding(self.alpha,
-                              self.pen_l1_ratio,
-                              self.tol,
-                              code,
-                              H,
-                              XtA,
-                              random_seed,
-                              G,
-                              Dx,
-                              X,
-                              self.n_threads)
+                enet_coordinate_descent_gram(
+                    code[i], self.alpha * self.pen_l1_ratio,
+                             self.alpha * (1 - self.pen_l1_ratio),
+                    G, Dx[:, i], X[i],
+                    self._H[0],
+                    self._XtA[0],
+                    100,
+                    self.tol, random_seed, 0, 0)
         return code
 
     def partial_fit(self, X, y=None, sample_subset=None, check_input=True):
@@ -361,119 +330,64 @@ class DictMF(BaseEstimator):
 
         self.random_state_.shuffle(row_range)
 
-        if self.backend == 'c':
-            random_seed = self.random_state_.randint(np.iinfo(np.uint32).max)
-            dict_learning(X,
-                          row_range,
-                          sample_subset,
-                          self.batch_size,
-                          self.alpha,
-                          self.learning_rate,
-                          self.sample_learning_rate_,
-                          self.offset,
-                          self.l1_ratio,
-                          self.pen_l1_ratio,
-                          self.tol,
-                          self.reduction,
-                          self._get_solver(),
-                          self._get_weights(),
-                          self._get_subset_sampling(),
-                          self._get_dict_subset_sampling(),
-                          self.D_,
-                          self.code_,
-                          self.A_,
-                          self.B_,
-                          self.G_ if self.solver == 'gram'
-                          else DictMF._dummy_2d_float,
-                          self.Dx_average_ if self.solver in ['gram',
-                                                              'average']
-                          else DictMF._dummy_2d_float,
-                          self.G_average_ if self.solver == 'average'
-                          else DictMF._dummy_3d_float,
-                          self.n_iter_,
-                          self.counter_,
-                          self.row_counter_,
-                          self._D_subset,
-                          self._Dx,
-                          self._G_temp,
-                          self._this_X,
-                          self._full_X,
-                          self._H,
-                          self._XtA,
-                          self._subset_range,
-                          self._subset_temp,
-                          self._subset_lim,
-                          self._dict_subset_range,
-                          self._dict_subset_lim,
-                          self._this_sample_subset,
-                          self._R,
-                          self._D_range,
-                          self._norm_temp,
-                          self._proj_temp,
-                          self.verbose,
-                          self.n_threads,
-                          random_seed,
-                          self._callback,
-                          )
-        else:
-            new_verbose_iter_ = 0
-            old_n_iter = self.n_iter_[0]
+        new_verbose_iter_ = 0
+        old_n_iter = self.n_iter_[0]
 
-            batches = gen_batches(len(row_range), self.batch_size)
+        batches = gen_batches(len(row_range), self.batch_size)
 
-            for batch in batches:
-                if self.verbose:
-                    if self.n_iter_[0] - old_n_iter >= new_verbose_iter_:
-                        print("Iteration %i" % self.n_iter_[0])
-                        new_verbose_iter_ += n_rows // self.verbose
-                        self._callback()
+        for batch in batches:
+            if self.verbose:
+                if self.n_iter_[0] - old_n_iter >= new_verbose_iter_:
+                    print("Iteration %i" % self.n_iter_[0])
+                    new_verbose_iter_ += n_rows // self.verbose
+                    self._callback()
 
-                row_batch = row_range[batch]
-                len_batch = row_batch.shape[0]
+            row_batch = row_range[batch]
+            len_batch = row_batch.shape[0]
 
-                if 0 < self.max_n_iter <= self.n_iter_[0] + len_batch - 1:
-                    return
+            if 0 < self.max_n_iter <= self.n_iter_[0] + len_batch - 1:
+                return
 
-                len_subset = int(floor(n_cols / self.reduction))
+            len_subset = int(floor(n_cols / self.reduction))
+            random_seed = self.random_state_.randint(
+                np.iinfo(np.uint32).max)
+            _update_subset(self.subset_sampling != 'cyclic',
+                           len_subset,
+                           self._subset_range,
+                           self._subset_lim,
+                           self._subset_temp,
+                           random_seed)
+            subset = self._subset_range[
+                     self._subset_lim[0]:self._subset_lim[1]]
+
+            self.counter_[0] += len_batch
+            self.counter_[subset + 1] += len_batch
+            self.row_counter_[sample_subset[row_batch]] += 1
+
+            self._update_code_slow(X[row_batch],
+                                   subset,
+                                   sample_subset[row_batch],
+                                   )
+
+            if self.dict_subset_sampling == 'coupled':
+                dict_subset = subset
+            else:
                 random_seed = self.random_state_.randint(
                     np.iinfo(np.uint32).max)
                 _update_subset(self.subset_sampling != 'cyclic',
                                len_subset,
-                               self._subset_range,
-                               self._subset_lim,
+                               self._dict_subset_range,
+                               self._dict_subset_lim,
                                self._subset_temp,
                                random_seed)
-                subset = self._subset_range[
-                         self._subset_lim[0]:self._subset_lim[1]]
-
-                self.counter_[0] += len_batch
-                self.counter_[subset + 1] += len_batch
-                self.row_counter_[sample_subset[row_batch]] += 1
-
-                self._update_code_slow(X[row_batch],
-                                       subset,
-                                       sample_subset[row_batch],
-                                       )
-
-                if self.dict_subset_sampling == 'coupled':
-                    dict_subset = subset
-                else:
-                    random_seed = self.random_state_.randint(
-                        np.iinfo(np.uint32).max)
-                    _update_subset(self.subset_sampling != 'cyclic',
-                                   len_subset,
-                                   self._dict_subset_range,
-                                   self._dict_subset_lim,
-                                   self._subset_temp,
-                                   random_seed)
-                    dict_subset = self._dict_subset_range[
-                                  self._dict_subset_lim[0]:
-                                  self._dict_subset_lim[1]]
-                # End else
-                self.random_state_.shuffle(self._D_range)
-                # Dictionary update
-                self._update_dict_slow(dict_subset, self._D_range)
-                self.n_iter_[0] += len(row_batch)
+                dict_subset = self._dict_subset_range[
+                              self._dict_subset_lim[0]:
+                              self._dict_subset_lim[1]]
+            # End else
+            self.random_state_.shuffle(self._D_range)
+            # Dictionary update
+            self._update_dict_slow(dict_subset, self._D_range)
+            self.n_iter_[0] += len(row_batch)
 
     def _update_code_slow(self, full_X,
                           subset,
