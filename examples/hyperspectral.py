@@ -1,21 +1,22 @@
+import os
+from os.path import expanduser, join
 from time import time
 
-import gc
-from sklearn.decomposition import MiniBatchDictionaryLearning
-from sklearn.feature_extraction.image import \
-    reconstruct_from_patches_2d, extract_patches_2d
-from sklearn.utils import check_random_state, gen_batches
-
-from modl._utils.hyper import *
+from modl._utils.hyperspectral import fetch_aviris
 from modl.dict_fact import DictFact
+from sklearn.feature_extraction.image import extract_patches_2d
+
+import numpy as np
+from joblib import Memory
+
+import matplotlib.pyplot as plt
 
 n_components = 100
 
 def load_aviris(test=False, max_patches=None, random_state=None):
     patch_size = (8, 8)
     full_img = fetch_aviris()
-    img = full_img[::4, ::4, ::2].copy()
-    del full_img
+    img = full_img
 
     n_channels = img.shape[2]
     height, width = img.shape[:-1]
@@ -83,7 +84,7 @@ def run(n_jobs=1):
 
     t0 = time()
     dico.fit(X_train)
-    V = dico.components_.reshape(n_components,
+    components = dico.components_.reshape(n_components,
                                  height,
                                  width, n_channels)
     dt = cb.times[-1] if dico.callback != None else time() - t0
@@ -91,9 +92,9 @@ def run(n_jobs=1):
 
     fig = plt.figure(figsize=(4.2, 8))
     for channel in range(2):
-        for i, comp in enumerate(V[:100]):
+        for i, comp in enumerate(components[:100]):
             ax = fig.add_subplot(20, 10, 2 * i + 1 + channel)
-            ax.imshow(comp[:, :, channel], cmap=plt.cm.gray_r,
+            ax.imshow(comp[:, :, channel * 10], cmap=plt.cm.gray_r,
                        interpolation='nearest')
             ax.set_xticks(())
             ax.set_yticks(())
@@ -106,7 +107,7 @@ def run(n_jobs=1):
     plt.close(fig)
     fig, ax = plt.subplots(1, 1, sharex=True)
     obj = np.array(cb.obj)
-    iter = np.array(cb.obj)
+    iter = np.array(cb.iter)
     ax.plot(iter, obj)
     ax.set_ylim([0.9 * np.min(obj[1:]), 1.1 * np.max(obj[1:])])
     ax.set_ylabel('Function value')
