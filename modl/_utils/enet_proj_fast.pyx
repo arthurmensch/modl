@@ -17,6 +17,7 @@ from libc.math cimport sqrt, fabs
 
 from .enet_proj_fast cimport UINT32_t
 
+from cython cimport view
 
 cdef enum:
     # Max value for our rand_r replacement (near the bottom).
@@ -174,3 +175,32 @@ cpdef double enet_norm_fast(double[:] v, double l1_ratio) nogil:
         v_abs = fabs(v[i])
         res += v_abs * (l1_ratio + (1 - l1_ratio) * v_abs)
     return res
+
+cpdef double[::1, :] enet_scale_fast(double[::1, :] X,
+                              double l1_ratio, double radius=1):
+    cdef int n_targets = X.shape[0]
+    cdef int n_features = X.shape[1]
+    cdef double l1_norm = 0
+    cdef double l2_norm = 0
+    cdef double S = 0
+
+    cdef double[::1, :] scaled_X = view.array((n_targets, n_features),
+                                     sizeof(double),
+                                     format='d',
+                                     mode='fortran')
+    for i in range(n_targets):
+        l1_norm = 0
+        l2_norm = 0
+        for j in range(n_features):
+            l1_norm += fabs(X[i, j])
+            l2_norm += X[i, j] ** 2
+        l1_norm *= l1_ratio
+        l2_norm *= (1 - l1_ratio)
+        if l2_norm != 0:
+            S = (- l1_norm + sqrt(l1_norm ** 2
+                                  + 4 * radius * l2_norm)) / (2 * l2_norm)
+        elif l1_norm != 0:
+            S = radius / l1_norm
+        for j in range(n_features):
+            scaled_X[i, j] = X[i, j] * S
+    return scaled_X

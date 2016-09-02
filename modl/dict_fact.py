@@ -118,7 +118,7 @@ class DictFact(BaseEstimator):
 
     @property
     def scaled_D(self):
-        return np.array(self._impl.get_scaled_D())
+        return np.array(self._impl.scaled_D())
 
     def _initialize(self, X):
         """Initialize statistic and dictionary"""
@@ -135,18 +135,18 @@ class DictFact(BaseEstimator):
                     'Initial dictionary and X shape mismatch: %r != %r' % (
                         self.dict_init.shape,
                         (self.n_components, n_features)))
-            D = check_array(self.dict_init, order='C',
+            D = check_array(self.dict_init, order='F',
                             dtype='float', copy=True)
         else:
-            D = np.empty((self.n_components, n_features), order='C')
+            D = np.empty((self.n_components, n_features), order='F')
             D[:] = random_state.randn(self.n_components, n_features)
 
-        D = np.asfortranarray(
-            enet_scale(D, l1_ratio=self.l1_ratio, radius=1))
+        D = enet_scale(D, l1_ratio=self.l1_ratio, radius=1)
 
         params = self._get_impl_params()
         random_seed = random_state.randint(max_int)
         self._impl = DictFactImpl(D, n_samples,
+                                  n_threads=self.n_threads,
                                   random_seed=random_seed,
                                   **params)
 
@@ -214,7 +214,7 @@ class DictFact(BaseEstimator):
 
     def partial_fit(self, X, sample_indices=None, check_input=None):
         if sample_indices is None:
-            sample_indices = np.arange(X.shape[0])
+            sample_indices = np.arange(X.shape[0], dtype='i4')
         if not self.initialized or check_input is None:
             check_input = True
         if check_input:
@@ -238,7 +238,7 @@ class DictFact(BaseEstimator):
         """
         X = check_array(X, dtype='float', order='C')
         self._initialize(X)
-        sample_indices = np.arange(X.shape[0])
+        sample_indices = np.arange(X.shape[0], dtype='i4')
         if self.max_n_iter > 0:
             while self._impl.total_counter < self.max_n_iter:
                 self.partial_fit(X, sample_indices=sample_indices,
@@ -253,17 +253,17 @@ class DictFact(BaseEstimator):
         if not self.initialized:
             raise ValueError()
         X = check_array(X, dtype='float64', order='C')
-        if self.pen_l1_ratio != 0:
-            code, scaled_D = self._impl.transform(X)
-            return np.asarray(code), np.asarray(scaled_D)
-        else:
-            D = self.scaled_D
-            Dx = (X.dot(D.T)).T
-            G = D.dot(D.T).T
-            G.flat[::self.n_components + 1] += self.alpha
-            code = linalg.solve(G, Dx, sym_pos=True,
-                                overwrite_a=True, check_finite=False)
-            return code.T, D
+        # if self.pen_l1_ratio != 0:
+        code, scaled_D = self._impl.transform(X)
+        return np.asarray(code), np.asarray(scaled_D)
+        # else:
+        #     D = self.scaled_D
+        #     Dx = (X.dot(D.T)).T
+        #     G = D.dot(D.T).T
+        #     G.flat[::self.n_components + 1] += self.alpha
+        #     code = linalg.solve(G, Dx, sym_pos=True,
+        #                         overwrite_a=True, check_finite=False)
+        #     return code.T, D
 
     def score(self, X):
         code, scaled_D = self.transform(X)

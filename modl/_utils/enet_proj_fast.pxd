@@ -12,3 +12,6 @@ cpdef double enet_norm_fast(double[:] v, double l1_ratio) nogil
 
 cpdef void enet_projection_fast(double[:] v, double[:] b, double radius,
                              double l1_ratio) nogil
+
+cpdef double[::1, :] enet_scale_fast(double[::1, :] X,
+                              double l1_ratio, double radius=*)

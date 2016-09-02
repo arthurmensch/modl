@@ -1,5 +1,7 @@
 import json
-from os.path import expanduser
+import os
+from copy import copy, deepcopy
+from os.path import expanduser, join
 from time import time
 
 import matplotlib.pyplot as plt
@@ -34,6 +36,9 @@ class Callback(object):
 
 def single_run(data_tr, data_te, **kwargs):
     t0 = time()
+    redundency = kwargs.pop('redundency', 1)
+    data_tr = np.tile(data_tr, (1, redundency))
+    data_te = np.tile(data_te, (1, redundency))
     cb = Callback(data_te)
     estimator = DictFact(n_components=100, alpha=1,
                          l1_ratio=0,
@@ -41,13 +46,14 @@ def single_run(data_tr, data_te, **kwargs):
                          learning_rate=0.9,
                          batch_size=10,
                          verbose=2,
-                         n_epochs=10,
+                         n_epochs=50,
                          callback=cb,
+                         random_state=0,
                          **kwargs)
     V = estimator.fit(data_tr).components_
     dt = time() - t0
     print('done in %.2fs.' % dt)
-    return cb, kwargs
+    return cb
 
 
 class MyEncoder(json.JSONEncoder):
@@ -62,7 +68,8 @@ class MyEncoder(json.JSONEncoder):
             return super(MyEncoder, self).default(obj)
 
 
-def run(redundency=1):
+def run(n_jobs=1):
+    mem = Memory(cachedir=expanduser('~/cache'))
     face = misc.face(gray=True)
 
     # Convert from uint8 representation with values between 0 and 255 to
@@ -80,48 +87,51 @@ def run(redundency=1):
     print('Extracting reference patches...')
     t0 = time()
     patch_size = (8, 8)
-    tile = redundency
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                              max_patches=4000)
-    tiled_data = np.empty(
-        (data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
-    for i in range(tile):
-        for j in range(tile):
-            tiled_data[:, i::tile, j::tile] = data
-    data = tiled_data
-    patch_size = (8 * tile, 8 * tile)
+                              max_patches=4000, random_state=0)
     data = data.reshape(data.shape[0], -1)
     data -= np.mean(data, axis=0)
     data /= np.std(data, axis=0)
     data_tr = data[:2000]
     data_te = data[:1000]
     print('done in %.2fs.' % (time() - t0))
-    exps = [{'reduction': 1, 'solver': 'masked'},
-            {'reduction': 4, 'solver': 'average'},
-            {'reduction': 4, 'solver': 'gram'}]
-    res = Parallel(n_jobs=3, verbose=10, max_nbytes=None,
-                   backend='threading')(
-        delayed(single_run)(data_tr, data_tr, **this_exp)
+    exps = []
+    exp_per_redundency = [
+        {'reduction': 1, 'solver': 'masked'},
+            {'reduction': 8, 'solver': 'average'},
+            {'reduction': 8, 'solver': 'masked'},
+            {'reduction': 8, 'solver': 'gram'}]
+    for redundency in [4, 8, 16, 32, 64]:
+        these_exps = deepcopy(exp_per_redundency)
+        for this_exp in these_exps:
+            this_exp['redundency'] = redundency
+            exps.append(this_exp)
+    cbs = Parallel(n_jobs=n_jobs, verbose=10, max_nbytes=None,
+                   backend='multiprocessing')(
+        delayed(mem.cache(single_run))(data_tr, data_te, **this_exp)
         for this_exp in exps)
-
+    res = []
+    for this_exp, this_cb in zip(exps, cbs):
+        this_res = copy(this_exp)
+        this_res['iter'] = this_cb.iter
+        this_res['obj'] = this_cb.obj
+        this_res['times'] = this_cb.times
+        res.append(this_res)
     return res
 
 
 def main():
-    mem = Memory(cachedir=expanduser('~/cache'))
-    for redundency in [4]:
-        res = run(redundency=redundency)
-        fig, ax = plt.subplots(1, 1, sharex=True)
-        fig.subplots_adjust(left=0.15, right=0.6)
+    res = run(20)
+    output_dir = expanduser('~/output/modl/denoise')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    with open(join(output_dir, 'compare.json'), 'w+') as f:
+        json.dump(res, f, cls=MyEncoder)
 
-        for cb, kwargs in res:
-            ax.plot(cb.iter[1:], cb.obj[1:],
-                    label=str(kwargs))
-
-        ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
-        ax.set_ylabel('Function value')
-
-    plt.show()
+def plot():
+    output_dir = expanduser('~/output/modl/denoise')
+    with open(join(output_dir, 'compare.json'), 'w+') as f:
+        json.dump(res, f, cls=MyEncoder)
 
 
 if __name__ == '__main__':

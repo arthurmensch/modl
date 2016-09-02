@@ -7,6 +7,7 @@
 cimport cython
 
 from libc cimport stdlib
+from cython cimport view
 
 import numpy as np
 cimport numpy as np
@@ -42,9 +43,10 @@ cdef extern from "randomkit.h":
             rk_state *state)
     double rk_gauss(rk_state *state)
 
-cdef class RandomState:
+cdef unsigned int MAX_INT = np.iinfo(np.uint32).max
 
-    def __init__(self, seed=None):
+cdef class RandomState:
+    def __cinit__(self, seed=None):
         self.internal_state = <rk_state*>stdlib.malloc(sizeof(rk_state))
         self.initial_seed = seed
         self.seed(seed)
@@ -56,55 +58,17 @@ cdef class RandomState:
 
     def seed(self, seed=None):
         cdef rk_error errcode
+        cdef unsigned long long_seed
         if seed is None:
             errcode = rk_randomseed(self.internal_state)
-        elif type(seed) is int:
+        else:
+            long_seed = <unsigned long> seed
             rk_seed(seed, self.internal_state)
-        elif isinstance(seed, np.integer):
-            iseed = int(seed)
-            rk_seed(iseed, self.internal_state)
-        else:
-            raise ValueError("Wrong seed")
 
-    cdef long randint(self, unsigned long high) nogil:
-        return <long>rk_interval(high, self.internal_state)
+    cdef int randint(self, unsigned int high=MAX_INT) nogil:
+        return <int>rk_interval(high, self.internal_state)
 
-    def shuffle(self, object x):
-        cdef int i, j
-        cdef int copy
-
-        i = len(x) - 1
-        try:
-            j = len(x[0])
-        except:
-            j = 0
-
-        if (j == 0):
-            # adaptation of random.shuffle()
-            while i > 0:
-                j = rk_interval(i, self.internal_state)
-                x[i], x[j] = x[j], x[i]
-                i = i - 1
-        else:
-            # make copies
-            copy = hasattr(x[0], 'copy')
-            if copy:
-                while(i > 0):
-                    j = rk_interval(i, self.internal_state)
-                    x[i], x[j] = x[j].copy(), x[i].copy()
-                    i = i - 1
-            else:
-                while(i > 0):
-                    j = rk_interval(i, self.internal_state)
-                    x[i], x[j] = x[j][:], x[i][:]
-                    i = i - 1
-
-    def __reduce__(self):
-        return (RandomState, (self.initial_seed, ))
-
-
-cdef class OurRandomState(RandomState):
-    cdef void shuffle(self, long[:] x) nogil:
+    cdef void shuffle(self, int[:] x) nogil:
         cdef int i, j
         cdef int copy
 
@@ -119,24 +83,34 @@ cdef class OurRandomState(RandomState):
             i = i - 1
         return
 
+    cdef int[:] permutation(self, int size):
+        cdef int i
+        cdef int[:] res = view.array((size, ), sizeof(int), format='i')
+        for i in range(size):
+            res[i] = i
+        self.shuffle(res)
+        return res
+
 @cython.final
 cdef class Sampler(object):
-    def __init__(self, long n_features, long len_subset, long subset_sampling,
+    def __cinit__(self, int n_features, int len_subset, int subset_sampling,
                  unsigned long random_seed):
         self.n_features = n_features
         self.len_subset = len_subset
         self.subset_sampling = subset_sampling
-        self.random_state = OurRandomState(seed=random_seed)
+        self.random_state = RandomState(seed=random_seed)
 
-        self.feature_range = np.arange(n_features, dtype='long')
-        self.temp_subset = np.zeros(len_subset, dtype='long')
+        self.feature_range = self.random_state.permutation(self.n_features)
+        self.temp_subset = view.array((self.len_subset, ),
+                                        sizeof(int),
+                                        format='i')
         self.lim_sup = 0
         self.lim_inf = 0
 
         self.random_state.shuffle(self.feature_range)
 
-    cpdef long[:] yield_subset(self) nogil:
-        cdef long remainder
+    cpdef int[:] yield_subset(self) nogil:
+        cdef int remainder
         if self.subset_sampling == 1:
             self.random_state.shuffle(self.feature_range)
             self.lim_inf = 0

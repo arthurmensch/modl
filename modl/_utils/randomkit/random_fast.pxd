@@ -8,22 +8,21 @@ cdef extern from "randomkit.h":
 
 cdef class RandomState:
     cdef rk_state *internal_state
-    cdef object initial_seed
-    cdef long randint(self, unsigned long high) nogil
-
-cdef class OurRandomState(RandomState):
-    cdef void shuffle(self, long[:] x) nogil
+    cdef unsigned long initial_seed
+    cdef int randint(self, unsigned int high=*) nogil
+    cdef void shuffle(self, int[:] x) nogil
+    cdef int[:] permutation(self, int size)
 
 cdef class Sampler(object):
-    cdef long n_features
-    cdef long len_subset
-    cdef long subset_sampling
+    cdef int n_features
+    cdef int len_subset
+    cdef int subset_sampling
 
-    cdef long[:] feature_range
-    cdef long[:] temp_subset
-    cdef long lim_sup
-    cdef long lim_inf
+    cdef int[:] feature_range
+    cdef int[:] temp_subset
+    cdef int lim_sup
+    cdef int lim_inf
 
-    cdef OurRandomState random_state
+    cdef RandomState random_state
 
-    cpdef long[:] yield_subset(self) nogil
+    cpdef int[:] yield_subset(self) nogil

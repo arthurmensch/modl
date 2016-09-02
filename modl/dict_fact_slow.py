@@ -309,7 +309,7 @@ class DictFact(BaseEstimator):
                     self._XtA[0],
                     100,
                     self.tol, random_seed, 0, 0)
-        return code
+        return code, D
 
     def partial_fit(self, X, y=None, sample_subset=None, check_input=True):
         """Stream data X to update the estimator dictionary
@@ -561,13 +561,13 @@ class DictFact(BaseEstimator):
             self.G_ += D_subset.dot(D_subset.T)
 
     def score(self, X):
-        code = self.transform(X)
-        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
+        code, D = self.transform(X)
+        loss = np.sum((X - code.dot(D)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
                               + (1 - self.pen_l1_ratio) * norm2_code / 2)
-        return loss / X.shape[0], regul / X.shape[0]
+        return (loss + regul) / X.shape[0]
 
     def _callback(self):
         if self.callback is not None:
