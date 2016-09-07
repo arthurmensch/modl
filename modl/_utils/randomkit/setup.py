@@ -15,7 +15,9 @@ def configuration(parent_package='', top_path=None):
 
     extensions = [Extension('modl/_utils/randomkit/random_fast',
                             sources=['modl/_utils/randomkit/random_fast.pyx',
-                                     'modl/_utils/randomkit/randomkit.c'],
+                                     'modl/_utils/randomkit/randomkit.c',
+                                     'modl/_utils/randomkit/distributions.c',
+                                     ],
                             include_dirs=[numpy.get_include(),
                                           'modl/_utils/randomkit'],
                             )]
@@ -23,6 +25,7 @@ def configuration(parent_package='', top_path=None):
 
     config.add_subpackage('tests')
     config.add_data_files('randomkit.h')
+    config.add_data_files('distributions.h')
 
     return config
 

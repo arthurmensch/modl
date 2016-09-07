@@ -12,10 +12,12 @@ cdef class RandomState:
     cdef int randint(self, unsigned int high=*) nogil
     cdef void shuffle(self, int[:] x) nogil
     cdef int[:] permutation(self, int size)
+    cdef int binomial(self, int n, double p) nogil
+    cdef int geometric(self, double p) nogil
 
 cdef class Sampler(object):
     cdef int n_features
-    cdef int len_subset
+    cdef double reduction
     cdef int subset_sampling
 
     cdef int[:] feature_range

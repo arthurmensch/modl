@@ -21,6 +21,8 @@ from ._utils.randomkit.random_fast cimport Sampler, RandomState
 # noinspection PyUnresolvedReferences
 from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, enet_scale_fast
 
+import numpy as np
+
 # import
 from cython.parallel import parallel, prange
 
@@ -88,7 +90,7 @@ cdef class DictFactImpl(object):
 
     cdef readonly int solver
     cdef readonly int subset_sampling
-    cdef readonly int dict_subset_sampling
+    cdef readonly int dict_reduction
     cdef readonly int weights
 
     cdef readonly int max_n_iter
@@ -156,7 +158,7 @@ cdef class DictFactImpl(object):
                  int solver=1,
                  int weights=1,
                  int subset_sampling=1,
-                 int dict_subset_sampling=1,
+                 int dict_reduction=0,
                  # Dict parameter
                  # Generic parameters
                  unsigned long random_seed=0,
@@ -172,7 +174,6 @@ cdef class DictFactImpl(object):
         self.n_features = D.shape[1]
 
         self.reduction = reduction
-        self.len_subset = int(ceil(self.n_features / reduction))
 
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -186,7 +187,7 @@ cdef class DictFactImpl(object):
 
         self.solver = solver
         self.subset_sampling = subset_sampling
-        self.dict_subset_sampling = dict_subset_sampling
+        self.dict_reduction = dict_reduction
         self.weights = weights
 
 
@@ -207,9 +208,11 @@ cdef class DictFactImpl(object):
         self.A = view.array((self.n_components, self.n_components),
                                               sizeof(double),
                                               format='d', mode='fortran')
+        self.A[:] = 0
         self.B = view.array((self.n_components, self.n_features),
                                               sizeof(double),
                                               format='d', mode='fortran')
+        self.B[:] = 0
         self.G = view.array((self.n_components, self.n_components),
                                           sizeof(double),
                                           format='d', mode='fortran')
@@ -291,11 +294,16 @@ cdef class DictFactImpl(object):
             self.D_range[i] = i
 
         random_seed = self.random_state.randint()
-        self.feature_sampler_1 = Sampler(self.n_features, self.len_subset,
+        self.feature_sampler_1 = Sampler(self.n_features, self.reduction,
                                     self.subset_sampling, random_seed)
-        if self.dict_subset_sampling == 1:
+
+        # self.reduction_ = np.mean(np.maximum(np.random.geometric(self.reduction
+        #                                                          / self.n_features, 1000),
+        #                                      self.n_features))
+        if self.dict_reduction != 0:
             random_seed = self.random_state.randint()
-            self.feature_sampler_2 = Sampler(self.n_features, self.len_subset,
+            self.feature_sampler_2 = Sampler(self.n_features,
+                                             self.dict_reduction,
                                         self.subset_sampling, random_seed)
 
         self.callback = callback
@@ -315,7 +323,7 @@ cdef class DictFactImpl(object):
                            int solver=1,
                            int weights=1,
                            int subset_sampling=1,
-                           int dict_subset_sampling=1,
+                           int dict_reduction=0,
                            # Dict parameter
                            # Generic parameters
                            int verbose=0,
@@ -326,7 +334,7 @@ cdef class DictFactImpl(object):
 
         self.weights = weights
         self.subset_sampling = subset_sampling
-        self.dict_subset_sampling = dict_subset_sampling
+        self.dict_reduction = dict_reduction
         self.solver = solver
 
         if solver == 1 or solver == 2:
@@ -377,18 +385,18 @@ cdef class DictFactImpl(object):
         self.tol = tol
 
         self.reduction = reduction
-        old_len_subset = self.len_subset
-        self.len_subset = int(ceil(self.n_features / reduction))
+        self.feature_sampler_1.reduction = self.reduction
 
-        if old_len_subset != self.len_subset:
-            random_seed = self.random_state.randint()
-            self.feature_sampler_1 = Sampler(self.n_features, self.len_subset,
-                                        self.subset_sampling, random_seed)
-            if self.dict_subset_sampling == 2:
+        if self.dict_reduction != 0:
+            if self.feature_sampler_2 is None:
                 random_seed = self.random_state.randint()
-                self.feature_sampler_2 = Sampler(self.n_features, self.len_subset,
-                                            self.subset_sampling, random_seed)
-
+                self.feature_sampler_2 = Sampler(self.n_features,
+                                 self.dict_reduction,
+                            self.subset_sampling, random_seed)
+            else:
+                self.feature_sampler_2.reduction = self.dict_reduction
+        else:
+            self.feature_sampler_2 = None
         self.learning_rate = learning_rate
         self.sample_learning_rate = sample_learning_rate
         self.offset = offset
@@ -419,7 +427,7 @@ cdef class DictFactImpl(object):
                 if self.verbose and self.total_counter\
                         - old_total_counter >= new_verbose_iter:
                     printf("Iteration %i\n", self.total_counter)
-                    new_verbose_iter += self.n_samples / self.verbose
+                    new_verbose_iter += this_n_samples / self.verbose
                     if self.callback is not None:
                         with gil:
                             self.callback()
@@ -446,7 +454,7 @@ cdef class DictFactImpl(object):
                                  self.sample_indices_batch[:len_batch])
                 self.random_state.shuffle(self.D_range)
 
-                if self.dict_subset_sampling == 1:
+                if self.dict_reduction != 0:
                     subset = self.feature_sampler_2.yield_subset()
                 self.update_dict(subset)
 
@@ -485,7 +493,7 @@ cdef class DictFactImpl(object):
         cdef int n_components = self.n_components
         cdef int n_samples = self.n_samples
         cdef int n_features = self.n_features
-        cdef double reduction = float(self.n_features) / self.len_subset
+        cdef double reduction = float(self.n_features) / len_subset
         cdef double* D_subset_ptr = &self.D_subset[0, 0]
         cdef double* D_ptr = &self.D[0, 0]
         cdef double* A_ptr = &self.A[0, 0]
@@ -519,14 +527,13 @@ cdef class DictFactImpl(object):
             G_average_ptr = &self.G_average[0, 0, 0]
         if self.pen_l1_ratio == 0:
             G_temp_ptr = &self.G_temp[0, 0, 0]
-
         gettimeofday(&tv0, &tz)
         for ii in range(len_batch):
-            for jj in range(self.len_subset):
+            for jj in range(len_subset):
                 j = subset[jj]
                 self.this_X[ii, jj] = X[ii, j]
 
-        for jj in range(self.len_subset):
+        for jj in range(len_subset):
             j = subset[jj]
             for k in range(self.n_components):
                 self.D_subset[k, jj] = self.D[k, j]
@@ -630,7 +637,7 @@ cdef class DictFactImpl(object):
                                            &ONE) * reduction
                         enet_coordinate_descent_gram(
                             self.code[i], self.alpha * self.pen_l1_ratio,
-                                      self.alpha * (1 - self.pen_l1_ratio),
+                                          self.alpha * (1 - self.pen_l1_ratio),
                             self.G_average[:, :, i] if self.solver == 3
                             else self.G,
                             self.Dx[:, ii],
@@ -649,7 +656,7 @@ cdef class DictFactImpl(object):
 
         gettimeofday(&tv0, &tz)
         w_A = get_simple_weights(self.total_counter, len_batch, self.learning_rate,
-                                  self.offset)
+                                 self.offset)
 
         # Dx = this_code
         w_batch = w_A / len_batch
@@ -679,27 +686,41 @@ cdef class DictFactImpl(object):
                           &one_m_w,
                           B_ptr + start * n_components, &n_components)
         else:
-            # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
             # Reuse D_subset as B_subset
-            for jj in range(len_subset):
-                j = subset[jj]
-                if self.weights == 2:
-                    w_B = fmin(1., w_A
-                               * float(self.total_counter)
-                               / self.feature_counter[j])
-                else:
-                    w_B = fmin(1, w_A * reduction)
-                for k in range(n_components):
-                    self.D_subset[k, jj] = self.B[k, j] * (1. - w_B)
-                for ii in range(len_batch):
-                    self.this_X[ii, jj] *= w_B / len_batch
-            dgemm(&NTRANS, &NTRANS,
-                  &n_components, &len_subset, &len_batch,
-                  &FONE,
-                  Dx_ptr, &n_components,
-                  this_X_ptr, &len_batch,
-                  &FONE,
-                  D_subset_ptr, &n_components)
+            # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
+            if self.weights == 2:
+                for jj in range(len_subset):
+                    j = subset[jj]
+                    w_B = fmin(1., w_A * float(self.total_counter) /
+                               self.feature_counter[j])
+                    one_m_w = 1. - w_B
+                    w_batch = w_B / len_batch
+                    for k in range(n_components):
+                        self.D_subset[k, jj] = self.B[k, j] * one_m_w
+                    for ii in range(len_batch):
+                        self.this_X[ii, jj] *= w_batch
+                dgemm(&NTRANS, &NTRANS,
+                      &n_components, &len_subset, &len_batch,
+                      &FONE,
+                      Dx_ptr, &n_components,
+                      this_X_ptr, &len_batch,
+                      &FONE,
+                      D_subset_ptr, &n_components)
+            else:
+                w_B = fmin(1., w_A * self.reduction)
+                one_m_w = 1. - w_B
+                w_batch = w_B / len_batch
+                for jj in range(len_subset):
+                    j = subset[jj]
+                    for k in range(n_components):
+                        self.D_subset[k, jj] = self.B[k, j]
+                dgemm(&NTRANS, &NTRANS,
+                      &n_components, &len_subset, &len_batch,
+                      &w_batch,
+                      Dx_ptr, &n_components,
+                      this_X_ptr, &len_batch,
+                      &one_m_w,
+                      D_subset_ptr, &n_components)
             for jj in range(len_subset):
                 j = subset[jj]
                 for k in range(n_components):

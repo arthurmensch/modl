@@ -52,7 +52,7 @@ def main():
     tile = 4
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                              max_patches=2000, random_state=0)
+                              max_patches=10000, random_state=0)
     tiled_data = np.empty(
         (data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
     for i in range(tile):
@@ -73,25 +73,43 @@ def main():
     print('Learning the dictionary...')
 
     cb = Callback(data[:500])
+    n_samples = data.shape[0]
     dico = DictFact(n_components=100, alpha=1,
-                  l1_ratio=0,
-                  pen_l1_ratio=0.9,
-                  batch_size=100,
-                  learning_rate=.9,
-                  sample_learning_rate=None,
-                  reduction=6,
-                  verbose=1,
-                  solver='gram',
-                  weights='sync',
-                  subset_sampling='random',
-                  dict_subset_sampling='coupled',
-                  callback=cb,
-                  n_threads=2,
-                  tol=1e-2,
-                  random_state=42,
-                  n_epochs=10)
+                    l1_ratio=0,
+                    pen_l1_ratio=0.9,
+                    batch_size=100,
+                    learning_rate=.8,
+                    sample_learning_rate=1,
+                    reduction=10,
+                    verbose=2,
+                    solver='gram',
+                    weights='async_freq',
+                    subset_sampling='random',
+                    dict_reduction='follow',
+                    callback=cb,
+                    n_threads=3,
+                    n_samples=n_samples,
+                    tol=1e-2,
+                    random_state=42,
+                    n_epochs=30)
     t0 = time()
     dico.fit(data)
+    # reduction = dico.reduction
+    # warmup = 0
+    # dico.set_params(reduction=1)
+    # warmup_epochs = warmup // n_samples
+    # for _ in range(warmup_epochs):
+    #     dico.partial_fit(data)
+    # warmup_rem = warmup % n_samples
+    # if warmup_rem != 0:
+    #     dico.partial_fit(data[:warmup_rem], np.arange(warmup, dtype='i4'))
+    #     dico.set_params(reduction=reduction)
+    #     dico.partial_fit(data[warmup_rem:],
+    #                      np.arange(warmup, n_samples, dtype='i4'))
+    # else:
+    #     dico.set_params(reduction=reduction)
+    # for i in range(50):
+    #     dico.partial_fit(data)
     V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0
     print('done in %.2fs., test time: %.2fs' % (dt, cb.test_time))

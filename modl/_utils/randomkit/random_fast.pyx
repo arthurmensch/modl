@@ -12,6 +12,8 @@ from cython cimport view
 import numpy as np
 cimport numpy as np
 
+from libc.math cimport ceil
+
 cdef extern from "randomkit.h":
 
     ctypedef struct rk_state:
@@ -43,6 +45,10 @@ cdef extern from "randomkit.h":
             rk_state *state)
     double rk_gauss(rk_state *state)
 
+cdef extern from "distributions.h":
+    long rk_binomial(rk_state *state, long n, double p) nogil
+    long long rk_geometric(rk_state *state, double p) nogil
+
 cdef unsigned int MAX_INT = np.iinfo(np.uint32).max
 
 cdef class RandomState:
@@ -67,6 +73,12 @@ cdef class RandomState:
 
     cdef int randint(self, unsigned int high=MAX_INT) nogil:
         return <int>rk_interval(high, self.internal_state)
+
+    cdef int binomial(self, int n, double p) nogil:
+        return <int>rk_binomial(self.internal_state, n, p)
+
+    cdef int    geometric(self, double p) nogil:
+        return <int>rk_geometric(self.internal_state, p)
 
     cdef void shuffle(self, int[:] x) nogil:
         cdef int i, j
@@ -93,15 +105,15 @@ cdef class RandomState:
 
 @cython.final
 cdef class Sampler(object):
-    def __cinit__(self, int n_features, int len_subset, int subset_sampling,
+    def __cinit__(self, int n_features, double reduction, int subset_sampling,
                  unsigned long random_seed):
         self.n_features = n_features
-        self.len_subset = len_subset
+        self.reduction = reduction
         self.subset_sampling = subset_sampling
         self.random_state = RandomState(seed=random_seed)
 
         self.feature_range = self.random_state.permutation(self.n_features)
-        self.temp_subset = view.array((self.len_subset, ),
+        self.temp_subset = view.array((self.n_features, ),
                                         sizeof(int),
                                         format='i')
         self.lim_sup = 0
@@ -111,24 +123,30 @@ cdef class Sampler(object):
 
     cpdef int[:] yield_subset(self) nogil:
         cdef int remainder
+        cdef int len_subset = self.random_state.binomial(self.n_features,
+                                                         1. / self.reduction)
+        # cdef int len_subset = min(self.n_features,
+        #                           self.random_state.geometric(
+        #                               self.reduction / self.n_features) + 1)
+        #
         if self.subset_sampling == 1:
             self.random_state.shuffle(self.feature_range)
             self.lim_inf = 0
-            self.lim_sup = self.len_subset
+            self.lim_sup = len_subset
         else:
-            if self.n_features != self.len_subset:
+            if self.n_features != len_subset:
                 self.lim_inf = self.lim_sup
                 remainder = self.n_features - self.lim_inf
                 if remainder == 0:
                     self.random_state.shuffle(self.feature_range)
                     self.lim_inf = 0
-                elif remainder < self.len_subset:
+                elif remainder < len_subset:
                     self.temp_subset[:remainder] = self.feature_range[:remainder]
                     self.feature_range[:remainder] = self.feature_range[self.lim_inf:]
                     self.feature_range[self.lim_inf:] = self.temp_subset[:remainder]
                     self.random_state.shuffle(self.feature_range[remainder:])
                     self.lim_inf = 0
-                self.lim_sup = self.lim_inf + self.len_subset
+                self.lim_sup = self.lim_inf + len_subset
             else:
                 self.lim_inf = 0
                 self.lim_sup = self.n_features

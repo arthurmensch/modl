@@ -26,7 +26,7 @@ class DictFact(BaseEstimator):
                  solver='gram',  # ['average', 'gram', 'masked']
                  weights='sync',  # ['sync', 'async']
                  subset_sampling='random',  # ['random', 'cyclic']
-                 dict_subset_sampling='independent',
+                 dict_reduction='follow',
                  # ['independent', 'coupled']
                  # Dict parameter
                  dict_init=None,
@@ -57,7 +57,7 @@ class DictFact(BaseEstimator):
 
         self.solver = solver
         self.subset_sampling = subset_sampling
-        self.dict_subset_sampling = dict_subset_sampling
+        self.dict_reduction = dict_reduction
         self.weights = weights
 
         self.max_n_iter = max_n_iter
@@ -168,10 +168,12 @@ class DictFact(BaseEstimator):
             'random': 1,
             'cyclic': 2,
         }
-        dict_subset_sampling = {
-            'independent': 1,
-            'coupled': 2,
-        }
+        if self.dict_reduction == 'follow':
+            dict_reduction = 0
+        elif self.dict_reduction == 'same':
+            dict_reduction = self.reduction
+        else:
+            dict_reduction = self.dict_reduction
 
         if self.sample_learning_rate is None:
             sample_learning_rate = 2.5 - 2 * self.learning_rate
@@ -191,12 +193,11 @@ class DictFact(BaseEstimator):
                'solver': solver[self.solver],
                'weights': weights[self.weights],
                'subset_sampling': subset_sampling[self.subset_sampling],
-               'dict_subset_sampling':
-                   dict_subset_sampling[self.dict_subset_sampling],
-
+               'dict_reduction': dict_reduction,
                'reduction': self.reduction,
                'verbose': self.verbose,
-               'callback': None if self.callback is None else lambda: self.callback(self)}
+               'callback': None if self.callback is None else lambda:
+               self.callback(self)}
         return res
 
     def set_params(self, **params):
@@ -207,10 +208,10 @@ class DictFact(BaseEstimator):
             if 'n_threads' in params:
                 raise ValueError('Cannot reset attribute n_threads after'
                                  'initialization')
-            super(self).set_params(self)
+            BaseEstimator.set_params(self, **params)
             self._update_impl_params()
         else:
-            super(self).set_params(self)
+            BaseEstimator.set_params(self, **params)
 
     def partial_fit(self, X, sample_indices=None, check_input=None):
         if sample_indices is None:
