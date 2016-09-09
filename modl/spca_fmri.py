@@ -21,8 +21,7 @@ from sklearn.externals.joblib import Memory
 from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
 
-from ._utils.masking.multi_nifti_masker import MultiNiftiMasker
-from .dict_fact import DictMF
+from .dict_fact import DictFact
 
 
 class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
@@ -99,13 +98,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  random_state=None,
                  l1_ratio=1,
                  batch_size=20,
-                 replacement=False,
-                 coupled_subset=True,
                  reduction=1,
-                 projection='partial',
                  learning_rate=1,
                  offset=0,
-                 var_red='weight_based',
                  shelve=True,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -113,9 +108,12 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  target_affine=None, target_shape=None,
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=0,
-                 n_jobs=1, backend='python', verbose=0,
-                 trace_folder=None
-                 ):
+                 n_jobs=1, verbose=0,
+                 G_agg='full',
+                 AB_agg='masked',
+                 subset_sampling='random',
+                 Dx_agg='average', dict_reduction='follow',
+                 callback=None):
         BaseDecomposition.__init__(self, n_components=n_components,
                                    random_state=random_state,
                                    mask=mask,
@@ -132,23 +130,24 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                                    memory_level=memory_level,
                                    n_jobs=n_jobs, verbose=verbose,
                                    )
+        self.G_agg = G_agg
+        self.AB_agg = AB_agg
+        self.Dx_agg = Dx_agg
+        self.subset_sampling = subset_sampling
+        self.dict_reduction = dict_reduction
         self.l1_ratio = l1_ratio
         self.alpha = alpha
         self.dict_init = dict_init
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.reduction = reduction
-        self.projection = projection
-        self.var_red = var_red
-        self.replacement = replacement
-        self.coupled_subset = coupled_subset
 
-        self.backend = backend
         self.shelve = shelve
-        self.trace_folder = trace_folder
 
         self.learning_rate = learning_rate
         self.offset = offset
+
+        self.callback = callback
 
     def fit(self, imgs, y=None, confounds=None, raw=False):
         """Compute the mask and the ICA maps across subjects
@@ -167,11 +166,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         # Base logic for decomposition estimators
         BaseDecomposition.fit(self, imgs)
 
-        # Cast to MultiNiftiMasker with shelving
-        masker_params = self.masker_.get_params()
-        mask_img = self.masker_.mask_img_
-        masker_params['mask_img'] = mask_img
-        self.masker_ = MultiNiftiMasker(**masker_params).fit()
+        self._io_time = 0
+
+        self.masker_._shelving = self.shelve
 
         random_state = check_random_state(self.random_state)
 
@@ -180,75 +177,71 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             raise ValueError('Number of n_epochs should be at least one,'
                              ' got {r}'.format(self.n_epochs))
 
-        if confounds is None:
-            confounds = itertools.repeat(None)
-
         if raw:
             data_list = imgs
-        else:
-            if self.shelve:
-                data_list = self.masker_.transform(imgs, confounds,
-                                                   shelve=True)
-            else:
-                data_list = list(zip(imgs, confounds))
-
-        if raw:
-            record_samples = [np.load(img, mmap_mode='r').shape[0] for img in
+            n_samples_list = [np.load(img, mmap_mode='r').shape[0] for img in
                               imgs]
         else:
-            record_samples = [check_niimg(img).shape[3] for img in imgs]
+            if confounds is None:
+                confounds = itertools.repeat(None)
+            if self.shelve:
+                data_list = self.masker_.transform(imgs, confounds)
+            else:
+                data_list = list(zip(imgs, confounds))
+            n_samples_list = [check_niimg(img).shape[3] for img in imgs]
+
         offset_list = np.zeros(len(imgs) + 1, dtype='int')
-        offset_list[1:] = np.cumsum(record_samples)
+        offset_list[1:] = np.cumsum(n_samples_list)
+        n_samples = offset_list[-1] + 1
+
+        n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
 
         if self.dict_init is not None:
             dict_init = self.masker_.transform(self.dict_init)
         else:
             dict_init = None
 
-        dict_mf = DictMF(n_components=self.n_components,
-                         alpha=self.alpha,
-                         reduction=self.reduction,
-                         coupled_subset=self.coupled_subset,
-                         projection=self.projection,
-                         learning_rate=self.learning_rate,
-                         offset=self.offset,
-                         var_red=self.var_red,
-                         replacement=self.replacement,
-                         n_samples=offset_list[-1] + 1,
-                         batch_size=self.batch_size,
-                         random_state=random_state,
-                         dict_init=dict_init,
-                         l1_ratio=self.l1_ratio,
-                         backend=self.backend,
-                         verbose=max(0, self.verbose - 1))
-
+        self._impl = DictFact(n_components=self.n_components,
+                              alpha=self.alpha,
+                              reduction=self.reduction,
+                              dict_reduction=self.dict_reduction,
+                              AB_agg=self.AB_agg,
+                              G_agg=self.G_agg,
+                              Dx_agg=self.Dx_agg,
+                              subset_sampling=self.subset_sampling,
+                              learning_rate=self.learning_rate,
+                              offset=self.offset,
+                              n_samples=n_samples,
+                              batch_size=self.batch_size,
+                              random_state=random_state,
+                              dict_init=dict_init,
+                              n_threads=self.n_jobs,
+                              l1_ratio=self.l1_ratio,
+                              pen_l1_ratio=0,
+                              verbose=4)
+        self._impl._initialize((n_samples, n_voxels))
         # Preinit
-        max_sample_size = max(record_samples)
-        sample_subset_range = np.arange(max_sample_size)
-        n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
+        max_sample_size = max(n_samples_list)
+        sample_subset_range = np.arange(max_sample_size, dtype='i4')
 
         data_array = np.empty((max_sample_size, n_voxels),
                               dtype='float', order='C')
 
-        self.components_ = np.empty((self.n_components, n_voxels), order='F')
-
         # Epoch logic
         data_idx = itertools.chain(*[random_state.permutation(
             len(imgs)) for _ in range(n_epochs)])
-
-        if self.trace_folder is not None:
-            results = {'reduction': self.reduction, 'alpha': self.alpha,
-                       'timings': [0.]}
-            json.dump(results,
-                      open(join(self.trace_folder, 'results.json'), 'w+'))
-
+        verbose_iter = len(imgs) // self.verbose
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
-            this_n_samples = record_samples[this_data_idx]
-            if self.var_red:
-                offset = offset_list[this_data_idx]
+            this_n_samples = n_samples_list[this_data_idx]
+            offset = offset_list[this_data_idx]
+            sample_indices = offset + sample_subset_range[:this_n_samples]
             if self.verbose:
-                print('Streaming record %s' % record)
+                if not record % verbose_iter:
+                    print('Streaming record %s' % record)
+                    if self.callback is not None:
+                        self.callback(self)
+            t0 = time.time()
             if raw:
                 data_array[:this_n_samples] = np.load(this_data,
                                                       mmap_mode='r')
@@ -257,45 +250,48 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                     data_array[:this_n_samples] = this_data.get()
                 else:
                     data_array[:this_n_samples] = self.masker_.transform(
-                        this_data[0],   
+                        this_data[0],
                         confounds=this_data[1])
-            if self.trace_folder is not None:
-                t0 = time.time()
-            if self.var_red:
-                dict_mf.partial_fit(data_array[:this_n_samples],
-                                    sample_subset=offset + sample_subset_range[
-                                                           :this_n_samples],
-                                    check_input=False)
-            else:
-                dict_mf.partial_fit(data_array)
-            if self.trace_folder is not None:
-                t1 = (time.time() - t0) + results['timings'][-1]
-                results['timings'].append(t1)
-                json.dump(results,
-                          open(join(self.trace_folder, 'results.json'), 'w+'))
-                if record % 4 == 0:
-                    self.components_[:] = dict_mf.components_
-                    _normalize_and_flip(self.components_)
-
-                    self.masker_.inverse_transform(
-                        self.components_).to_filename(join(self.trace_folder,
-                                                           "record_"
-                                                           "%s.nii.gz"
-                                                           % record))
-
-        self.components_[:] = dict_mf.components_
-        _normalize_and_flip(self.components_)
+            self._io_time += time.time() - t0
+            self._impl.partial_fit(data_array[:this_n_samples],
+                                   sample_indices=sample_indices,
+                                   check_input=False)
         return self
 
-    def _raw_score(self, data, per_component=False):
-        if per_component is True:
-            raise NotImplementedError
-        if hasattr(self, 'components_'):
-            component = self.components_
+    @property
+    def components_(self):
+        components = np.array(self._impl.components_, copy='True')
+        components = _normalize_and_flip(components)
+        return self.masker_.inverse_transform(components)
+
+    @property
+    def n_iter(self):
+        return self._impl.total_counter
+
+    @property
+    def time(self):
+        this_time = np.zeros(7)
+        this_time[:6] = self._impl.time
+        this_time[6] = self._io_time
+        return this_time
+
+    def score(self, imgs, confounds=None, raw=False):
+        score = 0
+        if raw:
+            data_list = imgs
         else:
-            raise ValueError('Fit is needed to score')
-        return objective_function(data, component,
-                                  alpha=self.alpha)
+            if confounds is None:
+                confounds = itertools.repeat(None)
+            if self.shelve:
+                data_list = self.masker_.transform(imgs, confounds)
+            else:
+                data_list = list(zip(imgs, confounds))
+        for data in data_list:
+            if self.shelve:
+                data = data.get()
+            score += self._impl.score(data)
+        score /= len(data_list)
+        return score
 
 
 def _normalize_and_flip(components):
@@ -309,28 +305,4 @@ def _normalize_and_flip(components):
     for component in components:
         if np.sum(component > 0) < np.sum(component < 0):
             component *= -1
-
-
-def objective_function(X, components, alpha=0.):
-    """Score function based on dictionary learning objective function
-
-        Parameters
-        ----------
-        X: ndarray,
-            Holds single subject data to be tested against components
-        components: ndarray,
-            Dictionary to compute objective function from
-
-        alpha: regularization
-
-        Returns
-        -------
-        score: ndarray,
-            Holds the score for each subjects. score is two dimensional if
-            per_component = True
-        """
-
-    lr = Ridge(fit_intercept=False, alpha=alpha)
-    lr.fit(components.T, X.T)
-    residuals = X - lr.coef_.dot(components)
-    return np.sum(residuals ** 2) + alpha * np.sum(lr.coef_ ** 2)
+    return components

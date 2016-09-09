@@ -79,9 +79,9 @@ estimator = DictFact(n_components=n_components, batch_size=20,
                      l1_ratio=1,
                      pen_l1_ratio=0.1,
                      alpha=0.001,
-                     max_n_iter=50000,
-                     solver='gram',
-                     weights='sync',
+                     max_n_iter=int(1e6),
+                     G_ag='average',
+                     AB_agg='async',
                      verbose=1,
                      n_threads=3,
                      learning_rate=.8,
@@ -101,9 +101,8 @@ plot_gallery('%s - Train time %.1fs' % (name, train_time),
 code, D = estimator.transform(data)
 plot_gallery('Original faces',
              data[:n_components])
-plot_gallery('Residual',
-             data[:n_components] - code.dot(D)[
-                                   :n_components])
+plot_gallery('Reconstruction',
+             code.dot(D)[:n_components])
 fig, axes = plt.subplots(1, 1, sharex=True)
 axes.plot(cb.iter, cb.obj, label='Function value')
 axes.legend()

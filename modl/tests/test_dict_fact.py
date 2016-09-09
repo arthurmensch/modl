@@ -48,9 +48,9 @@ def generate_synthetic(n_samples=200,
 def test_dict_mf_reconstruction(solver):
     X, Q = generate_synthetic()
     dict_mf = DictFact(n_components=4, alpha=1e-4,
-                     max_n_iter=300, l1_ratio=0,
-                     solver=solver,
-                     random_state=rng_global, reduction=1)
+                       max_n_iter=300, l1_ratio=0,
+                       G_ag=solver,
+                       random_state=rng_global, reduction=1)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.T.dot(dict_mf.components_)
@@ -63,10 +63,10 @@ def test_dict_mf_reconstruction_reduction(solver):
                               n_samples=400,
                               dictionary_rank=4)
     dict_mf = DictFact(n_components=4, alpha=1e-6,
-                     max_n_iter=800, l1_ratio=0,
-                     solver=solver,
-                     learning_rate=0.9,
-                     random_state=rng_global, reduction=2)
+                       max_n_iter=800, l1_ratio=0,
+                       G_ag=solver,
+                       learning_rate=0.9,
+                       random_state=rng_global, reduction=2)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.T.dot(dict_mf.components_)
@@ -80,9 +80,9 @@ def test_dict_mf_reconstruction_reproductible(solver):
                               n_samples=400,
                               dictionary_rank=4)
     dict_mf = DictFact(n_components=4, alpha=1e-6,
-                     max_n_iter=800, l1_ratio=0,
-                     solver=solver,
-                     random_state=rng_global, reduction=2)
+                       max_n_iter=800, l1_ratio=0,
+                       G_ag=solver,
+                       random_state=rng_global, reduction=2)
     dict_mf.fit(X)
     D1 = dict_mf.components_.copy()
     P1 = dict_mf.transform(X)
@@ -100,12 +100,12 @@ def test_dict_mf_reconstruction_reduction_batch(solver):
                               n_samples=400,
                               dictionary_rank=4)
     dict_mf = DictFact(n_components=4, alpha=1e-6,
-                     max_n_iter=400, l1_ratio=0,
-                     solver=solver,
-                     random_state=3, batch_size=3,
-                     coupled_subset=True,
-                     learning_rate=0.9,
-                     reduction=2, )
+                       max_n_iter=400, l1_ratio=0,
+                       G_ag=solver,
+                       random_state=3, batch_size=3,
+                       coupled_subset=True,
+                       learning_rate=0.9,
+                       reduction=2, )
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.T.dot(dict_mf.components_)
@@ -119,9 +119,9 @@ def test_dict_mf_reconstruction_sparse_dict(solver):
     rng = check_random_state(0)
     dict_init = Q + rng.randn(*Q.shape) * 0.01
     dict_mf = DictFact(n_components=4, alpha=1e-4, max_n_iter=400, l1_ratio=1,
-                     dict_init=dict_init,
-                     solver=solver,
-                     random_state=rng_global)
+                       dict_init=dict_init,
+                       G_ag=solver,
+                       random_state=rng_global)
     dict_mf.fit(X)
     Q_rec = dict_mf.components_
     Q_rec /= np.sqrt(np.sum(Q_rec ** 2, axis=1))[:, np.newaxis]

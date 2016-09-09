@@ -76,8 +76,8 @@ def run(n_jobs=1):
                     l1_ratio=0,
                     n_threads=1,
                     n_epochs=100, verbose=2,
-                    solver='gram',
-                    weights='sync',
+                    G_ag='gram',
+                    AB_agg='sync',
                     reduction=10,
                     callback=cb,
                     random_state=0)

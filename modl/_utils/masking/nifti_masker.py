@@ -228,7 +228,7 @@ class NiftiMasker(BaseMasker, CacheMixin):
         params = get_params(self.__class__, self,
                             ignore=['mask_img', 'mask_args', 'mask_strategy'])
 
-        data, _ = shelved_filter_and_mask(self, imgs, params,
+        data = shelved_filter_and_mask(self, imgs, params,
                                           confounds=confounds,
                                           copy=copy,
                                           shelve=shelve

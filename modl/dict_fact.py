@@ -23,8 +23,9 @@ class DictFact(BaseEstimator):
                  sample_learning_rate=None,
                  # Reduction parameter
                  reduction=1,
-                 solver='gram',  # ['average', 'gram', 'masked']
-                 weights='sync',  # ['sync', 'async']
+                 G_agg='full',
+                 Dx_agg='average',
+                 AB_agg='masked',
                  subset_sampling='random',  # ['random', 'cyclic']
                  dict_reduction='follow',
                  # ['independent', 'coupled']
@@ -55,10 +56,11 @@ class DictFact(BaseEstimator):
         self.dict_init = dict_init
         self.n_components = n_components
 
-        self.solver = solver
+        self.G_agg = G_agg
+        self.Dx_agg = Dx_agg
+        self.AB_agg = AB_agg
         self.subset_sampling = subset_sampling
         self.dict_reduction = dict_reduction
-        self.weights = weights
 
         self.max_n_iter = max_n_iter
         self.n_epochs = n_epochs
@@ -120,10 +122,13 @@ class DictFact(BaseEstimator):
     def scaled_D(self):
         return np.array(self._impl.scaled_D())
 
-    def _initialize(self, X):
-        """Initialize statistic and dictionary"""
-        n_samples, n_features = X.shape
+    @property
+    def time(self):
+        return np.array(self._impl.time, copy='True')
 
+    def _initialize(self, X_shape):
+        """Initialize statistic and dictionary"""
+        n_samples, n_features = X_shape
         # Magic
         if self.n_samples is not None:
             n_samples = self.n_samples
@@ -154,15 +159,20 @@ class DictFact(BaseEstimator):
         self._impl.set_impl_params(**self._get_impl_params())
 
     def _get_impl_params(self):
-        solver = {
+        G_agg = {
             'masked': 1,
-            'gram': 2,
-            'average': 3,
+            'full': 2,
+            'average': 3
         }
-        weights = {
-            'sync': 1,
-            'async_freq': 2,
-            'async_prob': 3
+        Dx_agg = {
+            'masked': 1,
+            'full': 2,
+            'average': 3
+        }
+        AB_agg = {
+            'masked': 1,
+            'full': 2,
+            'async': 3
         }
         subset_sampling = {
             'random': 1,
@@ -190,8 +200,9 @@ class DictFact(BaseEstimator):
                'offset': self.offset,
                'batch_size': self.batch_size,
 
-               'solver': solver[self.solver],
-               'weights': weights[self.weights],
+               'G_agg': G_agg[self.G_agg],
+               'Dx_agg': Dx_agg[self.G_agg],
+               'AB_agg': AB_agg[self.AB_agg],
                'subset_sampling': subset_sampling[self.subset_sampling],
                'dict_reduction': dict_reduction,
                'reduction': self.reduction,
@@ -221,7 +232,7 @@ class DictFact(BaseEstimator):
         if check_input:
             X = check_array(X, dtype='float', order='C')
         if not self.initialized:
-            self._initialize(X)
+            self._initialize(X.shape)
         if self.max_n_iter > 0:
             remaining_iter = self.max_n_iter - self._impl.total_counter
             X = X[:remaining_iter]
@@ -238,7 +249,7 @@ class DictFact(BaseEstimator):
             Dataset to learn the dictionary from
         """
         X = check_array(X, dtype='float', order='C')
-        self._initialize(X)
+        self._initialize(X.shape)
         sample_indices = np.arange(X.shape[0], dtype='i4')
         if self.max_n_iter > 0:
             while self._impl.total_counter < self.max_n_iter:
@@ -254,17 +265,8 @@ class DictFact(BaseEstimator):
         if not self.initialized:
             raise ValueError()
         X = check_array(X, dtype='float64', order='C')
-        # if self.pen_l1_ratio != 0:
         code, scaled_D = self._impl.transform(X)
         return np.asarray(code), np.asarray(scaled_D)
-        # else:
-        #     D = self.scaled_D
-        #     Dx = (X.dot(D.T)).T
-        #     G = D.dot(D.T).T
-        #     G.flat[::self.n_components + 1] += self.alpha
-        #     code = linalg.solve(G, Dx, sym_pos=True,
-        #                         overwrite_a=True, check_finite=False)
-        #     return code.T, D
 
     def score(self, X):
         code, scaled_D = self.transform(X)
