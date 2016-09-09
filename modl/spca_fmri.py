@@ -215,10 +215,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                               batch_size=self.batch_size,
                               random_state=random_state,
                               dict_init=dict_init,
-                              n_threads=self.n_jobs,
+                              n_threads=3,
                               l1_ratio=self.l1_ratio,
                               pen_l1_ratio=0,
-                              verbose=4)
+                              verbose=2)
         self._impl._initialize((n_samples, n_voxels))
         # Preinit
         max_sample_size = max(n_samples_list)
@@ -237,8 +237,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             offset = offset_list[this_data_idx]
             sample_indices = offset + sample_subset_range[:this_n_samples]
             if self.verbose:
+                print('Streaming record %s' % record)
                 if not record % verbose_iter:
-                    print('Streaming record %s' % record)
                     if self.callback is not None:
                         self.callback(self)
             t0 = time.time()

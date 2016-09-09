@@ -531,7 +531,8 @@ cdef class DictFactImpl(object):
         cdef double* G_average_ptr
 
         cdef int info = 0
-        cdef int ii, jj, i, j, k, m, p, q, t, start, stop, size
+        cdef int ii, ii_, i_,\
+            jj, i, j, k, m, p, q, t, start, stop, size
         cdef int nnz
         cdef double v
         cdef int last = 0
@@ -545,29 +546,31 @@ cdef class DictFactImpl(object):
 
         cdef timeval tv0, tv1
         cdef timezone tz
+
         if self.G_agg == 3:
             G_average_ptr = &self.G_average[0, 0, 0]
         if self.pen_l1_ratio == 0:
             G_temp_ptr = &self.G_temp[0, 0, 0]
+
         for ii in range(len_batch):
             for jj in range(len_subset):
                 j = subset[jj]
                 self.this_X[ii, jj] = X[ii, j]
 
-        for jj in range(len_subset):
-            j = subset[jj]
-            for k in range(self.n_components):
+        for k in range(self.n_components):
+            for jj in range(len_subset):
+                j = subset[jj]
                 self.D_subset[k, jj] = self.D[k, j]
-        for jj in range(len_subset):
-            for ii in range(len_batch):
+        for ii in range(len_batch):
+            for jj in range(len_subset):
                 self.this_X[ii, jj] *= reduction
 
         # Dx computation
         gettimeofday(&tv0, &tz)
         # Dx = np.dot(D_subset, this_X.T)
-        if self.Dx_agg == 2:
-            # X is C-ordered
-            with parallel(num_threads=self.n_threads):
+        with parallel(num_threads=self.n_threads):
+            if self.Dx_agg == 2:
+                # X is C-ordered
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * sample_step
                     stop = min(len_batch, (t + 1) * sample_step)
@@ -581,8 +584,7 @@ cdef class DictFactImpl(object):
                                   Dx_ptr + start * n_components,
                           &n_components
                                   )
-        else:
-            with parallel(num_threads=self.n_threads):
+            else:
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * sample_step
                     stop = min(len_batch, (t + 1) * sample_step)
@@ -595,73 +597,71 @@ cdef class DictFactImpl(object):
                           &FZERO,
                           Dx_ptr + start * n_components, &n_components
                           )
-            if self.Dx_agg == 3:
-                for ii in range(len_batch):
-                    i = sample_indices[ii]
-                    w_sample = pow(self.sample_counter[i],
-                                   -self.sample_learning_rate)
-                    if self.Dx_agg == 3:
+                if self.Dx_agg == 3:
+                    for ii_ in prange(len_batch):
+                        i_ = sample_indices[ii_]
+                        w_sample = pow(self.sample_counter[i_],
+                                       -self.sample_learning_rate)
                         for p in range(n_components):
-                            self.Dx_average[p, i] *= 1 - w_sample
-                            self.Dx_average[p, i] += self.Dx[p, ii] * w_sample
-                            self.Dx[p, ii] = self.Dx_average[p, i]
+                            self.Dx_average[p, i_] *= 1 - w_sample
+                            self.Dx_average[p, i_] += self.Dx[p, ii_] * w_sample
+                            self.Dx[p, ii_] = self.Dx_average[p, i_]
         gettimeofday(&tv1, &tz)
         self.time[0] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
                         tv1.tv_usec - tv0.tv_usec
 
         # G computation
         gettimeofday(&tv0, &tz)
-        if self.G_agg != 2:
-            dgemm(&NTRANS, &TRANS,
-                  &n_components, &n_components, &len_subset,
-                  &reduction,
-                  D_subset_ptr, &n_components,
-                  D_subset_ptr, &n_components,
-                  &FZERO,
-                  G_ptr, &n_components
-                  )
+        with parallel(num_threads=self.n_threads):
+            if self.G_agg != 2:
+                dgemm(&NTRANS, &TRANS,
+                      &n_components, &n_components, &len_subset,
+                      &reduction,
+                      D_subset_ptr, &n_components,
+                      D_subset_ptr, &n_components,
+                      &FZERO,
+                      G_ptr, &n_components
+                      )
 
-        if self.Dx_agg == 3 or self.G_agg == 3:
-            for ii in range(len_batch):
-                i = sample_indices[ii]
-                w_sample = pow(self.sample_counter[i],
-                               -self.sample_learning_rate)
-                if self.G_agg == 3:
+            if self.G_agg == 3:
+                for ii_ in range(len_batch):
+                    i_ = sample_indices[ii_]
+                    w_sample = pow(self.sample_counter[i_],
+                                   -self.sample_learning_rate)
                     for p in range(n_components):
                         for q in range(n_components):
-                            self.G_average[p, q, i] *= 1 - w_sample
-                            self.G_average[p, q, i] += self.G[p, q] * w_sample
+                            self.G_average[p, q, i_] *= 1 - w_sample
+                            self.G_average[p, q, i_] += self.G[p, q] * w_sample
         gettimeofday(&tv1, &tz)
         self.time[1] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
                         tv1.tv_usec - tv0.tv_usec
 
         # code computation
         gettimeofday(&tv0, &tz)
-        if self.pen_l1_ratio == 0:
-            if self.G_agg == 3:
-                with parallel(num_threads=self.n_threads):
+        with parallel(num_threads=self.n_threads):
+            if self.pen_l1_ratio == 0:
+                if self.G_agg == 3:
                     for t in prange(self.n_thread_batches, schedule='static'):
                         start = t * sample_step
                         stop = min(len_batch, (t + 1) * sample_step)
-                        for ii in range(start, stop):
-                            i = sample_indices[ii]
+                        for ii_ in range(start, stop):
+                            i_ = sample_indices[ii_]
                             for p in range(n_components):
                                 for q in range(n_components):
                                     self.G_temp[p, q, t] = self.G_average[p, q,
-                                                                          i]
+                                                                          i_]
                                 self.G_temp[p, p, t] += self.alpha
                             dposv(&UP, &n_components, &ONE, G_temp_ptr
                                   + t * n_components * n_components,
                                   &n_components,
-                                  Dx_ptr + ii * n_components, &n_components,
+                                  Dx_ptr + ii_ * n_components, &n_components,
                                   &info)
                             for p in range(n_components):
-                                self.G_average[p, p, i] -= self.alpha
+                                self.G_temp[p, p, t] -= self.alpha
                             if info != 0:
                                 with gil:
                                     raise ValueError
-            else:
-                with parallel(num_threads=self.n_threads):
+                else:
                     for t in prange(self.n_thread_batches, schedule='static'):
                         for p in range(n_components):
                             for q in range(n_components):
@@ -678,37 +678,36 @@ cdef class DictFactImpl(object):
                         if info != 0:
                             with gil:
                                 raise ValueError
-            for ii in range(len_batch):
-                i = sample_indices[ii]
-                for k in range(n_components):
-                    self.code[i, k] = self.Dx[k, ii]
-        else:
-            with parallel(num_threads=self.n_threads):
+                for ii in range(len_batch):
+                    i = sample_indices[ii]
+                    for k in range(n_components):
+                        self.code[i, k] = self.Dx[k, ii]
+            else:
                 for t in prange(self.n_thread_batches, schedule='static'):
                     start = t * sample_step
                     stop = min(len_batch, (t + 1) * sample_step)
-                    for ii in range(start, stop):
-                        i = sample_indices[ii]
+                    for ii_ in range(start, stop):
+                        i_ = sample_indices[ii_]
                         this_X_norm = ddot(&len_subset,
-                                           this_X_ptr + ii * len_subset, &ONE,
-                                           this_X_ptr + ii * len_subset,
+                                           this_X_ptr + ii_ * len_subset, &ONE,
+                                           this_X_ptr + ii_ * len_subset,
                                            &ONE) * reduction
                         enet_coordinate_descent_gram(
-                            self.code[i], self.alpha * self.pen_l1_ratio,
+                            self.code[i_], self.alpha * self.pen_l1_ratio,
                                           self.alpha * (1 - self.pen_l1_ratio),
-                            self.G_average[:, :, i] if self.G_agg == 3
+                            self.G_average[:, :, i_] if self.G_agg == 3
                             else self.G,
-                            self.Dx[:, ii],
+                            self.Dx[:, ii_],
                             this_X_norm,
                             self.H[t],
                             self.XtA[t],
                             1000,
                             self.tol, self.random_state, 0, 0)
                         for p in range(n_components):
-                            self.Dx[p, ii] = self.code[i, p]
-        for jj in range(len_subset):
+                            self.Dx[p, ii_] = self.code[i_, p]
             for ii in range(len_batch):
-                self.this_X[ii, jj] /= reduction
+                for jj in range(len_subset):
+                    self.this_X[ii, jj] /= reduction
         gettimeofday(&tv1, &tz)
         self.time[2] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
                         tv1.tv_usec - tv0.tv_usec
@@ -732,26 +731,26 @@ cdef class DictFactImpl(object):
               &one_m_w,
               A_ptr, &n_components
               )
-        if self.AB_agg == 1: # Masked
-            w_batch = reduction * w_A / len_batch
-            for jj in range(n_features):
-                for k in range(n_components):
-                    self.B[k, jj] *= 1 - w_A
-            dgemm(&NTRANS, &NTRANS,
-                  &n_components, &len_subset, &len_batch,
-                  &w_batch,
-                  Dx_ptr, &n_components,
-                  this_X_ptr, &len_batch,
-                  &FZERO,
-                  D_subset_ptr, &n_components)
-            for jj in range(len_subset):
-                j = subset[jj]
-                for k in range(n_components):
-                    self.B[k, j] += self.D_subset[k, jj]
-            # Reuse D_subset as B_subset
-            # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
-        elif self.AB_agg == 2: # Full
-            with parallel(num_threads=self.n_threads):
+        with parallel(num_threads=self.n_threads):
+            if self.AB_agg == 1: # Masked
+                w_batch = reduction * w_A / len_batch
+                for jj in range(n_features):
+                    for k in range(n_components):
+                        self.B[k, jj] *= 1 - w_A
+                dgemm(&NTRANS, &NTRANS,
+                      &n_components, &len_subset, &len_batch,
+                      &w_batch,
+                      Dx_ptr, &n_components,
+                      this_X_ptr, &len_batch,
+                      &FZERO,
+                      D_subset_ptr, &n_components)
+                for jj in range(len_subset):
+                    j = subset[jj]
+                    for k in range(n_components):
+                        self.B[k, j] += self.D_subset[k, jj]
+                # Reuse D_subset as B_subset
+                # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
+            elif self.AB_agg == 2: # Full
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * subset_step
                     stop = min(n_features, (t + 1) * subset_step)
@@ -764,12 +763,9 @@ cdef class DictFactImpl(object):
                           X_ptr + start, &n_features,
                           &one_m_w,
                           B_ptr + start * n_components, &n_components)
-        else: # Async
+            else: # Async
                 for jj in range(len_subset):
                     j = subset[jj]
-                    # w_B = get_simple_weights(self.feature_counter[j], len_batch,
-                    #              self.learning_rate,
-                    #              self.offset)
                     w_B = fmin(1., w_A * float(self.total_counter) /
                                self.feature_counter[j])
                     one_m_w = 1. - w_B
@@ -901,16 +897,20 @@ cdef class DictFactImpl(object):
         self.time[1] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
                         tv1.tv_usec - tv0.tv_usec
 
-    def transform(self, double[:, ::1] X):
+    def transform(self, double[:, ::1] X, n_threads=None):
         cdef int n_samples = X.shape[0]
-        cdef int i, t, start, stop, p, q, size
+        cdef int i, t, start, stop, p, q, size, ii
         cdef int n_features = self.n_features
         cdef int n_components = self.n_components
         cdef double X_norm
 
-        cdef int n_threads = self.n_threads
+        cdef int this_n_threads
+        if n_threads is None:
+            this_n_threads = self.n_threads
+        else:
+            this_n_threads = int(n_threads)
 
-        cdef int n_thread_batches = min(n_threads, n_samples)
+        cdef int n_thread_batches = min(this_n_threads, n_samples)
 
         cdef double[::1, :] D = self.scaled_D()
         cdef double[:, ::1] code = view.array((n_samples, n_components),
@@ -926,7 +926,7 @@ cdef class DictFactImpl(object):
 
         cdef double[:, ::1] H
         cdef double[:, ::1] XtA
-        cdef double[::1, :] G_temp
+        cdef double[::1, :, :] G_temp
 
         cdef double* X_ptr = &X[0, 0]
         cdef double* Dx_ptr = &Dx[0, 0]
@@ -935,22 +935,39 @@ cdef class DictFactImpl(object):
         cdef double* G_temp_ptr
 
         cdef int sample_step = int(ceil(float(n_samples) / n_thread_batches))
+        cdef int component_step = int(ceil(float(n_components) / n_thread_batches))
 
         cdef int info = 0
 
-        # G = D.dot(D.T)
-        dgemm(&NTRANS, &TRANS,
-                  &n_components, &n_components, &n_features,
-                  &FONE,
-                  D_ptr, &n_components,
-                  D_ptr, &n_components,
-                  &FZERO,
-                  G_ptr, &n_components
-                  )
-
+        if self.pen_l1_ratio != 0:
+            H = view.array((n_thread_batches, n_components),
+                  sizeof(double),
+                  format='d', mode='c')
+            XtA = view.array((n_thread_batches, n_components),
+                  sizeof(double),
+                  format='d', mode='c')
+        else:
+            G_temp = view.array((n_components, n_components,
+                                 n_thread_batches),
+                                  sizeof(double),
+                                  format='d', mode='fortran')
+            G_temp_ptr = &G_temp[0, 0, 0]
+        with nogil, parallel(num_threads=this_n_threads):
+           # G = D.dot(D.T)
+            for t in prange(n_thread_batches, schedule='static'):
+                start = t * component_step
+                stop = min(n_components, (t + 1) * component_step)
+                size = stop - start
+                dgemm(&NTRANS, &TRANS,
+                          &n_components, &size, &n_features,
+                          &FONE,
+                          D_ptr, &n_components,
+                          D_ptr + start, &n_components,
+                          &FZERO,
+                          G_ptr + start * n_components, &n_components
+                          )
         # Dx = D.dot(X.T)
         # Hack as X is C-ordered
-        with nogil, parallel(num_threads=n_threads):
             for t in prange(n_thread_batches, schedule='static'):
                 start = t * sample_step
                 stop = min(n_samples, (t + 1) * sample_step)
@@ -963,14 +980,7 @@ cdef class DictFactImpl(object):
                       &FZERO,
                       Dx_ptr + start * n_components, &n_components
                       )
-        if self.pen_l1_ratio != 0:
-            H = view.array((n_thread_batches, n_components),
-                  sizeof(double),
-                  format='d', mode='c')
-            XtA = view.array((n_thread_batches, n_components),
-                  sizeof(double),
-                  format='d', mode='c')
-            with nogil, parallel(num_threads=n_threads):
+            if self.pen_l1_ratio != 0:
                 for t in prange(n_thread_batches, schedule='static'):
                     start = t * sample_step
                     stop = min(n_samples, (t + 1) * sample_step)
@@ -988,26 +998,26 @@ cdef class DictFactImpl(object):
                                     XtA[t],
                                     1000,
                                     self.tol, self.random_state, 0, 0)
-            return code, D
-        else:
-            G_temp = view.array((n_components, n_components),
-                                              sizeof(double),
-                                              format='d', mode='fortran')
-            G_temp_ptr = &G_temp[0, 0]
-            for q in range(n_components):
-                for p in range(n_components):
-                    G_temp[p, q] = G[p, q]
-                G_temp[p, p] += self.alpha
-            dposv(&UP, &n_components, &n_samples,
-                  G_temp_ptr,
-                  &n_components,
-                  Dx_ptr, &n_components,
-                  &info)
-            if info != 0:
-                raise ValueError(np.array(G_temp))
-            for ii in range(n_samples):
-                for p in range(n_components):
-                    code[ii, p] = Dx[p, ii]
+            else:
+                for t in prange(n_thread_batches, schedule='static'):
+                    for p in range(n_components):
+                        for q in range(n_components):
+                            G_temp[p, q, t] = G[p, q]
+                        G_temp[p, p, t] += self.alpha
+                    start = t * sample_step
+                    stop = min(n_samples, (t + 1) * sample_step)
+                    size = stop - start
+                    dposv(&UP, &n_components, &size,
+                          G_temp_ptr + t * n_components * n_components,
+                          &n_components,
+                          Dx_ptr + n_components * start, &n_components,
+                          &info)
+                    if info != 0:
+                        with gil:
+                            raise ValueError
+                    for ii in range(start, stop):
+                        for p in range(n_components):
+                            code[ii, p] = Dx[p, ii]
         return code, D
 
 cdef double[:] enet_coordinate_descent_gram(double[:] w, double alpha, double beta,

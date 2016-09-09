@@ -9,6 +9,7 @@ from .dict_fact_fast import DictFactImpl
 
 max_int = np.iinfo(np.uint32).max
 
+
 class DictFact(BaseEstimator):
     def __init__(self,
                  n_components=30,
@@ -261,11 +262,11 @@ class DictFact(BaseEstimator):
                                  check_input=False)
         return self
 
-    def transform(self, X, y=None):
+    def transform(self, X, y=None, n_threads=None):
         if not self.initialized:
             raise ValueError()
         X = check_array(X, dtype='float64', order='C')
-        code, scaled_D = self._impl.transform(X)
+        code, scaled_D = self._impl.transform(X, n_threads=n_threads)
         return np.asarray(code), np.asarray(scaled_D)
 
     def score(self, X):

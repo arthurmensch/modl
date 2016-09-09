@@ -52,6 +52,18 @@ class Callback(object):
         self.test_time += time.clock() - test_time
         self.time.append(time.clock() - self.start_time - self.test_time)
 
+
+def display_maps(index=None):
+    name = 'components_' + index + '.png'
+    fig, axes = plt.subplots(2, 1)
+    plot_prob_atlas(spca_fmri.components_, view_type="filled_contours",
+                    axes=axes[0])
+    plot_stat_map(index_img(spca_fmri.components_, 0),
+                  axes=axes[1],
+                  colorbar=False,
+                  threshold=0)
+    plt.savefig(join(trace_folder, 'components.png'))
+
 adhd_dataset = datasets.fetch_adhd(n_subjects=40)
 
 data = adhd_dataset.func  # list of 4D nifti files for each subject
@@ -63,8 +75,8 @@ print('First functional nifti image (4D) is at: %s' %
 
 # Apply our decomposition estimator with reduction
 n_components = 20
-n_jobs = 3
-trace_folder = expanduser('~/output/modl/adhd')
+n_jobs = 1
+trace_folder = expanduser('~/output/modl/adhd_reduced')
 
 try:
     os.makedirs(trace_folder)
@@ -75,7 +87,7 @@ cb = Callback(train_data, test_data=test_data,
               trace_folder=trace_folder)
 spca_fmri = SpcaFmri(n_components=n_components, smoothing_fwhm=6.,
                      memory=expanduser("~/nilearn_cache"), memory_level=2,
-                     reduction=1,
+                     reduction=3,
                      verbose=10,
                      alpha=0.001,
                      random_state=0,
