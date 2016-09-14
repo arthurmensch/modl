@@ -93,6 +93,8 @@ cdef class DictFactImpl(object):
     cdef readonly int Dx_agg
     cdef readonly int AB_agg
 
+    cdef readonly int scale_up
+
     cdef readonly int subset_sampling
     cdef readonly int dict_reduction
 
@@ -110,6 +112,8 @@ cdef class DictFactImpl(object):
     cdef readonly double[::1, :] A
     cdef readonly double[::1, :] B
     cdef readonly double[::1, :] G
+
+    cdef readonly double[:] norm
 
     cdef readonly unsigned long random_seed
 
@@ -163,6 +167,7 @@ cdef class DictFactImpl(object):
                  int G_agg=1,
                  int Dx_agg=1,
                  int AB_agg=1,
+                 bint scale_up=1,
                  int subset_sampling=1,
                  int dict_reduction=0,
                  # Dict parameter
@@ -197,7 +202,7 @@ cdef class DictFactImpl(object):
         self.subset_sampling = subset_sampling
         self.dict_reduction = dict_reduction
         self.AB_agg = AB_agg
-
+        self.scale_up = scale_up
 
         self.random_seed = random_seed
         self.verbose = verbose
@@ -207,7 +212,12 @@ cdef class DictFactImpl(object):
 
         self.random_state = RandomState(seed=self.random_seed)
 
-        self.D = D
+        self.D = enet_scale_fast(D, self.l1_ratio, radius=1)
+
+        self.norm = view.array((self.n_components, ),
+                                   sizeof(double),
+                                   format='d')
+        self.norm[:] = 1
 
         self.code = view.array((self.n_samples, self.n_components),
                                sizeof(double), format='d',
@@ -482,7 +492,10 @@ cdef class DictFactImpl(object):
                 self.time[5] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
     cpdef double[::1, :] scaled_D(self):
-        return enet_scale_fast(self.D, self.l1_ratio, radius=1)
+        if self.scale_up:
+            return self.D
+        else:
+            return enet_scale_fast(self.D, self.l1_ratio, radius=1)
 
     cdef int update_code(self, int[:] subset, double[:, ::1] X,
                          int[:] sample_indices) nogil except *:
@@ -824,8 +837,11 @@ cdef class DictFactImpl(object):
             k = self.D_range[kk]
             norm_temp = enet_norm_fast(self.D_subset[k, :len_subset],
                                        self.l1_ratio)
-            self.norm_temp[k] = norm_temp + 1 - self.norm[k]
-            self.norm[k] -= norm_temp
+            if self.scale_up:
+                self.norm_temp[k] = norm_temp + 1 - self.norm[k]
+                self.norm[k] -= norm_temp
+            else:
+                self.norm_temp[k] = norm_temp
         if self.G_agg == 2 and len_subset < self.n_features / 2.:
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &len_subset,
@@ -863,12 +879,11 @@ cdef class DictFactImpl(object):
             enet_projection_fast(self.D_subset[k, :len_subset],
                                     self.proj_temp[:len_subset],
                                     self.norm_temp[k], self.l1_ratio)
-            norm_temp = enet_norm_fast(self.D_subset[k, :len_subset],
-                                       self.l1_ratio)
-            self.norm[k] += norm_temp
-
             for jj in range(len_subset):
                 self.D_subset[k, jj] = self.proj_temp[jj]
+            if self.scale_up:
+                self.norm[k] += enet_norm_fast(self.D_subset[k, :len_subset],
+                                           self.l1_ratio)
             # R -= A[:, k] Q[:, k].T
             dger(&n_components, &len_subset, &FMONE,
                  A_ptr + k * n_components,

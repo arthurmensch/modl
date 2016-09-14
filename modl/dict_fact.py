@@ -29,6 +29,7 @@ class DictFact(BaseEstimator):
                  AB_agg='masked',
                  subset_sampling='random',  # ['random', 'cyclic']
                  dict_reduction='follow',
+                 scale_up=True,
                  # ['independent', 'coupled']
                  # Dict parameter
                  dict_init=None,
@@ -60,6 +61,7 @@ class DictFact(BaseEstimator):
         self.G_agg = G_agg
         self.Dx_agg = Dx_agg
         self.AB_agg = AB_agg
+        self.scale_up = scale_up
         self.subset_sampling = subset_sampling
         self.dict_reduction = dict_reduction
 
@@ -200,7 +202,7 @@ class DictFact(BaseEstimator):
                'sample_learning_rate': sample_learning_rate,
                'offset': self.offset,
                'batch_size': self.batch_size,
-
+               'scale_up': self.scale_up,
                'G_agg': G_agg[self.G_agg],
                'Dx_agg': Dx_agg[self.G_agg],
                'AB_agg': AB_agg[self.AB_agg],
