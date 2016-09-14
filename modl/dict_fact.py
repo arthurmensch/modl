@@ -269,8 +269,8 @@ class DictFact(BaseEstimator):
         code, scaled_D = self._impl.transform(X, n_threads=n_threads)
         return np.asarray(code), np.asarray(scaled_D)
 
-    def score(self, X):
-        code, scaled_D = self.transform(X)
+    def score(self, X, n_threads=None):
+        code, scaled_D = self.transform(X, n_threads=n_threads)
         loss = np.sum((X - code.dot(self.scaled_D)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)

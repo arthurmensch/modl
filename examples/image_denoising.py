@@ -7,12 +7,12 @@ from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn.utils import check_random_state
 
 from modl.dict_fact import DictFact
-
+from math import sqrt
 
 class Callback(object):
     """Utility class for plotting RMSE"""
 
-    def __init__(self, X_tr):
+    def __init__(self, X_tr, n_threads=None):
         self.X_tr = X_tr
         # self.X_te = X_t
         self.obj = []
@@ -22,10 +22,11 @@ class Callback(object):
         self.start_time = time()
         self.test_time = 0
         self.profile = []
+        self.n_threads = n_threads
 
     def __call__(self, mf):
         test_time = time()
-        self.obj.append(mf.score(self.X_tr))
+        self.obj.append(mf.score(self.X_tr, n_threads=self.n_threads))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
         self.profile.append(mf.time)
@@ -51,10 +52,11 @@ def main():
     # Extract all reference patches from the left half of the image
     print('Extracting reference patches...')
     t0 = time()
-    tile = 4
+    redundancy = 16
+    tile = int(sqrt(redundancy))
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
-                              max_patches=1000, random_state=0)
+                              max_patches=4000, random_state=0)
     tiled_data = np.empty(
         (data.shape[0], data.shape[1] * tile, data.shape[2] * tile))
     for i in range(tile):
@@ -74,44 +76,45 @@ def main():
 
     print('Learning the dictionary...')
 
-    cb = Callback(data[:500])
+    cb = Callback(data, n_threads=2)
     n_samples = data.shape[0]
     dico = DictFact(n_components=100, alpha=1,
                     l1_ratio=0,
                     pen_l1_ratio=.9,
-                    batch_size=10,
+                    batch_size=30,
                     learning_rate=.9,
                     sample_learning_rate=None,
                     reduction=10,
                     verbose=2,
-                    G_agg='average',
-                    Dx_agg='average',
+                    G_agg='full',
+                    Dx_agg='masked',
                     AB_agg='full',
                     subset_sampling='random',
                     dict_reduction='follow',
                     callback=cb,
-                    n_threads=1,
+                    n_threads=3,
                     n_samples=n_samples,
                     tol=1e-2,
                     random_state=42,
-                    n_epochs=1)
-    warmup = 0 # 3 * n_samples
-    t0 = time()
-    reduction = dico.reduction
-    dico.set_params(reduction=1)
-    warmup_epochs = warmup // n_samples
-    for _ in range(warmup_epochs):
-        dico.partial_fit(data)
-    warmup_rem = warmup % n_samples
-    if warmup_rem != 0:
-        dico.partial_fit(data[:warmup_rem], np.arange(warmup, dtype='i4'))
-        dico.set_params(reduction=reduction)
-        dico.partial_fit(data[warmup_rem:],
-                         np.arange(warmup, n_samples, dtype='i4'))
-    else:
-        dico.set_params(reduction=reduction)
-    for i in range(dico.n_epochs - warmup_epochs):
-        dico.partial_fit(data)
+                    n_epochs=5)
+    # warmup = 0 # 3 * n_samples
+    # t0 = time()
+    # reduction = dico.reduction
+    # dico.set_params(reduction=1)
+    # warmup_epochs = warmup // n_samples
+    # for _ in range(warmup_epochs):
+    #     dico.partial_fit(data)
+    # warmup_rem = warmup % n_samples
+    # if warmup_rem != 0:
+    #     dico.partial_fit(data[:warmup_rem], np.arange(warmup, dtype='i4'))
+    #     dico.set_params(reduction=reduction)
+    #     dico.partial_fit(data[warmup_rem:],
+    #                      np.arange(warmup, n_samples, dtype='i4'))
+    # else:
+    #     dico.set_params(reduction=reduction)
+    # for i in range(dico.n_epochs - warmup_epochs):
+    #     dico.partial_fit(data)
+    dico.fit(data)
     V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0
     print('done in %.2fs., test time: %.2fs' % (dt, cb.test_time))

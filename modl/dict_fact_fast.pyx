@@ -11,7 +11,8 @@ from cython cimport view
 from libc.stdio cimport printf
 # noinspection PyUnresolvedReferences
 from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
-from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
+# from posix.time cimport gettimeofday, timeval, timezone, suseconds_t
+from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec, time_t
 
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
@@ -143,7 +144,7 @@ cdef class DictFactImpl(object):
 
     cdef object callback
 
-    cdef readonly int[:] time
+    cdef readonly double[:] time
 
     def __init__(self,
                  double[::1, :] D,
@@ -316,8 +317,8 @@ cdef class DictFactImpl(object):
 
         self.callback = callback
 
-        self.time = view.array((6, ), sizeof(int),
-                               format='i')
+        self.time = view.array((6, ), sizeof(double),
+                               format='d')
         self.time[:] = 0
 
     cpdef void set_impl_params(self,
@@ -438,8 +439,7 @@ cdef class DictFactImpl(object):
 
         cdef int[:] random_order = self.random_state.permutation(this_n_samples)
 
-        cdef timeval tv0, tv1
-        cdef timezone tz
+        cdef timespec tv0, tv1
 
         with nogil:
             for k in range(n_batches):
@@ -450,7 +450,7 @@ cdef class DictFactImpl(object):
                     if self.callback is not None:
                         with gil:
                             self.callback()
-                gettimeofday(&tv0, &tz)
+                clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
                 start = k * self.batch_size
                 stop = start + self.batch_size
                 if stop > this_n_samples:
@@ -477,9 +477,9 @@ cdef class DictFactImpl(object):
                 if self.dict_reduction != 0:
                     subset = self.feature_sampler_2.yield_subset()
                 self.update_dict(subset)
-                gettimeofday(&tv1, &tz)
-                self.time[5] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                            tv1.tv_usec - tv0.tv_usec
+                clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+                self.time[5] += tv1.tv_sec-tv0.tv_sec
+                self.time[5] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
     cpdef double[::1, :] scaled_D(self):
         return enet_scale_fast(self.D, self.l1_ratio, radius=1)
@@ -531,12 +531,12 @@ cdef class DictFactImpl(object):
         cdef double* G_average_ptr
 
         cdef int info = 0
-        cdef int ii, ii_, i_,\
-            jj, i, j, k, m, p, q, t, start, stop, size
+        cdef int ii, jj, i, j, k, m, p, q, t, start, stop, size, ii_, i_, \
+            p_, q_
         cdef int nnz
         cdef double v
         cdef int last = 0
-        cdef double one_m_w, w_sample, w_batch, w_norm, w_A, w_B
+        cdef double one_m_w, w_sample, w_sample_, w_batch, w_norm, w_A, w_B
         cdef int this_subset_thread_size
         cdef double this_X_norm
 
@@ -544,31 +544,30 @@ cdef class DictFactImpl(object):
                                         / self.n_thread_batches))
         cdef int subset_step = int(ceil(float(n_features) / self.n_threads))
 
-        cdef timeval tv0, tv1
-        cdef timezone tz
+        cdef timespec tv0, tv1
 
         if self.G_agg == 3:
             G_average_ptr = &self.G_average[0, 0, 0]
         if self.pen_l1_ratio == 0:
             G_temp_ptr = &self.G_temp[0, 0, 0]
 
-        for ii in range(len_batch):
-            for jj in range(len_subset):
-                j = subset[jj]
-                self.this_X[ii, jj] = X[ii, j]
-
-        for k in range(self.n_components):
-            for jj in range(len_subset):
-                j = subset[jj]
-                self.D_subset[k, jj] = self.D[k, j]
-        for ii in range(len_batch):
-            for jj in range(len_subset):
-                self.this_X[ii, jj] *= reduction
-
-        # Dx computation
-        gettimeofday(&tv0, &tz)
-        # Dx = np.dot(D_subset, this_X.T)
         with parallel(num_threads=self.n_threads):
+            for ii in range(len_batch):
+                for jj in range(len_subset):
+                    j = subset[jj]
+                    self.this_X[ii, jj] = X[ii, j]
+
+            for jj in range(len_subset):
+                j = subset[jj]
+                for k in range(self.n_components):
+                    self.D_subset[k, jj] = self.D[k, j]
+            for ii in range(len_batch):
+                for jj in range(len_subset):
+                    self.this_X[ii, jj] *= reduction
+
+            # Dx computation
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+            # Dx = np.dot(D_subset, this_X.T)
             if self.Dx_agg == 2:
                 # X is C-ordered
                 for t in prange(self.n_threads, schedule='static'):
@@ -598,21 +597,20 @@ cdef class DictFactImpl(object):
                           Dx_ptr + start * n_components, &n_components
                           )
                 if self.Dx_agg == 3:
-                    for ii_ in prange(len_batch):
-                        i_ = sample_indices[ii_]
-                        w_sample = pow(self.sample_counter[i_],
+                    for ii in range(len_batch):
+                        i = sample_indices[ii]
+                        w_sample = pow(self.sample_counter[i],
                                        -self.sample_learning_rate)
                         for p in range(n_components):
-                            self.Dx_average[p, i_] *= 1 - w_sample
-                            self.Dx_average[p, i_] += self.Dx[p, ii_] * w_sample
-                            self.Dx[p, ii_] = self.Dx_average[p, i_]
-        gettimeofday(&tv1, &tz)
-        self.time[0] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                        tv1.tv_usec - tv0.tv_usec
+                            self.Dx_average[p, i] *= 1 - w_sample
+                            self.Dx_average[p, i] += self.Dx[p, ii] * w_sample
+                            self.Dx[p, ii] = self.Dx_average[p, i]
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+            self.time[0] += tv1.tv_sec-tv0.tv_sec
+            self.time[0] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-        # G computation
-        gettimeofday(&tv0, &tz)
-        with parallel(num_threads=self.n_threads):
+            # G computation
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
             if self.G_agg != 2:
                 dgemm(&NTRANS, &TRANS,
                       &n_components, &n_components, &len_subset,
@@ -624,21 +622,25 @@ cdef class DictFactImpl(object):
                       )
 
             if self.G_agg == 3:
-                for ii_ in range(len_batch):
-                    i_ = sample_indices[ii_]
-                    w_sample = pow(self.sample_counter[i_],
-                                   -self.sample_learning_rate)
-                    for p in range(n_components):
-                        for q in range(n_components):
-                            self.G_average[p, q, i_] *= 1 - w_sample
-                            self.G_average[p, q, i_] += self.G[p, q] * w_sample
-        gettimeofday(&tv1, &tz)
-        self.time[1] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                        tv1.tv_usec - tv0.tv_usec
+                for t in prange(self.n_threads, schedule='static'):
+                    start = t * sample_step
+                    stop = min(len_batch, (t + 1) * sample_step)
+                    size = stop - start
+                    for ii_ in range(start, stop):
+                        i_ = sample_indices[ii_]
+                        w_sample_ = pow(self.sample_counter[i_],
+                                       -self.sample_learning_rate)
+                        for p_ in range(n_components):
+                            for q_ in range(n_components):
+                                self.G_average[p_, q_, i_] *= 1 - w_sample_
+                                self.G_average[p_, q_, i_] += self.G[p_, q_]\
+                                                           * w_sample_
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+            self.time[1] += tv1.tv_sec-tv0.tv_sec
+            self.time[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-        # code computation
-        gettimeofday(&tv0, &tz)
-        with parallel(num_threads=self.n_threads):
+            # code computation
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
             if self.pen_l1_ratio == 0:
                 if self.G_agg == 3:
                     for t in prange(self.n_thread_batches, schedule='static'):
@@ -646,27 +648,27 @@ cdef class DictFactImpl(object):
                         stop = min(len_batch, (t + 1) * sample_step)
                         for ii_ in range(start, stop):
                             i_ = sample_indices[ii_]
-                            for p in range(n_components):
-                                for q in range(n_components):
-                                    self.G_temp[p, q, t] = self.G_average[p, q,
+                            for p_ in range(n_components):
+                                for q_ in range(n_components):
+                                    self.G_temp[p_, q_, t] = self.G_average[p_, q_,
                                                                           i_]
-                                self.G_temp[p, p, t] += self.alpha
+                                self.G_temp[p_, p_, t] += self.alpha
                             dposv(&UP, &n_components, &ONE, G_temp_ptr
                                   + t * n_components * n_components,
                                   &n_components,
                                   Dx_ptr + ii_ * n_components, &n_components,
                                   &info)
-                            for p in range(n_components):
-                                self.G_temp[p, p, t] -= self.alpha
+                            for p_ in range(n_components):
+                                self.G_temp[p_, p_, t] -= self.alpha
                             if info != 0:
                                 with gil:
                                     raise ValueError
                 else:
                     for t in prange(self.n_thread_batches, schedule='static'):
-                        for p in range(n_components):
-                            for q in range(n_components):
-                                self.G_temp[p, q, t] = self.G[p, q]
-                            self.G_temp[p, p, t] += self.alpha
+                        for p_ in range(n_components):
+                            for q_ in range(n_components):
+                                self.G_temp[p_, q_, t] = self.G[p_, q_]
+                            self.G_temp[p_, p_, t] += self.alpha
                         start = t * sample_step
                         stop = min(len_batch, (t + 1) * sample_step)
                         size = stop - start
@@ -703,35 +705,34 @@ cdef class DictFactImpl(object):
                             self.XtA[t],
                             1000,
                             self.tol, self.random_state, 0, 0)
-                        for p in range(n_components):
-                            self.Dx[p, ii_] = self.code[i_, p]
+                        for p_ in range(n_components):
+                            self.Dx[p_, ii_] = self.code[i_, p_]
             for ii in range(len_batch):
                 for jj in range(len_subset):
                     self.this_X[ii, jj] /= reduction
-        gettimeofday(&tv1, &tz)
-        self.time[2] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                        tv1.tv_usec - tv0.tv_usec
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+            self.time[2] += tv1.tv_sec-tv0.tv_sec
+            self.time[2] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-        # Aggregation
-        w_A = get_simple_weights(self.total_counter, len_batch,
-                                 self.learning_rate,
-                                 self.offset)
+            # Aggregation
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+            w_A = get_simple_weights(self.total_counter, len_batch,
+                                     self.learning_rate,
+                                     self.offset)
 
-        gettimeofday(&tv0, &tz)
-        # Dx = this_code
-        w_batch = w_A / len_batch
-        one_m_w = 1 - w_A
-        # A_ *= 1 - w_A
-        # A_ += this_code.dot(this_code.T) * w_A / batch_size
-        dgemm(&NTRANS, &TRANS,
-              &n_components, &n_components, &len_batch,
-              &w_batch,
-              Dx_ptr, &n_components,
-              Dx_ptr, &n_components,
-              &one_m_w,
-              A_ptr, &n_components
-              )
-        with parallel(num_threads=self.n_threads):
+            # Dx = this_code
+            w_batch = w_A / len_batch
+            one_m_w = 1 - w_A
+            # A_ *= 1 - w_A
+            # A_ += this_code.dot(this_code.T) * w_A / batch_size
+            dgemm(&NTRANS, &TRANS,
+                  &n_components, &n_components, &len_batch,
+                  &w_batch,
+                  Dx_ptr, &n_components,
+                  Dx_ptr, &n_components,
+                  &one_m_w,
+                  A_ptr, &n_components
+                  )
             if self.AB_agg == 1: # Masked
                 w_batch = reduction * w_A / len_batch
                 for jj in range(n_features):
@@ -766,6 +767,9 @@ cdef class DictFactImpl(object):
             else: # Async
                 for jj in range(len_subset):
                     j = subset[jj]
+                    # w_B = get_simple_weights(self.feature_counter[j], len_batch,
+                    #              self.learning_rate,
+                    #              self.offset)
                     w_B = fmin(1., w_A * float(self.total_counter) /
                                self.feature_counter[j])
                     one_m_w = 1. - w_B
@@ -785,9 +789,9 @@ cdef class DictFactImpl(object):
                     j = subset[jj]
                     for k in range(n_components):
                         self.B[k, j] = self.D_subset[k, jj]
-        gettimeofday(&tv1, &tz)
-        self.time[3] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                        tv1.tv_usec - tv0.tv_usec
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+            self.time[3] += tv1.tv_sec-tv0.tv_sec
+            self.time[3] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
         return 0
 
     cdef void update_dict(self,
@@ -802,10 +806,9 @@ cdef class DictFactImpl(object):
         cdef double* G_ptr
         cdef double old_norm = 0
         cdef unsigned long k, kk, j, jj
+        cdef double norm_temp = 0
 
-        cdef timeval tv0, tv1
-        cdef timezone tz
-        cdef suseconds_t gram_time, bcd_time
+        cdef timespec tv0, tv1
 
         if self.G_agg == 2:
              G_ptr = &self.G[0, 0]
@@ -816,11 +819,13 @@ cdef class DictFactImpl(object):
                 self.D_subset[k, jj] = self.D[k, j]
                 self.R[k, jj] = self.B[k, j]
 
-        gettimeofday(&tv0, &tz)
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         for kk in range(self.n_components):
             k = self.D_range[kk]
-            self.norm_temp[k] = enet_norm_fast(self.D_subset[k,
-                                          :len_subset], self.l1_ratio)
+            norm_temp = enet_norm_fast(self.D_subset[k, :len_subset],
+                                       self.l1_ratio)
+            self.norm_temp[k] = norm_temp + 1 - self.norm[k]
+            self.norm[k] -= norm_temp
         if self.G_agg == 2 and len_subset < self.n_features / 2.:
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &len_subset,
@@ -830,11 +835,11 @@ cdef class DictFactImpl(object):
                   &FONE,
                   G_ptr, &n_components
                   )
-        gettimeofday(&tv1, &tz)
-        self.time[1] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                        tv1.tv_usec - tv0.tv_usec
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+        self.time[1] += tv1.tv_sec-tv0.tv_sec
+        self.time[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-        gettimeofday(&tv0, &tz)
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         # R = B - AQ
         dgemm(&NTRANS, &NTRANS,
               &n_components, &len_subset, &n_components,
@@ -858,6 +863,10 @@ cdef class DictFactImpl(object):
             enet_projection_fast(self.D_subset[k, :len_subset],
                                     self.proj_temp[:len_subset],
                                     self.norm_temp[k], self.l1_ratio)
+            norm_temp = enet_norm_fast(self.D_subset[k, :len_subset],
+                                       self.l1_ratio)
+            self.norm[k] += norm_temp
+
             for jj in range(len_subset):
                 self.D_subset[k, jj] = self.proj_temp[jj]
             # R -= A[:, k] Q[:, k].T
@@ -869,11 +878,12 @@ cdef class DictFactImpl(object):
             j = subset[jj]
             for kk in range(n_components):
                 self.D[kk, j] = self.D_subset[kk, jj]
-        gettimeofday(&tv1, &tz)
-        self.time[4] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                        tv1.tv_usec - tv0.tv_usec
 
-        gettimeofday(&tv0, &tz)
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+        self.time[4] += tv1.tv_sec-tv0.tv_sec
+        self.time[4] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         if self.G_agg == 2:
             if len_subset < self.n_features / 2.:
                 dgemm(&NTRANS, &TRANS,
@@ -893,9 +903,9 @@ cdef class DictFactImpl(object):
                       &FZERO,
                       G_ptr, &n_components
                       )
-        gettimeofday(&tv1, &tz)
-        self.time[1] += (tv1.tv_sec-tv0.tv_sec)*1000000 +\
-                        tv1.tv_usec - tv0.tv_usec
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+        self.time[1] += tv1.tv_sec-tv0.tv_sec
+        self.time[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
     def transform(self, double[:, ::1] X, n_threads=None):
         cdef int n_samples = X.shape[0]
