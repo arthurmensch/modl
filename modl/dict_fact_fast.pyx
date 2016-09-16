@@ -20,7 +20,8 @@ from scipy.linalg.cython_lapack cimport dposv
 # noinspection PyUnresolvedReferences
 from ._utils.randomkit.random_fast cimport Sampler, RandomState
 # noinspection PyUnresolvedReferences
-from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, enet_scale_fast
+from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, \
+      enet_scale_fast, enet_scale_matrix_fast
 
 import numpy as np
 
@@ -87,13 +88,13 @@ cdef class DictFactImpl(object):
     cdef readonly double alpha
     cdef readonly double l1_ratio
     cdef readonly double pen_l1_ratio
-    cdef readonly double tol
+    cdef readonly double lasso_tol
 
     cdef readonly int G_agg
     cdef readonly int Dx_agg
     cdef readonly int AB_agg
 
-    cdef readonly int scale_up
+    cdef readonly double purge_tol
 
     cdef readonly int subset_sampling
     cdef readonly int dict_reduction
@@ -156,7 +157,8 @@ cdef class DictFactImpl(object):
                  double alpha=1.0,
                  double l1_ratio=0.,
                  double pen_l1_ratio=0.,
-                 double tol=1e-3,
+                 double lasso_tol=1e-3,
+                 double purge_tol=0,
                  # Hyper-parameters
                  double learning_rate=1.,
                  double sample_learning_rate=0.5,
@@ -167,7 +169,6 @@ cdef class DictFactImpl(object):
                  int G_agg=1,
                  int Dx_agg=1,
                  int AB_agg=1,
-                 bint scale_up=1,
                  int subset_sampling=1,
                  int dict_reduction=0,
                  # Dict parameter
@@ -194,7 +195,6 @@ cdef class DictFactImpl(object):
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.pen_l1_ratio = pen_l1_ratio
-        self.tol = tol
 
         self.G_agg = G_agg
         self.Dx_agg = Dx_agg
@@ -202,7 +202,9 @@ cdef class DictFactImpl(object):
         self.subset_sampling = subset_sampling
         self.dict_reduction = dict_reduction
         self.AB_agg = AB_agg
-        self.scale_up = scale_up
+
+        self.lasso_tol = lasso_tol
+        self.purge_tol = purge_tol
 
         self.random_seed = random_seed
         self.verbose = verbose
@@ -212,7 +214,13 @@ cdef class DictFactImpl(object):
 
         self.random_state = RandomState(seed=self.random_seed)
 
-        self.D = enet_scale_fast(D, self.l1_ratio, radius=1)
+        self.D = view.array((self.n_components, self.n_features),
+                                   sizeof(double),
+                                   format='d',
+                                   mode='fortran')
+
+        self.D[:] = D[:]
+        enet_scale_matrix_fast(D, self.l1_ratio, radius=1)
 
         self.norm = view.array((self.n_components, ),
                                    sizeof(double),
@@ -316,9 +324,6 @@ cdef class DictFactImpl(object):
         self.feature_sampler_1 = Sampler(self.n_features, self.reduction,
                                     self.subset_sampling, random_seed)
 
-        # self.reduction_ = np.mean(np.maximum(np.random.geometric(self.reduction
-        #                                                          / self.n_features, 1000),
-        #                                      self.n_features))
         if self.dict_reduction != 0:
             random_seed = self.random_state.randint()
             self.feature_sampler_2 = Sampler(self.n_features,
@@ -335,7 +340,8 @@ cdef class DictFactImpl(object):
                                double alpha=1.0,
                                double l1_ratio=0.,
                                double pen_l1_ratio=0.,
-                               double tol=1e-3,
+                               double lasso_tol=1e-3,
+                               double purge_tol=0,
                                # Hyper-parameters
                                double learning_rate=1.,
                                double sample_learning_rate=0.5,
@@ -409,7 +415,8 @@ cdef class DictFactImpl(object):
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.pen_l1_ratio = pen_l1_ratio
-        self.tol = tol
+        self.lasso_tol = lasso_tol
+        self.purge_tol = purge_tol
 
         self.reduction = reduction
         self.feature_sampler_1.reduction = self.reduction
@@ -451,6 +458,8 @@ cdef class DictFactImpl(object):
 
         cdef timespec tv0, tv1
 
+        cdef int reduction_int = int(self.reduction)
+
         with nogil:
             for k in range(n_batches):
                 if self.verbose and self.total_counter\
@@ -486,16 +495,63 @@ cdef class DictFactImpl(object):
 
                 if self.dict_reduction != 0:
                     subset = self.feature_sampler_2.yield_subset()
+
+                if self.purge_tol > 0 and not self.total_counter % reduction_int:
+                    self.clean_dict()
+
                 self.update_dict(subset)
                 clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
                 self.time[5] += tv1.tv_sec-tv0.tv_sec
                 self.time[5] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-    cpdef double[::1, :] scaled_D(self):
-        if self.scale_up:
-            return self.D
-        else:
-            return enet_scale_fast(self.D, self.l1_ratio, radius=1)
+    cdef void clean_dict(self) nogil:
+        cdef int k, p
+        cdef double sum_A
+        cdef double * D_ptr = &self.D[0, 0]
+        cdef double * G_ptr = &self.G[0, 0]
+        cdef int max_k = 0
+        for k in range(self.n_components):
+            # if self.A[k, k] > self.A[max_k, max_k]:
+            #     max_k = k
+            sum_A += self.A[k, k]
+        for k in range(self.n_components):
+            if self.A[k, k] * self.n_components / sum_A < self.purge_tol:
+                printf('+')
+                p = self.random_state.randint(self.n_components - 1)
+                p = (k + p) % self.n_components
+                for jj in range(self.n_features):
+                    self.D[k, jj] = self.D[p, jj]
+                self.G[p, k] = self.G[p, p]
+                self.G[k, :] = self.G[p, :]
+                self.G[:, k] = self.G[k, :]
+                for q in range(self.n_components):
+                    self.A[p, q] /= 2
+                for q in range(self.n_components):
+                    self.A[q, p] /= 2
+                self.A[p, k] = self.A[p, p]
+                self.A[k, :] = self.A[p, :]
+                self.A[:, k] = self.A[k, :]
+                for jj in range(self.n_features):
+                    self.B[p, jj] /= 2
+                self.B[k, :] = self.B[p, :]
+
+                # for jj in range(self.n_features):
+                #     # self.D[k, jj] = self.D[max_k, jj]
+                #     self.D[k, jj] = self.random_state.randn()
+                # enet_scale_fast(self.D[k, :], self.l1_ratio)
+                # if self.G_agg == 2:
+                #     dgemv(&NTRANS,
+                #           &self.n_components, &self.n_features,
+                #           &FONE,
+                #           D_ptr, &self.n_components,
+                #           D_ptr + k, &self.n_components,
+                #           &FZERO,
+                #           G_ptr + k * self.n_components, &ONE
+                #           )
+                #     # Only the k-th column aof G as been changed
+                #     for p in range(self.n_components):
+                #         self.G[k, p] = self.G[p, k]
+                # self.norm[k] = 1
 
     cdef int update_code(self, int[:] subset, double[:, ::1] X,
                          int[:] sample_indices) nogil except *:
@@ -564,23 +620,23 @@ cdef class DictFactImpl(object):
         if self.pen_l1_ratio == 0:
             G_temp_ptr = &self.G_temp[0, 0, 0]
 
-        with parallel(num_threads=self.n_threads):
-            for ii in range(len_batch):
-                for jj in range(len_subset):
-                    j = subset[jj]
-                    self.this_X[ii, jj] = X[ii, j]
-
+        for ii in range(len_batch):
             for jj in range(len_subset):
                 j = subset[jj]
-                for k in range(self.n_components):
-                    self.D_subset[k, jj] = self.D[k, j]
-            for ii in range(len_batch):
-                for jj in range(len_subset):
-                    self.this_X[ii, jj] *= reduction
+                self.this_X[ii, jj] = X[ii, j]
 
-            # Dx computation
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
-            # Dx = np.dot(D_subset, this_X.T)
+        for jj in range(len_subset):
+            j = subset[jj]
+            for k in range(self.n_components):
+                self.D_subset[k, jj] = self.D[k, j]
+        for ii in range(len_batch):
+            for jj in range(len_subset):
+                self.this_X[ii, jj] *= reduction
+
+        # Dx computation
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+        # Dx = np.dot(D_subset, this_X.T)
+        with parallel(num_threads=self.n_threads):
             if self.Dx_agg == 2:
                 # X is C-ordered
                 for t in prange(self.n_threads, schedule='static'):
@@ -618,23 +674,24 @@ cdef class DictFactImpl(object):
                             self.Dx_average[p, i] *= 1 - w_sample
                             self.Dx_average[p, i] += self.Dx[p, ii] * w_sample
                             self.Dx[p, ii] = self.Dx_average[p, i]
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-            self.time[0] += tv1.tv_sec-tv0.tv_sec
-            self.time[0] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+        self.time[0] += tv1.tv_sec-tv0.tv_sec
+        self.time[0] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-            # G computation
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
-            if self.G_agg != 2:
-                dgemm(&NTRANS, &TRANS,
-                      &n_components, &n_components, &len_subset,
-                      &reduction,
-                      D_subset_ptr, &n_components,
-                      D_subset_ptr, &n_components,
-                      &FZERO,
-                      G_ptr, &n_components
-                      )
+        # G computation
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+        if self.G_agg != 2:
+            dgemm(&NTRANS, &TRANS,
+                  &n_components, &n_components, &len_subset,
+                  &reduction,
+                  D_subset_ptr, &n_components,
+                  D_subset_ptr, &n_components,
+                  &FZERO,
+                  G_ptr, &n_components
+                  )
 
-            if self.G_agg == 3:
+        if self.G_agg == 3:
+            with parallel(num_threads=self.n_threads):
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * sample_step
                     stop = min(len_batch, (t + 1) * sample_step)
@@ -648,12 +705,13 @@ cdef class DictFactImpl(object):
                                 self.G_average[p_, q_, i_] *= 1 - w_sample_
                                 self.G_average[p_, q_, i_] += self.G[p_, q_]\
                                                            * w_sample_
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-            self.time[1] += tv1.tv_sec-tv0.tv_sec
-            self.time[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+        self.time[1] += tv1.tv_sec-tv0.tv_sec
+        self.time[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-            # code computation
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+        # code computation
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+        with parallel(num_threads=self.n_threads):
             if self.pen_l1_ratio == 0:
                 if self.G_agg == 3:
                     for t in prange(self.n_thread_batches, schedule='static'):
@@ -717,54 +775,54 @@ cdef class DictFactImpl(object):
                             self.H[t],
                             self.XtA[t],
                             1000,
-                            self.tol, self.random_state, 0, 0)
+                            self.lasso_tol, self.random_state, 0, 0)
                         for p_ in range(n_components):
                             self.Dx[p_, ii_] = self.code[i_, p_]
-            for ii in range(len_batch):
-                for jj in range(len_subset):
-                    self.this_X[ii, jj] /= reduction
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-            self.time[2] += tv1.tv_sec-tv0.tv_sec
-            self.time[2] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+        for ii in range(len_batch):
+            for jj in range(len_subset):
+                self.this_X[ii, jj] /= reduction
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+        self.time[2] += tv1.tv_sec-tv0.tv_sec
+        self.time[2] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
-            # Aggregation
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
-            w_A = get_simple_weights(self.total_counter, len_batch,
-                                     self.learning_rate,
-                                     self.offset)
+        # Aggregation
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+        w_A = get_simple_weights(self.total_counter, len_batch,
+                                 self.learning_rate,
+                                 self.offset)
 
-            # Dx = this_code
-            w_batch = w_A / len_batch
-            one_m_w = 1 - w_A
-            # A_ *= 1 - w_A
-            # A_ += this_code.dot(this_code.T) * w_A / batch_size
-            dgemm(&NTRANS, &TRANS,
-                  &n_components, &n_components, &len_batch,
+        # Dx = this_code
+        w_batch = w_A / len_batch
+        one_m_w = 1 - w_A
+        # A_ *= 1 - w_A
+        # A_ += this_code.dot(this_code.T) * w_A / batch_size
+        dgemm(&NTRANS, &TRANS,
+              &n_components, &n_components, &len_batch,
+              &w_batch,
+              Dx_ptr, &n_components,
+              Dx_ptr, &n_components,
+              &one_m_w,
+              A_ptr, &n_components
+              )
+        if self.AB_agg == 1: # Masked
+            w_batch = reduction * w_A / len_batch
+            for jj in range(n_features):
+                for k in range(n_components):
+                    self.B[k, jj] *= 1 - w_A
+            dgemm(&NTRANS, &NTRANS,
+                  &n_components, &len_subset, &len_batch,
                   &w_batch,
                   Dx_ptr, &n_components,
-                  Dx_ptr, &n_components,
-                  &one_m_w,
-                  A_ptr, &n_components
-                  )
-            if self.AB_agg == 1: # Masked
-                w_batch = reduction * w_A / len_batch
-                for jj in range(n_features):
-                    for k in range(n_components):
-                        self.B[k, jj] *= 1 - w_A
-                dgemm(&NTRANS, &NTRANS,
-                      &n_components, &len_subset, &len_batch,
-                      &w_batch,
-                      Dx_ptr, &n_components,
-                      this_X_ptr, &len_batch,
-                      &FZERO,
-                      D_subset_ptr, &n_components)
-                for jj in range(len_subset):
-                    j = subset[jj]
-                    for k in range(n_components):
-                        self.B[k, j] += self.D_subset[k, jj]
-                # Reuse D_subset as B_subset
-                # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
-            elif self.AB_agg == 2: # Full
+                  this_X_ptr, &len_batch,
+                  &FZERO,
+                  D_subset_ptr, &n_components)
+            for jj in range(len_subset):
+                j = subset[jj]
+                for k in range(n_components):
+                    self.B[k, j] += self.D_subset[k, jj]
+            # B += this_X.T.dot(P[row_batch]) * {w_B} / batch_size
+        elif self.AB_agg == 2: # Full
+            with parallel(num_threads=self.n_threads):
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * subset_step
                     stop = min(n_features, (t + 1) * subset_step)
@@ -777,34 +835,33 @@ cdef class DictFactImpl(object):
                           X_ptr + start, &n_features,
                           &one_m_w,
                           B_ptr + start * n_components, &n_components)
-            else: # Async
-                for jj in range(len_subset):
-                    j = subset[jj]
-                    # w_B = get_simple_weights(self.feature_counter[j], len_batch,
-                    #              self.learning_rate,
-                    #              self.offset)
-                    w_B = fmin(1., w_A * float(self.total_counter) /
-                               self.feature_counter[j])
-                    one_m_w = 1. - w_B
-                    w_batch = w_B / len_batch
-                    for k in range(n_components):
-                        self.D_subset[k, jj] = self.B[k, j] * one_m_w
-                    for ii in range(len_batch):
-                        self.this_X[ii, jj] *= w_batch
-                dgemm(&NTRANS, &NTRANS,
-                      &n_components, &len_subset, &len_batch,
-                      &FONE,
-                      Dx_ptr, &n_components,
-                      this_X_ptr, &len_batch,
-                      &FONE,
-                      D_subset_ptr, &n_components)
-                for jj in range(len_subset):
-                    j = subset[jj]
-                    for k in range(n_components):
-                        self.B[k, j] = self.D_subset[k, jj]
-            clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-            self.time[3] += tv1.tv_sec-tv0.tv_sec
-            self.time[3] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+        else: # Async
+            # Reuse D_subset as B_subset
+            for jj in range(len_subset):
+                j = subset[jj]
+                w_B = fmin(1.,
+                           w_A * float(self.total_counter) /
+                           self.feature_counter[j])
+                one_m_w = 1. - w_B
+                w_batch = w_B / len_batch
+                for k in range(n_components):
+                    self.D_subset[k, jj] = self.B[k, j] * one_m_w
+                for ii in range(len_batch):
+                    self.this_X[ii, jj] *= w_batch
+            dgemm(&NTRANS, &NTRANS,
+                  &n_components, &len_subset, &len_batch,
+                  &FONE,
+                  Dx_ptr, &n_components,
+                  this_X_ptr, &len_batch,
+                  &FONE,
+                  D_subset_ptr, &n_components)
+            for jj in range(len_subset):
+                j = subset[jj]
+                for k in range(n_components):
+                    self.B[k, j] = self.D_subset[k, jj]
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+        self.time[3] += tv1.tv_sec-tv0.tv_sec
+        self.time[3] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
         return 0
 
     cdef void update_dict(self,
@@ -837,11 +894,8 @@ cdef class DictFactImpl(object):
             k = self.D_range[kk]
             norm_temp = enet_norm_fast(self.D_subset[k, :len_subset],
                                        self.l1_ratio)
-            if self.scale_up:
-                self.norm_temp[k] = norm_temp + 1 - self.norm[k]
-                self.norm[k] -= norm_temp
-            else:
-                self.norm_temp[k] = norm_temp
+            self.norm_temp[k] = norm_temp + 1 - self.norm[k]
+            self.norm[k] -= norm_temp
         if self.G_agg == 2 and len_subset < self.n_features / 2.:
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &len_subset,
@@ -874,16 +928,14 @@ cdef class DictFactImpl(object):
             for jj in range(len_subset):
                 if self.A[k, k] > 1e-20:
                     self.D_subset[k, jj] = self.R[k, jj] / self.A[k, k]
-                    # print(D_subset[k, jj])
 
             enet_projection_fast(self.D_subset[k, :len_subset],
                                     self.proj_temp[:len_subset],
                                     self.norm_temp[k], self.l1_ratio)
             for jj in range(len_subset):
                 self.D_subset[k, jj] = self.proj_temp[jj]
-            if self.scale_up:
-                self.norm[k] += enet_norm_fast(self.D_subset[k, :len_subset],
-                                           self.l1_ratio)
+            self.norm[k] += enet_norm_fast(self.D_subset[k, :len_subset],
+                                       self.l1_ratio)
             # R -= A[:, k] Q[:, k].T
             dger(&n_components, &len_subset, &FMONE,
                  A_ptr + k * n_components,
@@ -937,7 +989,7 @@ cdef class DictFactImpl(object):
 
         cdef int n_thread_batches = min(this_n_threads, n_samples)
 
-        cdef double[::1, :] D = self.scaled_D()
+        cdef double[::1, :] D = self.D
         cdef double[:, ::1] code = view.array((n_samples, n_components),
                                               sizeof(double),
                                               format='d', mode='c')
@@ -1022,7 +1074,7 @@ cdef class DictFactImpl(object):
                                     H[t],
                                     XtA[t],
                                     1000,
-                                    self.tol, self.random_state, 0, 0)
+                                    self.lasso_tol, self.random_state, 0, 0)
             else:
                 for t in prange(n_thread_batches, schedule='static'):
                     for p in range(n_components):
@@ -1043,7 +1095,7 @@ cdef class DictFactImpl(object):
                     for ii in range(start, stop):
                         for p in range(n_components):
                             code[ii, p] = Dx[p, ii]
-        return code, D
+        return code
 
 cdef double[:] enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                                  double[::1, :] Q,

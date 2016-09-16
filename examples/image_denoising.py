@@ -26,6 +26,7 @@ class Callback(object):
 
     def __call__(self, mf):
         test_time = time()
+        # print(np.diag(mf.A))
         self.obj.append(mf.score(self.X_tr, n_threads=self.n_threads))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
@@ -84,35 +85,35 @@ def main():
                     batch_size=30,
                     learning_rate=.9,
                     sample_learning_rate=None,
-                    reduction=10,
-                    verbose=5,
-                    G_agg='masked',
-                    Dx_agg='masked',
-                    AB_agg='full',
-                    scale_up=False,
+                    reduction=5,
+                    verbose=1,
+                    G_agg='full',
+                    Dx_agg='average',
+                    AB_agg='async',
                     subset_sampling='random',
                     dict_reduction='follow',
                     callback=cb,
-                    n_threads=3,
+                    n_threads=2,
                     n_samples=n_samples,
-                    tol=1e-2,
+                    lasso_tol=1e-2,
+                    # purge_tol=1e-3,
                     random_state=42,
-                    n_epochs=5)
-    # warmup = 0 # 3 * n_samples
+                    n_epochs=30)
+    # warmup = 1 * n_samples
     # t0 = time()
     # reduction = dico.reduction
-    # dico.set_params(reduction=1)
+    # dico.set_params(reduction=1)s
     # warmup_epochs = warmup // n_samples
     # for _ in range(warmup_epochs):
     #     dico.partial_fit(data)
     # warmup_rem = warmup % n_samples
     # if warmup_rem != 0:
     #     dico.partial_fit(data[:warmup_rem], np.arange(warmup, dtype='i4'))
-    #     dico.set_params(reduction=reduction)
+    #     dico.set_params(reduction=reduction, purge_tol=1e-1)
     #     dico.partial_fit(data[warmup_rem:],
     #                      np.arange(warmup, n_samples, dtype='i4'))
     # else:
-    #     dico.set_params(reduction=reduction)
+    #     dico.set_params(reduction=reduction, purge_tol=1e-1)
     # for i in range(dico.n_epochs - warmup_epochs):
     #     dico.partial_fit(data)
     dico.fit(data)

@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.utils import check_array
 
 from .enet_proj_fast import enet_norm_fast, enet_projection_fast, \
-    enet_scale_fast
+    enet_scale_fast, enet_scale_matrix_fast
 
 
 def enet_projection(v, radius=1., l1_ratio=1, check_input=False):
@@ -40,12 +40,14 @@ def enet_norm(v, l1_ratio=1):
 def enet_scale(v, radius=1, l1_ratio=1):
     v = check_array(v, dtype=np.float64,
                     order='F',
-                    ensure_2d=False)
+                    ensure_2d=False,
+                    copy=True)
     if v.ndim == 1:
-        v = v[np.newaxis, :]
-    v = np.asarray(enet_scale_fast(v,
-                                   l1_ratio=l1_ratio, radius=radius))
-    return v.squeeze()
+        enet_scale_fast(v, l1_ratio=l1_ratio, radius=radius)
+        return v
+    else:
+        enet_scale_matrix_fast(v, l1_ratio=l1_ratio, radius=radius)
+        return v
 
 
 def enet_threshold(v, l1_ratio=1, radius=1, inplace=False):

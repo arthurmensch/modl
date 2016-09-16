@@ -43,7 +43,7 @@ cdef extern from "randomkit.h":
     rk_error rk_devfill(void *buffer, size_t size, int strong)
     rk_error rk_altfill(void *buffer, size_t size, int strong,
             rk_state *state)
-    double rk_gauss(rk_state *state)
+    double rk_gauss(rk_state *state) nogil
 
 cdef extern from "distributions.h":
     long rk_binomial(rk_state *state, long n, double p) nogil
@@ -77,8 +77,11 @@ cdef class RandomState:
     cdef int binomial(self, int n, double p) nogil:
         return <int>rk_binomial(self.internal_state, n, p)
 
-    cdef int    geometric(self, double p) nogil:
+    cdef int geometric(self, double p) nogil:
         return <int>rk_geometric(self.internal_state, p)
+
+    cdef double randn(self) nogil:
+        return rk_gauss(self.internal_state)
 
     cdef void shuffle(self, int[:] x) nogil:
         cdef int i, j

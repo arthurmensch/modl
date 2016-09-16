@@ -16,7 +16,8 @@ class DictFact(BaseEstimator):
                  alpha=1.0,
                  l1_ratio=0,
                  pen_l1_ratio=0,
-                 tol=1e-3,
+                 lasso_tol=1e-3,
+                 purge_tol=0,
                  # Hyper-parameters
                  learning_rate=1.,
                  batch_size=1,
@@ -29,7 +30,6 @@ class DictFact(BaseEstimator):
                  AB_agg='masked',
                  subset_sampling='random',  # ['random', 'cyclic']
                  dict_reduction='follow',
-                 scale_up=True,
                  # ['independent', 'coupled']
                  # Dict parameter
                  dict_init=None,
@@ -53,7 +53,8 @@ class DictFact(BaseEstimator):
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.pen_l1_ratio = pen_l1_ratio
-        self.tol = tol
+        self.lasso_tol = lasso_tol
+        self.purge_tol = purge_tol
 
         self.dict_init = dict_init
         self.n_components = n_components
@@ -61,7 +62,6 @@ class DictFact(BaseEstimator):
         self.G_agg = G_agg
         self.Dx_agg = Dx_agg
         self.AB_agg = AB_agg
-        self.scale_up = scale_up
         self.subset_sampling = subset_sampling
         self.dict_reduction = dict_reduction
 
@@ -120,10 +120,6 @@ class DictFact(BaseEstimator):
     @property
     def feature_counter(self):
         return np.array(self._impl.feature_counter)
-
-    @property
-    def scaled_D(self):
-        return np.array(self._impl.scaled_D())
 
     @property
     def time(self):
@@ -196,13 +192,12 @@ class DictFact(BaseEstimator):
         res = {'alpha': self.alpha,
                "l1_ratio": self.l1_ratio,
                'pen_l1_ratio': self.pen_l1_ratio,
-               'tol': self.tol,
-
+               'lasso_tol': self.lasso_tol,
+               'purge_tol': self.purge_tol,
                'learning_rate': self.learning_rate,
                'sample_learning_rate': sample_learning_rate,
                'offset': self.offset,
                'batch_size': self.batch_size,
-               'scale_up': self.scale_up,
                'G_agg': G_agg[self.G_agg],
                'Dx_agg': Dx_agg[self.G_agg],
                'AB_agg': AB_agg[self.AB_agg],
@@ -268,12 +263,12 @@ class DictFact(BaseEstimator):
         if not self.initialized:
             raise ValueError()
         X = check_array(X, dtype='float64', order='C')
-        code, scaled_D = self._impl.transform(X, n_threads=n_threads)
-        return np.asarray(code), np.asarray(scaled_D)
+        code = self._impl.transform(X, n_threads=n_threads)
+        return np.asarray(code)
 
     def score(self, X, n_threads=None):
-        code, scaled_D = self.transform(X, n_threads=n_threads)
-        loss = np.sum((X - code.dot(self.scaled_D)) ** 2) / 2
+        code = self.transform(X, n_threads=n_threads)
+        loss = np.sum((X - code.dot(self.D)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
@@ -282,4 +277,4 @@ class DictFact(BaseEstimator):
 
     @property
     def components_(self):
-        return self.scaled_D
+        return np.array(self.D, copy=True)

@@ -260,7 +260,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
 
     @property
     def components_(self):
-        components = np.array(self._impl.components_, copy='True')
+        components = self._impl.components_
         components = _normalize_and_flip(components)
         return self.masker_.inverse_transform(components)
 

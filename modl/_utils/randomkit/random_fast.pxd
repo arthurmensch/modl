@@ -14,6 +14,7 @@ cdef class RandomState:
     cdef int[:] permutation(self, int size)
     cdef int binomial(self, int n, double p) nogil
     cdef int geometric(self, double p) nogil
+    cdef double randn(self) nogil
 
 cdef class Sampler(object):
     cdef int n_features
