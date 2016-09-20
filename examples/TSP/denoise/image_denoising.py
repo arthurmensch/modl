@@ -151,20 +151,13 @@ def main():
     average_time = np.zeros((profile.shape[0] - 1, profile.shape[1] + 1))
     average_time[:, 1:] = (profile[1:] - profile[:-1]) \
                           / (iter[1:] - iter[:-1])[:, np.newaxis]
-    # sort = np.argsort(average_time[-1, :])
-    # average_time = average_time[:, sort]
-    # labels = labels[sort]
     average_time = np.cumsum(average_time, axis=1)
 
     palette = sns.color_palette("deep", 5)
     for i in range(1, 6):
-        # axes[1].plot(iter, average_time[:, i],
-        #              color=palette[i - 1])
         axes[1].fill_between(iter[1:], average_time[:, i],
                              average_time[:, i - 1],
                              facecolor=palette[i - 1], label=labels[i])
-
-        # axes[1].plot(iter[1:], average_time[1:], marker='o')
     handles, labels = axes[1].get_legend_handles_labels()
     axes[1].legend(reversed(handles), reversed(labels), loc='upper left',
                     bbox_to_anchor=(1, 1),)

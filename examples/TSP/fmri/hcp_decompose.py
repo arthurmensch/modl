@@ -85,6 +85,16 @@ class Callback(object):
         profile = np.array(self.profile)
         iter = np.array(self.iter)
 
+        if self.train_obj:
+            train_obj = np.array(self.train_obj[1:])
+            axes[0].plot(iter[1:], train_obj, marker='o',
+                         label='train set')
+        if self.test_obj:
+            test_obj = np.array(self.test_obj[1:])
+            axes[0].plot(iter[1:], test_obj, marker='o', label='test set')
+        axes[0].legend(bbox_to_anchor=(1, 1), loc="upper left")
+
+        # Profile
         profile = profile[:, [6, 0, 1, 2, 3, 4]]
         labels = np.array(['', 'IO time', 'Dx time', 'G time', 'Code time', 'Agg time',
                         'BCD time'])
@@ -95,23 +105,12 @@ class Callback(object):
         average_time = average_time[:, sort]
         labels = labels[sort]
         average_time = np.cumsum(average_time, axis=1)
-        iter = iter[1:]
 
-        if self.train_obj:
-            train_obj = np.array(self.train_obj[1:])
-            axes[0].plot(iter, train_obj, marker='o',
-                         label='train set')
-        if self.test_obj:
-            test_obj = np.array(self.test_obj[1:])
-            axes[0].plot(iter, test_obj, marker='o', label='test set')
-        axes[0].legend(bbox_to_anchor=(1, 1), loc="upper left")
-
-        # Profile
         palette = sns.color_palette("deep", 6)
         for i in range(1, 7):
             # axes[1].plot(iter, average_time[:, i],
             #              color=palette[i - 1])
-            axes[1].fill_between(iter, average_time[:, i], average_time[:, i - 1],
+            axes[1].fill_between(iter[1:], average_time[:, i], average_time[:, i - 1],
                                  facecolor=palette[i - 1], label=labels[i])
 
             # axes[1].plot(iter[1:], average_time[1:], marker='o')

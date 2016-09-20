@@ -84,18 +84,18 @@ def single_run(data_tr, data_te,
 
 def run(n_jobs=1, n_epochs=10):
     # Exp def
-    redundancies = [1, 5, 10, 20]
+    redundancies = [25]
     global_exp = dict(n_components=100, alpha=1,
                       l1_ratio=0,
                       pen_l1_ratio=.9,
                       learning_rate=0.9,
-                      Dx_agg='full',
-                      G_agg='full',
+                      Dx_agg='average',
+                      G_agg='average',
                       AB_agg='full')
     ref_batch_size = 200
     exps = [dict(batch_size=int(ref_batch_size),
                  reduction=reduction)
-            for reduction in np.linspace(1, 10, 10)]
+            for reduction in np.linspace(5, 5, 1)]
 
     mem = Memory(cachedir=expanduser('~/cache'))
     face = misc.face(gray=True)
@@ -203,5 +203,5 @@ if __name__ == '__main__':
         os.makedirs(output_dir)
     except OSError:
         pass
-    # main(output_dir, n_jobs=30, n_epochs=10)
-    plot(output_dir)
+    main(output_dir, n_jobs=2, n_epochs=10)
+    # plot(output_dir)
