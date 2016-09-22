@@ -7,6 +7,7 @@ import numpy as np
 import skimage
 from joblib import Parallel, dump, load
 from joblib import delayed
+from modl._utils.hyperspectral import fetch_aviris
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn.utils import check_random_state
@@ -78,9 +79,9 @@ class Callback(object):
             if self.gray:
                 imgs = comp.reshape((self.patch_size[0], self.patch_size[1]))
             else:
-                imgs = comp.reshape((self.patch_size[0], self.patch_size[1], 3))
+                imgs = comp.reshape((self.patch_size[0], self.patch_size[1], self.patch_size[2]))
             plt.imshow(
-                imgs,
+                imgs[:, :, :3],
                 cmap=plt.cm.gray_r,
                 interpolation='nearest')
             plt.xticks(())
@@ -193,50 +194,72 @@ def prepare_folder(name, n_exp, offset=0):
     return trace_folder_list
 
 
-def fetch_data(redundancy=1, patch_size=(8, 8), gray=True):
-    tile = int(sqrt(redundancy))
-    image = imread(expanduser('~/data/images/lisboa.jpg'))
-    # image = image[::2, ::2] + image[::2, ::2] + image[::2, ::2] + image[::2, ::2]
-    # image = image / 4
-    # if gray:
-    #     image = image.mean(axis=2)
-    #     height, width = image.shape
-    # else:
-    #     height, width, n_channels = image.shape
-    #
-    image = misc.face(gray=gray)
-    if gray:
-        height, width = image.shape
-    else:
-        height, width, n_channels = image.shape
+def fetch_data(patch_size=(8, 8), random_state=0, gray=True):
+    full_img = fetch_aviris()
+    img = full_img
 
-    image = image / 255
+    n_channels = img.shape[2]
+    height, width = img.shape[:-1]
 
-    datasets = dict()
-    n_samples = dict(train_data=10000, test_data=2000)
-    for dataset in ['train_data', 'test_data']:
-        data = extract_patches_2d(image[:, :width // 2], patch_size,
-                                  max_patches=n_samples[dataset],
-                                  random_state=0)
-        if image.ndim == 3:
-            tiled_data = np.empty(
-                (data.shape[0], data.shape[1] * tile,
-                 data.shape[2] * tile, 3))
-        else:
-            tiled_data = np.empty(
-                (data.shape[0], data.shape[1] * tile,
-                 data.shape[2] * tile))
-        for i in range(tile):
-            for j in range(tile):
-                tiled_data[:, i::tile, j::tile] = data
-        data = tiled_data
-        data = data.reshape(data.shape[0], -1)
-        data -= np.mean(data, axis=0)
-        data /= np.std(data, axis=0)
-        datasets[dataset] = data
-    patch_size = (patch_size[0] * tile, patch_size[1] * tile)
-
-    return datasets['train_data'], datasets['test_data'], patch_size
+    train_patches = extract_patches_2d(img[:, :width // 2, :], patch_size,
+                                       max_patches=20000,
+                                       random_state=random_state)
+    train_patches = np.reshape(train_patches, (train_patches.shape[0], -1))
+    train_patches -= np.mean(train_patches, axis=0)
+    train_patches /= np.std(train_patches, axis=0)
+    test_patches = extract_patches_2d(img[:, width // 2:, :], patch_size,
+                                      max_patches=2000,
+                                      random_state=random_state)
+    test_patches = np.reshape(test_patches, (test_patches.shape[0], -1))
+    test_patches -= np.mean(test_patches, axis=0)
+    test_patches /= np.std(test_patches, axis=0)
+    return train_patches, test_patches, (patch_size[0], patch_size[1], n_channels)
+#
+#
+# def fetch_data(redundancy=1, patch_size=(8, 8), gray=True):
+#     tile = int(sqrt(redundancy))
+#     image = imread(expanduser('~/data/images/lisboa.jpg'))
+#     # image = image[::2, ::2] + image[::2, ::2] + image[::2, ::2] + image[::2, ::2]
+#     # image = image / 4
+#     # if gray:
+#     #     image = image.mean(axis=2)
+#     #     height, width = image.shape
+#     # else:
+#     #     height, width, n_channels = image.shape
+#     #
+#     image = misc.face(gray=gray)
+#     if gray:
+#         height, width = image.shape
+#     else:
+#         height, width, n_channels = image.shape
+#
+#     image = image / 255
+#
+#     datasets = dict()
+#     n_samples = dict(train_data=10000, test_data=2000)
+#     for dataset in ['train_data', 'test_data']:
+#         data = extract_patches_2d(image[:, :width // 2], patch_size,
+#                                   max_patches=n_samples[dataset],
+#                                   random_state=0)
+#         if image.ndim == 3:
+#             tiled_data = np.empty(
+#                 (data.shape[0], data.shape[1] * tile,
+#                  data.shape[2] * tile, 3))
+#         else:
+#             tiled_data = np.empty(
+#                 (data.shape[0], data.shape[1] * tile,
+#                  data.shape[2] * tile))
+#         for i in range(tile):
+#             for j in range(tile):
+#                 tiled_data[:, i::tile, j::tile] = data
+#         data = tiled_data
+#         data = data.reshape(data.shape[0], -1)
+#         data -= np.mean(data, axis=0)
+#         data /= np.std(data, axis=0)
+#         datasets[dataset] = data
+#     patch_size = (patch_size[0] * tile, patch_size[1] * tile)
+#
+#     return datasets['train_data'], datasets['test_data'], patch_size
 
 
 def run(exps, n_jobs=1, offset=0, redundancy=1, patch_size=(8, 8),
@@ -245,7 +268,7 @@ def run(exps, n_jobs=1, offset=0, redundancy=1, patch_size=(8, 8),
 
     trace_folder_list = prepare_folder('denoise', n_exp, offset=offset)
 
-    train_data, test_data, patch_size = fetch_data(redundancy=redundancy,
+    train_data, test_data, patch_size = fetch_data(
                                                    gray=gray,
                                                    patch_size=patch_size)
 
@@ -272,11 +295,11 @@ def run_single(trace_folder,
                   gray=gray,
                   plot=False)
     n_samples = train_data.shape[0]
-    n_epochs = 30
+    n_epochs = 20
     linear_verbose_epoch = 0
     verbose_iter = np.unique(np.floor(
         np.logspace(1, log(n_samples * (n_epochs - linear_verbose_epoch),
-                           10), 30, base=10)).
+                           10), 40, base=10)).
                              astype('int') - 10)
     # verbose_iter_last = np.unique(np.floor(
     #     np.linspace(n_samples * (n_epochs - linear_verbose_epoch),
@@ -286,7 +309,7 @@ def run_single(trace_folder,
     dico = DictFact(n_components=50, alpha=.5,
                     l1_ratio=0,
                     pen_l1_ratio=0.9,
-                    batch_size=50,
+                    batch_size=150,
                     learning_rate=0.75,
                     sample_learning_rate=0.9,
                     reduction=reduction,
@@ -328,15 +351,15 @@ def run_single(trace_folder,
 if __name__ == '__main__':
     exps = [
         dict(reduction=1, G_agg='full', Dx_agg='full', AB_agg='full'),
-        # dict(reduction=8, G_agg='average', Dx_agg='average', AB_agg='full'),
-        # dict(reduction=8, G_agg='masked', Dx_agg='masked', AB_agg='full'),
+        dict(reduction=8, G_agg='average', Dx_agg='average', AB_agg='full'),
+        dict(reduction=8, G_agg='masked', Dx_agg='masked', AB_agg='full'),
         # dict(reduction=4, G_agg='full', Dx_agg='average', AB_agg='async'),
         # dict(reduction=4, G_agg='full', Dx_agg='full', AB_agg='full'),
         # dict(reduction=4, G_agg='average', Dx_agg='average', AB_agg='full'),
         # dict(reduction=4, G_agg='masked', Dx_agg='masked', AB_agg='full'),
         # dict(reduction=4, G_agg='full', Dx_agg='average', AB_agg='full'),
     ]
-    run(exps, n_jobs=1, offset=342, redundancy=1, patch_size=(8, 8),
+    run(exps, n_jobs=3, offset=3200, redundancy=1, patch_size=(16, 16),
         gray=False)
     # run(exps, n_jobs=1, offset=3, redundancy=16, patch_size=(16, 16))
     # run(exps, n_jobs=1, offset=6, redundancy=100, patch_size=(16, 16))

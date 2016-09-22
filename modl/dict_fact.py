@@ -43,6 +43,7 @@ class DictFact(BaseEstimator):
                  verbose=0,
                  n_threads=1,
                  callback=None,
+                 verbose_iter=None,
                  **kwargs
                  ):
         self.batch_size = batch_size
@@ -79,6 +80,8 @@ class DictFact(BaseEstimator):
 
         self.callback = callback
 
+        self.verbose_iter = verbose_iter
+
     @property
     def initialized(self):
         return hasattr(self, '_impl')
@@ -109,6 +112,7 @@ class DictFact(BaseEstimator):
             return np.array(self._impl.D) * np.array(self._impl.D_mult)[:, np.newaxis]
         else:
             return np.array(self._impl.D)
+
     @property
     def code(self):
         return np.array(self._impl.code)
@@ -133,9 +137,9 @@ class DictFact(BaseEstimator):
     def n_iter(self):
         return self._impl.total_counter
 
-    def _initialize(self, X_shape):
+    def _initialize(self, X):
         """Initialize statistic and dictionary"""
-        n_samples, n_features = X_shape
+        n_samples, n_features = X.shape
         # Magic
         if self.n_samples is not None:
             n_samples = self.n_samples
@@ -151,7 +155,8 @@ class DictFact(BaseEstimator):
                             dtype='float', copy=True)
         else:
             D = np.empty((self.n_components, n_features), order='F')
-            D[:] = random_state.randn(self.n_components, n_features)
+            random_idx = random_state.permutation(n_samples)[:self.n_components]
+            D[:] = X[random_idx]
 
         D = enet_scale(D, l1_ratio=self.l1_ratio, radius=1)
 
@@ -218,6 +223,7 @@ class DictFact(BaseEstimator):
                'dict_reduction': dict_reduction,
                'reduction': self.reduction,
                'verbose': self.verbose,
+               'verbose_iter': self.verbose_iter,
                'callback': None if self.callback is None else lambda:
                self.callback(self)}
         return res
@@ -243,7 +249,7 @@ class DictFact(BaseEstimator):
         if check_input:
             X = check_array(X, dtype='float', order='C')
         if not self.initialized:
-            self._initialize(X.shape)
+            self._initialize(X)
         if self.max_n_iter > 0:
             remaining_iter = self.max_n_iter - self._impl.total_counter
             X = X[:remaining_iter]
@@ -260,7 +266,9 @@ class DictFact(BaseEstimator):
             Dataset to learn the dictionary from
         """
         X = check_array(X, dtype='float', order='C')
-        self._initialize(X.shape)
+        if not X.flags['WRITEABLE']:
+            X = np.array(X, copy=True)
+        self._initialize(X)
         sample_indices = np.arange(X.shape[0], dtype='i4')
         if self.max_n_iter > 0:
             while self._impl.total_counter < self.max_n_iter:

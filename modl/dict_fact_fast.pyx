@@ -155,6 +155,9 @@ cdef class DictFactImpl(object):
 
     cdef readonly double[:] time
 
+    cdef long[:] verbose_iter
+    cdef int n_callback
+
     def __init__(self,
                  double[::1, :] D,
                  int n_samples,
@@ -180,6 +183,7 @@ cdef class DictFactImpl(object):
                  # Generic parameters
                  unsigned long random_seed=0,
                  int verbose=0,
+                 long[:] verbose_iter=None,
                  int n_threads=1,
                  object callback=None):
         cdef int i
@@ -347,6 +351,9 @@ cdef class DictFactImpl(object):
                                format='d')
         self.time[:] = 0
 
+        self.n_callback = 0
+        self.verbose_iter = verbose_iter
+
     cpdef void set_impl_params(self,
                                double alpha=1.0,
                                double l1_ratio=0.,
@@ -476,7 +483,15 @@ cdef class DictFactImpl(object):
 
         with nogil:
             for k in range(n_batches):
-                if self.verbose and self.total_counter\
+                if self.verbose_iter is not None:
+                    if self.total_counter >= self.verbose_iter[self.n_callback]:
+                        while self.n_callback < self.verbose_iter.shape[0] and self.total_counter >= self.verbose_iter[self.n_callback]:
+                            self.n_callback += 1
+                        printf("Iteration %i\n", self.total_counter)
+                        if self.callback is not None:
+                            with gil:
+                                self.callback()
+                elif self.verbose and self.total_counter\
                         - old_total_counter >= new_verbose_iter:
                     printf("Iteration %i\n", self.total_counter)
                     new_verbose_iter += this_n_samples / self.verbose
@@ -502,7 +517,6 @@ cdef class DictFactImpl(object):
                         sample_indices[random_order[ii]]
                     self.X_batch[bb] = X[random_order[ii]]
                     self.sample_counter[self.sample_indices_batch[bb]] += 1
-
                 self.update_code(subset, self.X_batch[:len_batch],
                                  self.sample_indices_batch[:len_batch])
                 self.random_state.shuffle(self.D_range)
@@ -512,7 +526,6 @@ cdef class DictFactImpl(object):
 
                 if self.purge_tol > 0 and not self.total_counter % reduction_int:
                     self.clean_dict()
-
                 self.update_dict(subset)
 
                 if self.proj == 2 and self.l1_ratio == 0:
@@ -802,7 +815,7 @@ cdef class DictFactImpl(object):
                                                this_X_ptr + ii_,
                                                &self.batch_size,
                                                this_X_ptr + ii_,
-                                               &self.batch_size)
+                                               &self.batch_size) * (reduction ** 2)
                         enet_coordinate_descent_gram(
                             self.code[i_], self.alpha * self.pen_l1_ratio,
                                           self.alpha * (1 - self.pen_l1_ratio),
@@ -812,7 +825,7 @@ cdef class DictFactImpl(object):
                             this_X_norm,
                             self.H[t],
                             self.XtA[t],
-                            1000,
+                            100,
                             self.lasso_tol, self.random_state, 0, 0)
                         for p_ in range(n_components):
                             self.Dx[p_, ii_] = self.code[i_, p_]
@@ -1163,7 +1176,7 @@ cdef class DictFactImpl(object):
                                     X_norm,
                                     H[t],
                                     XtA[t],
-                                    1000,
+                                    self.n_components,
                                     self.lasso_tol, self.random_state, 0, 0)
             else:
                 for t in prange(n_thread_batches, schedule='static'):

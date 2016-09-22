@@ -1,3 +1,4 @@
+backend: pgf
 pgf.texsystem: pdflatex
 ps.useafm: True
 pdf.use14corefonts: True

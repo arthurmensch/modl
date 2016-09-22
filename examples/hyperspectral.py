@@ -74,11 +74,13 @@ def run(n_jobs=1):
                     batch_size=100,
                     pen_l1_ratio=0.9,
                     l1_ratio=0,
+                    lasso_tol=1e-2,
                     n_threads=1,
-                    n_epochs=100, verbose=2,
-                    G_ag='gram',
-                    AB_agg='sync',
-                    reduction=10,
+                    n_epochs=10, verbose=2,
+                    G_agg='full',
+                    Dx_agg='full',
+                    AB_agg='full',
+                    reduction=1,
                     callback=cb,
                     random_state=0)
 
@@ -111,7 +113,7 @@ def run(n_jobs=1):
     ax.plot(iter, obj)
     ax.set_ylim([0.9 * np.min(obj[1:]), 1.1 * np.max(obj[1:])])
     ax.set_ylabel('Function value')
-    plt.savefig(join(output_dir, 'learning_curve.pdf'))
+    plt.savefig(join(output_dir, 'learning_curve_full.pdf'))
 
 if __name__ == '__main__':
     run(16)

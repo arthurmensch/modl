@@ -61,8 +61,6 @@ class Callback(object):
 
         self.profile = []
 
-        self.components = []
-
         self.patch_size = patch_size
         self.gray = gray
 
@@ -88,14 +86,8 @@ class Callback(object):
         plt.suptitle('Dictionary',
                      fontsize=16)
         plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
-        plt.savefig(join(self.trace_folder, 'components.pdf'))
+        plt.savefig(join(self.trace_folder, 'components.png'))
         plt.close(fig)
-
-        fig, ax = plt.subplots(1, 1)
-        ax.plot(self.iter, self.components)
-        plt.savefig(join(self.trace_folder, 'components.pdf'))
-        plt.close(fig)
-
 
         fig, axes = plt.subplots(2, 1, sharex=True, figsize=(10, 6))
         fig.subplots_adjust(right=0.8)
@@ -138,21 +130,18 @@ class Callback(object):
         # axes[1].set_yscale('Log')
         axes[0].set_ylabel('Function value')
 
-        plt.savefig(join(self.trace_folder, 'loss_profile.pdf'))
+        plt.savefig(join(self.trace_folder, 'loss_profile.png'))
         plt.close(fig)
 
     def __call__(self, mf):
         print('Testing...')
         test_time = time.clock()
         if self.train_data is not None:
-            train_obj = mf.score(self.train_data, n_threads=1)
+            train_obj = mf.score(self.train_data)
             self.train_obj.append(train_obj)
         if self.test_data is not None:
-            test_obj = mf.score(self.test_data, n_threads=1)
+            test_obj = mf.score(self.test_data)
             self.test_obj.append(test_obj)
-
-        self.components.append(mf.components_[0, :100].copy())
-
         if self.trace_folder is not None:
             np.save(join(self.trace_folder, "record_%s" % mf.n_iter),
                     mf.components_)
@@ -161,8 +150,7 @@ class Callback(object):
                            'time': self.time,
                            'train_obj': self.train_obj,
                            'test_obj': self.test_obj,
-                           'profile': self.profile,
-                           'components': self.components}, f,
+                           'profile': self.profile}, f,
                           cls=NumpyAwareJSONEncoder)
         self.iter.append(mf.n_iter)
         self.profile.append(mf.time)
@@ -188,7 +176,7 @@ def prepare_folder(name, n_exp, offset=0):
         try:
             os.makedirs(this_trace_folder)
         except OSError:
-            pass
+            raise ValueError('Directory already exist')
         trace_folder_list.append(this_trace_folder)
     return trace_folder_list
 
@@ -196,24 +184,22 @@ def prepare_folder(name, n_exp, offset=0):
 def fetch_data(redundancy=1, patch_size=(8, 8), gray=True):
     tile = int(sqrt(redundancy))
     image = imread(expanduser('~/data/images/lisboa.jpg'))
-    # image = image[::2, ::2] + image[::2, ::2] + image[::2, ::2] + image[::2, ::2]
-    # image = image / 4
-    # if gray:
-    #     image = image.mean(axis=2)
-    #     height, width = image.shape
-    # else:
-    #     height, width, n_channels = image.shape
-    #
-    image = misc.face(gray=gray)
     if gray:
+        image = image.mean(axis=2)
         height, width = image.shape
     else:
         height, width, n_channels = image.shape
+    #
+    # image = misc.face(gray=gray)
+    # if gray:
+    #     height, width = image.shape
+    # else:
+    #     height, width, n_channels = image.shape
 
     image = image / 255
 
     datasets = dict()
-    n_samples = dict(train_data=10000, test_data=2000)
+    n_samples = dict(train_data=100000, test_data=5000)
     for dataset in ['train_data', 'test_data']:
         data = extract_patches_2d(image[:, :width // 2], patch_size,
                                   max_patches=n_samples[dataset],
@@ -250,7 +236,7 @@ def run(exps, n_jobs=1, offset=0, redundancy=1, patch_size=(8, 8),
                                                    patch_size=patch_size)
 
     Parallel(n_jobs=n_jobs, verbose=10, mmap_mode=None)(delayed(run_single)(
-        trace_folder_list[idx], train_data=train_data, test_data=None,
+        trace_folder_list[idx], train_data=train_data, test_data=test_data,
         patch_size=patch_size,
         gray=gray,
         redundancy=redundancy,
@@ -265,32 +251,31 @@ def run_single(trace_folder,
                redundancy=1,
                reduction=1,
                **kwargs):
-    train_subset = check_random_state(0).permutation(len(train_data))[:len(train_data) // 10]
-    cb = Callback(train_data=train_data[train_subset],
+    cb = Callback(train_data=train_data[-5000:],
                   test_data=test_data, trace_folder=trace_folder,
                   patch_size=patch_size,
                   gray=gray,
                   plot=False)
     n_samples = train_data.shape[0]
-    n_epochs = 30
     linear_verbose_epoch = 0
+    n_epochs = 20
     verbose_iter = np.unique(np.floor(
         np.logspace(1, log(n_samples * (n_epochs - linear_verbose_epoch),
                            10), 30, base=10)).
                              astype('int') - 10)
     # verbose_iter_last = np.unique(np.floor(
     #     np.linspace(n_samples * (n_epochs - linear_verbose_epoch),
-    #                 n_samples * n_epochs, 50)).
-    #                          astype('int'))
-    # verbose_iter = np.unique(np.concatenate([verbose_iter, verbose_iter_last]))
-    dico = DictFact(n_components=50, alpha=.5,
+    #                 n_samples * n_epochs, 20)).
+    #                               astype('int'))
+#    verbose_iter = np.unique(np.concatenate([verbose_iter, verbose_iter_last]))
+    dico = DictFact(n_components=100, alpha=0.4,
                     l1_ratio=0,
-                    pen_l1_ratio=0.9,
-                    batch_size=50,
-                    learning_rate=0.75,
-                    sample_learning_rate=0.9,
+                    pen_l1_ratio=.9,
+                    batch_size=150,
+                    learning_rate=1,
+                    sample_learning_rate=None,
                     reduction=reduction,
-                    verbose=50,
+                    verbose=2,
                     verbose_iter=verbose_iter,
                     G_agg=G_agg,
                     Dx_agg=Dx_agg,
@@ -299,7 +284,7 @@ def run_single(trace_folder,
                     subset_sampling='random',
                     dict_reduction='follow',
                     callback=cb,
-                    n_threads=1,
+                    n_threads=3,
                     n_samples=n_samples,
                     lasso_tol=1e-2,
                     # purge_tol=1e-3,
@@ -328,15 +313,15 @@ def run_single(trace_folder,
 if __name__ == '__main__':
     exps = [
         dict(reduction=1, G_agg='full', Dx_agg='full', AB_agg='full'),
-        # dict(reduction=8, G_agg='average', Dx_agg='average', AB_agg='full'),
-        # dict(reduction=8, G_agg='masked', Dx_agg='masked', AB_agg='full'),
+        dict(reduction=4, G_agg='average', Dx_agg='average', AB_agg='full'),
+        dict(reduction=4, G_agg='masked', Dx_agg='masked', AB_agg='full'),
         # dict(reduction=4, G_agg='full', Dx_agg='average', AB_agg='async'),
         # dict(reduction=4, G_agg='full', Dx_agg='full', AB_agg='full'),
         # dict(reduction=4, G_agg='average', Dx_agg='average', AB_agg='full'),
         # dict(reduction=4, G_agg='masked', Dx_agg='masked', AB_agg='full'),
         # dict(reduction=4, G_agg='full', Dx_agg='average', AB_agg='full'),
     ]
-    run(exps, n_jobs=1, offset=342, redundancy=1, patch_size=(8, 8),
+    run(exps, n_jobs=1, offset=90, redundancy=4, patch_size=(32, 32),
         gray=False)
     # run(exps, n_jobs=1, offset=3, redundancy=16, patch_size=(16, 16))
     # run(exps, n_jobs=1, offset=6, redundancy=100, patch_size=(16, 16))
