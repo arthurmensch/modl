@@ -30,7 +30,7 @@ class Callback(object):
         self.obj.append(mf.score(self.X_tr, n_threads=self.n_threads))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.profile.append(mf.time)
+        self.profile.append(mf.timings_)
         self.iter.append(mf.total_counter)
 
 
@@ -97,26 +97,8 @@ def main():
                     n_threads=1,
                     n_samples=n_samples,
                     lasso_tol=1e-2,
-                    # purge_tol=1e-3,
                     random_state=42,
                     n_epochs=20)
-    # warmup = 1 * n_samples
-    # t0 = time()
-    # reduction = dico.reduction
-    # dico.set_params(reduction=1)s
-    # warmup_epochs = warmup // n_samples
-    # for _ in range(warmup_epochs):
-    #     dico.partial_fit(data)
-    # warmup_rem = warmup % n_samples
-    # if warmup_rem != 0:
-    #     dico.partial_fit(data[:warmup_rem], np.arange(warmup, dtype='i4'))
-    #     dico.set_params(reduction=reduction, purge_tol=1e-1)
-    #     dico.partial_fit(data[warmup_rem:],
-    #                      np.arange(warmup, n_samples, dtype='i4'))
-    # else:
-    #     dico.set_params(reduction=reduction, purge_tol=1e-1)
-    # for i in range(dico.n_epochs - warmup_epochs):
-    #     dico.partial_fit(data)
     dico.fit(data)
     V = dico.components_
     dt = cb.times[-1] if dico.callback != None else time() - t0

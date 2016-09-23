@@ -70,6 +70,7 @@ def _single_mask(masker, metadata, data_dir, dest_data_dir):
 
 
 def fetch_hcp_rest(data_dir, n_subjects=40):
+    """Nilearn like fetcher"""
     dataset_name = 'HCP'
     source_dir = _get_dataset_dir(dataset_name, data_dir=data_dir,
                                   verbose=0)

@@ -30,7 +30,7 @@ class Callback(object):
         self.obj.append(mf.score(self.X_tr, n_threads=self.n_threads))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.profile.append(mf.time)
+        self.profile.append(mf.timings_)
         self.iter.append(mf.total_counter)
 
 

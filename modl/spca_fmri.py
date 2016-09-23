@@ -201,25 +201,25 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         else:
             dict_init = None
 
-        self._impl = DictFact(n_components=self.n_components,
-                              alpha=self.alpha,
-                              reduction=self.reduction,
-                              dict_reduction=self.dict_reduction,
-                              AB_agg=self.AB_agg,
-                              G_agg=self.G_agg,
-                              Dx_agg=self.Dx_agg,
-                              subset_sampling=self.subset_sampling,
-                              learning_rate=self.learning_rate,
-                              offset=self.offset,
-                              n_samples=n_samples,
-                              batch_size=self.batch_size,
-                              random_state=random_state,
-                              dict_init=dict_init,
-                              n_threads=self.n_jobs,
-                              l1_ratio=self.l1_ratio,
-                              pen_l1_ratio=0,
-                              verbose=2)
-        self._impl._initialize((n_samples, n_voxels))
+        self._dict_fact = DictFact(n_components=self.n_components,
+                                   alpha=self.alpha,
+                                   reduction=self.reduction,
+                                   dict_reduction=self.dict_reduction,
+                                   AB_agg=self.AB_agg,
+                                   G_agg=self.G_agg,
+                                   Dx_agg=self.Dx_agg,
+                                   subset_sampling=self.subset_sampling,
+                                   learning_rate=self.learning_rate,
+                                   offset=self.offset,
+                                   n_samples=n_samples,
+                                   batch_size=self.batch_size,
+                                   random_state=random_state,
+                                   dict_init=dict_init,
+                                   n_threads=self.n_jobs,
+                                   l1_ratio=self.l1_ratio,
+                                   pen_l1_ratio=0,
+                                   verbose=0)
+        self._dict_fact._initialize((n_samples, n_voxels))
         # Preinit
         max_sample_size = max(n_samples_list)
         sample_subset_range = np.arange(max_sample_size, dtype='i4')
@@ -230,18 +230,22 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         # Epoch logic
         data_idx = itertools.chain(*[random_state.permutation(
             len(imgs)) for _ in range(n_epochs)])
-        verbose_iter = len(imgs) // self.verbose
+
+        if hasattr(self.verbose, '__iter__'):
+            verbose_iter = np.array(self.verbose).astype('int')
+        else:
+            verbose_iter = np.linspace(0, len(imgs) - 1,
+                                       self.verbose).astype('int')
+
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
             this_n_samples = n_samples_list[this_data_idx]
             offset = offset_list[this_data_idx]
             sample_indices = offset + sample_subset_range[:this_n_samples]
-            if self.verbose:
+            if record in verbose_iter:
                 print('Streaming record %s' % record)
-                if (self.callback.verbose_iter is None and record %
-                    verbose_iter) or record in self.callback.verbose_iter:
-                    if self.callback is not None:
-                        self.callback(self)
+                if self.callback is not None:
+                    self.callback(self)
             t0 = time.time()
             if raw:
                 data_array[:this_n_samples] = np.load(this_data,
@@ -254,29 +258,31 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                         this_data[0],
                         confounds=this_data[1])
             self._io_time += time.time() - t0
-            self._impl.partial_fit(data_array[:this_n_samples],
-                                   sample_indices=sample_indices,
-                                   check_input=False)
+            self._dict_fact.partial_fit(data_array[:this_n_samples],
+                                        sample_indices=sample_indices,
+                                        check_input=False)
         return self
 
     @property
     def components_(self):
-        components = self._impl.components_
+        components = self._dict_fact.components_
         components = _normalize_and_flip(components)
         return self.masker_.inverse_transform(components)
 
     @property
-    def n_iter(self):
-        return self._impl.total_counter
+    def n_iter_(self):
+        return self._dict_fact.n_iter_
 
     @property
-    def time(self):
+    def profiling_(self):
         this_time = np.zeros(7)
-        this_time[:6] = self._impl.time
+        this_time[:6] = self._dict_fact.profiling_
         this_time[6] = self._io_time
         return this_time
 
     def score(self, imgs, confounds=None, raw=False):
+        if self.verbose:
+            print('Scoring...')
         score = 0
         if raw:
             data_list = imgs
@@ -288,15 +294,15 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             else:
                 data_list = list(zip(imgs, confounds))
         for idx, data in enumerate(data_list):
-            if self.verbose > 0:
-                print('Transform record %i' % idx)
             if raw:
                 data = np.load(data)
             elif self.shelve:
                 data = data.get()
-            score += self._impl.score(data)
+            score += self._dict_fact.score(data)
         score /= len(data_list)
-        return score
+        if self.verbose:
+            print('Done.')
+        return float(score)
 
 
 def _normalize_and_flip(components):

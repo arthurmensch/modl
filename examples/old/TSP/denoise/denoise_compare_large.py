@@ -143,7 +143,7 @@ class Callback(object):
             test_obj = mf.score(self.test_data)
             self.test_obj.append(test_obj)
         if self.trace_folder is not None:
-            np.save(join(self.trace_folder, "record_%s" % mf.n_iter),
+            np.save(join(self.trace_folder, "record_%s" % mf.n_iter_),
                     mf.components_)
             with open(join(self.trace_folder, 'callback.json'), 'w+') as f:
                 json.dump({'iter': self.iter,
@@ -152,8 +152,8 @@ class Callback(object):
                            'test_obj': self.test_obj,
                            'profile': self.profile}, f,
                           cls=NumpyAwareJSONEncoder)
-        self.iter.append(mf.n_iter)
-        self.profile.append(mf.time)
+        self.iter.append(mf.n_iter_)
+        self.profile.append(mf.timings_)
 
         self.test_time += time.clock() - test_time
         self.time.append(time.clock() - self.start_time - self.test_time)

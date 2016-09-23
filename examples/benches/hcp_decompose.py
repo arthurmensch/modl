@@ -2,7 +2,6 @@
 # License: BSD
 # Adapted from nilearn example
 
-# Load ADDH
 import json
 import os
 import time
@@ -134,7 +133,7 @@ class Callback(object):
             spca_fmri.components_.to_filename(join(self.trace_folder,
                                                    "record_"
                                                    "%s.nii.gz"
-                                                   % spca_fmri.n_iter))
+                                                   % spca_fmri.n_iter_))
             with open(join(self.trace_folder, 'callback.json'), 'w+') as f:
                 json.dump({'iter': self.iter,
                            'time': self.time,
@@ -142,8 +141,8 @@ class Callback(object):
                            'test_obj': self.test_obj,
                            'profile': self.profile}, f,
                           cls=NumpyAwareJSONEncoder)
-        self.iter.append(spca_fmri.n_iter)
-        self.profile.append(spca_fmri.time)
+        self.iter.append(spca_fmri.n_iter_)
+        self.profile.append(spca_fmri.timings_)
 
         self.test_time += time.clock() - test_time
         self.time.append(time.clock() - self.start_time - self.test_time)
@@ -284,6 +283,24 @@ def run(dataset='adhd',
         n_components=n_components,
         batch_size=batch_size) for idx, (reduction, alpha) in enumerate(
         itertools.product(reduction_list, alpha_list)))
+
+
+def gather():
+    n_exp = len(os.listdir())
+
+    results = []
+    for i in range(n_exp):
+        exp = json.load(open('experiment_%i/experiment.json' % i, 'r'))
+        res = json.load(open('experiment_%i/callback.json' % i, 'r'))
+        results.append(dict(**exp, **res))
+
+    df = pd.DataFrame(results)
+    fig, ax = plt.subplots(111)
+    for reduction, this_df in df.groupby('reduction'):
+        for line in this_df.iterrows():
+            ax.plot(df.ix[i, 'time'], df.ix[i, ''],
+                    label = df.idx[i, 'reduction'])
+
 
 
 if __name__ == '__main__':

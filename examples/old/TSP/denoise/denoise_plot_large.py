@@ -48,8 +48,8 @@ labels = ['Mairal \'10', 'Proposed ($r=4$)', 'Mensch \'16 ($r = 4$)', 'Full Gram
 
 # ax[0, 1].legend()
 
-fig, ax = plt.subplots(1, 1, figsize=(4, 1.8), squeeze=False)
-fig.subplots_adjust(left=0.17, right=0.85)
+fig, ax = plt.subplots(1, 1, figsize=(4.2, 1.8), squeeze=False)
+fig.subplots_adjust(left=0.19, right=0.9)
 
 range_extr = 2
 extrap = df.ix[1, 'train_obj'][-2] + (range_extr + 10) * (df.ix[1, 'train_obj'][-2] - df.ix[1, 'train_obj'][-2 - range_extr + 1]) / range_extr
@@ -60,7 +60,7 @@ for i in range(n_exp):
     ax[0, 0].set_yscale('log')
     # ax[0, j].set_yscale('log')
     ax[0, 0].set_xlabel('Time')
-    ax[0, 0].set_ylabel('Train loss (rel. to lowest value)')
+    ax[0, 0].set_ylabel('Train loss (relative \n to lowest value)')
     ax[0, 0].xaxis.set_label_coords(1.09, 0.02)
     # ax[0, 0].annotate("64x64 patches, 20M image", xy=(.2, 1), xycoords='axes fraction')
     sns.despine(fig, ax[0])
@@ -70,6 +70,6 @@ ax[0, 0].set_yticklabels(['$0.2\\%$', '$1\\%$', '$10\\%$', '$100\\%$'])
 ax[0, 0].set_xticks([1, 10, 100, 500])
 ax[0, 0].set_xticklabels(['1 s', '10 s', '100 s', '500 s'])
 ax[0, 0].set_xlim([1e0, 6e2])
-ax[0, 0].legend(bbox_to_anchor=(0.55, 1.1), loc='upper left')
+ax[0, 0].legend(bbox_to_anchor=(0.57, 1.1), loc='upper left')
 
 plt.savefig('opt.pdf')
