@@ -66,11 +66,6 @@ def setup_package():
               'Operating System :: MacOS',
               'Programming Language :: Python :: 3.5'
              ],
-          # requires=['nilearn(>=0.2.1)',
-          #           'scikit_learn(>=0.17)', 'numpy(>=1.10)',
-          #           'scipy(>=0.16.1)',
-          #           'spira(>=0.1)',
-          #           'pytest(>=2.8.7)]
           )
 
 if __name__ == "__main__":

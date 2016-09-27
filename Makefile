@@ -22,16 +22,15 @@ clean:
 	rm -f modl/impl/*.html
 	rm -f `find modl -name "*.pyc"`
 	rm -f `find modl -name "*.so"`
-	rm -f `find modl -name "*.c" -not -name "randomkit.c" -not -name "distributions.c"`
+	rm -f $(CSRC)
 	rm -f `find modl -name "*.cpp"`
 	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.html/g`
 	rm -rf htmlcov
 	rm -rf build
 	rm -rf coverage .coverage
 	rm -rf .cache
-
-%.c: %.pyx
-	$(CYTHON) $<
+	rm -rf modl.egg-info
+	rm -rf dist
 
 # Tests...
 #
@@ -49,6 +48,6 @@ datadir:
 	mkdir -p $(MRIDATADIR)
 
 download-hcp-extra: datadir
-	./download.sh http://www.amensch.fr/data/hcp_extra.tar.bz2
+	./misc/download.sh http://www.amensch.fr/data/hcp_extra.tar.bz2
 	tar xvfj netflix.tar.bz2
 	mv movielens10m $(MRIDATADIR)

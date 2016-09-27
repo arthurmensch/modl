@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r modl/requirements.txt
 COPY matplotlibrc /work/.config/matplotlib/matplotlibrc
 
 # Trigger creation of the matplotlib font cache
-ENV MATPLOTLIBRC /work/.config/matplotlib
+ENV MATPLOTLIBRC=/work/.config/matplotlib
 RUN python -c "import matplotlib.pyplot"
 
 COPY . modl
@@ -25,4 +25,4 @@ WORKDIR /usr/src/modl
 RUN python setup.py install
 WORKDIR /usr/src/modl/examples
 
-ENTRYPOINT "/usr/bin/bash"
+ENTRYPOINT "/usr/local/bin/ipython"

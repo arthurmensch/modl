@@ -16,16 +16,13 @@ def configuration(parent_package='', top_path=None):
                             extra_compile_args=['-fopenmp'],
                             extra_link_args=['-fopenmp']
                             ),
-                  Extension('modl/dict_fact_slow_ext',
-                            sources=['modl/dict_fact_slow_ext.pyx'],
-                            include_dirs=[numpy.get_include(),
-                                          ])
                   ]
     config.ext_modules += cythonize(extensions)
 
     config.add_subpackage('tests')
     config.add_subpackage('_utils')
     config.add_subpackage('datasets')
+    config.add_subpackage('plotting')
 
     return config
 
