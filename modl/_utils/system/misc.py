@@ -1,11 +1,12 @@
 import json
-from pathlib import Path
-import numpy as np
-import os
 import re
-import inspect
+from pathlib import Path
 
-from sacred.observers import RunObserver
+from pymongo import MongoClient
+import gridfs
+
+import numpy as np
+
 
 class NumpyAwareJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -37,34 +38,9 @@ def prepare_folder(name, n_exp):
         exp_folder.mkdir()
     return folder
 
-class MyObserver(RunObserver):
-    @staticmethod
-    def create(test_data):
-        client = pymongo.MongoClient(url, **kwargs)
-        database = client[db_name]
-        for manipulator in SON_MANIPULATORS:
-            database.add_son_manipulator(manipulator)
-        runs_collection = database[prefix + '.runs']
-        fs = gridfs.GridFS(database, collection=prefix)
-        return MongoObserver(runs_collection, fs)
 
-    def started_event(self, ex_info, host_info, start_time, config, comment):
-        pass
-
-    def heartbeat_event(self, info, captured_out, beat_time):
-        pass
-
-    def completed_event(self, stop_time, result):
-        pass
-
-    def interrupted_event(self, interrupt_time):
-        pass
-
-    def failed_event(self, fail_time, fail_trace):
-        pass
-
-    def resource_event(self, filename):
-        pass
-
-    def artifact_event(self, filename):
-        pass
+def get_sacred_handlers():
+    client = MongoClient('localhost', 27017)
+    db = client.sacred
+    fs = gridfs.GridFS(db, collection='default')
+    return db.default.runs, fs

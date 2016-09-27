@@ -234,7 +234,7 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if hasattr(self.verbose, '__iter__'):
             verbose_iter = np.array(self.verbose).astype('int')
         else:
-            verbose_iter = np.linspace(0, len(imgs) - 1,
+            verbose_iter = np.linspace(0, len(imgs) * self.n_epochs - 1,
                                        self.verbose).astype('int')
 
         for record, this_data_idx in enumerate(data_idx):
