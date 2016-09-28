@@ -71,3 +71,9 @@ MANIFEST
 !modl/_utils/randomkit/randomkit.c
 !modl/_utils/randomkit/distributions.c
 cython_debug/
+
+examples
+
+Dockerfile
+docker-compose.yml
+launch_mongo.sh

@@ -2,10 +2,9 @@ import time
 from math import sqrt
 
 import numpy as np
+from modl.dict_fact import DictFact
 from numpy.random import RandomState
 from sklearn.datasets import fetch_olivetti_faces
-
-from modl.dict_fact import DictMF
 
 n_row, n_col = 3, 6
 n_components = n_row * n_col
@@ -38,46 +37,18 @@ class Callback(object):
 
     def __init__(self, X_tr):
         self.X_tr = X_tr
-        # self.X_te = X_te
         self.obj = []
-        self.obj_tr = []
-        self.rmse = []
-        self.rmse_tr = []
         self.times = []
-        self.sparsity = []
         self.iter = []
-        self.regul = []
-        self.regul_tr = []
-        self.q = []
-        self.diff = []
         self.start_time = time.clock()
         self.test_time = 0
 
     def __call__(self, mf):
         test_time = time.clock()
-        P = mf.code_.T
-        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
-        regul = mf.alpha * np.sum(P ** 2)
-        self.obj.append(loss + regul)
-        self.regul.append(regul)
-
-        P = mf.transform(self.X_tr)
-        loss = np.sum((self.X_tr - P.T.dot(mf.components_)) ** 2) / 2
-        regul = mf.alpha * np.sum(P ** 2)
-        self.obj_tr.append(loss + regul)
-        self.regul_tr.append(regul)
-
-        beta = self.X_tr.dot(mf.components_.T)
-        if hasattr(mf, 'beta_'):
-            self.diff.append(np.sum((beta - mf.beta_) ** 2))
-        else:
-            self.diff.append(0.)
-        self.q.append(mf.components_[1, np.linspace(0, 4095, 20, dtype='int')].copy())
-        self.sparsity.append(np.sum(mf.components_ != 0) / mf.components_.size)
-        # self.sparsity.append(np.sum(np.abs(mf.Q_)) / np.sum(mf.Q_ ** 2))
+        self.obj.append(mf.score(self.X_tr))
         self.test_time += time.clock() - test_time
         self.times.append(time.clock() - self.start_time - self.test_time)
-        self.iter.append(mf.n_iter_[0])
+        self.iter.append(mf.total_counter)
 
 
 def plot_gallery(title, images, n_col=n_col, n_row=n_row):
@@ -103,46 +74,41 @@ t0 = time.time()
 data = faces_centered
 cb = Callback(data)
 
-estimator = DictMF(n_components=n_components, batch_size=1,
-                   reduction=10,
-                   l1_ratio=1,
-                   alpha=0.001,
-                   max_n_iter=40000,
-                   projection='partial',
-                   var_red='combo',
-                   backend='python',
-                   verbose=1,
-                   learning_rate=.8,
-                   offset=0,
-                   random_state=2,
-                   callback=cb)
+
+estimator = DictFact(n_components=n_components, batch_size=20,
+                     reduction=10,
+                     l1_ratio=1,
+                     pen_l1_ratio=0.1,
+                     alpha=0.001,
+                     max_n_iter=int(1e6),
+                     G_ag='average',
+                     AB_agg='async',
+                     verbose=1,
+                     n_threads=3,
+                     learning_rate=.8,
+                     random_state=2,
+                     callback=cb
+                     )
 estimator.fit(data)
 train_time = (time.time() - t0)
 print("done in %0.3fs" % train_time)
 
 import matplotlib.pyplot as plt
+
 components_ = estimator.components_
 plot_gallery('%s - Train time %.1fs' % (name, train_time),
              components_[:n_components])
 
-P = estimator.transform(data)
-# plot_gallery('Original faces',
-#              data[:n_components])
-plot_gallery('Residual',
-             data[:n_components] - P.T.dot(estimator.components_)[:n_components])
-fig, axes = plt.subplots(3, 1, sharex=True)
-axes[0].plot(cb.iter, cb.obj, label='P_')
-axes[0].plot(cb.iter, cb.regul, label='regul_')
-axes[0].plot(cb.iter, cb.regul_tr, label='regul')
-axes[0].plot(cb.iter, cb.obj_tr, label='P')
-axes[0].legend()
-
-axes[2].plot(cb.iter, cb.diff, label='beta_ variance')
-axes[2].set_xlabel('beta_ variance')
-
-axes[0].set_xlabel('Function value')
-axes[1].plot(cb.iter, cb.sparsity, label='sparsity')
-axes[1].set_xlabel('Sparsity')
-axes[0].set_xscale('log')
+code, D = estimator.transform(data)
+plot_gallery('Original faces',
+             data[:n_components])
+plot_gallery('Reconstruction',
+             code.dot(D)[:n_components])
+fig, axes = plt.subplots(1, 1, sharex=True)
+axes.plot(cb.iter, cb.obj, label='Function value')
+axes.legend()
+axes.set_ylabel('Function value')
+axes.set_xlabel('Iter')
+axes.set_xscale('log')
 
 plt.show()
