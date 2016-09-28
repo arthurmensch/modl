@@ -7,7 +7,7 @@ from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Parallel, delayed
 
 fmri_compare = Experiment('fmri_compare', ingredients=[fmri_decompose])
-observer = MongoObserver.create()
+observer = MongoObserver.create(url='mongo')
 fmri_compare.observers.append(observer)
 
 
@@ -38,7 +38,7 @@ def single_run(config_updates=None, _seed=0):
         _run.info['parent_id'] = fmri_compare.observers[0].run_entry['_id']
         _run.info['updated_params'] = config_updates
 
-    single_observer = MongoObserver.create()
+    single_observer = MongoObserver.create(url='mongo')
     fmri_decompose.pre_run_hooks = [pre_run_hook]
     fmri_decompose.observers = [single_observer]
     run = create_run(fmri_decompose, fmri_decompose_run.__name__,

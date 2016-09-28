@@ -1,0 +1,18 @@
+version: '2'
+
+services:
+  modl:
+    build:
+     context: .
+    volumes:
+     - ./examples:/root/examples
+     - $HOME/data:/data
+     - $HOME/cache:/cache
+    depends_on:
+     - mongo
+  mongo:
+    image: mongo
+    volumes:
+     - $HOME/output/db:/data/db
+    ports:
+     - '27017:27017'

@@ -8,7 +8,8 @@ from os.path import expanduser, join
 from tempfile import TemporaryDirectory
 
 import matplotlib.pyplot as plt
-from modl.datasets.fmri import load_data, fmri_data_ingredient, data_path_ingredient
+from modl._utils.system import get_cache_dirs
+from modl.datasets.fmri import load_data, fmri_data_ingredient
 from modl.plotting.fmri import display_maps
 from modl.spca_fmri import SpcaFmri
 from sacred import Experiment
@@ -17,7 +18,7 @@ from sklearn.externals.joblib import Memory
 
 fmri_decompose = Experiment('fmri_decompose',
                             ingredients=[fmri_data_ingredient])
-fmri_decompose.observers.append(MongoObserver.create())
+fmri_decompose.observers.append(MongoObserver.create(url='mongo'))
 
 # noinspection PyUnusedLocal
 @fmri_decompose.config
@@ -39,11 +40,6 @@ def config():
 @fmri_data_ingredient.config
 def config():
     dataset = 'adhd'
-
-@data_path_ingredient.config
-def config():
-    raw = False
-
 
 class SpcaFmriScorer():
     @fmri_decompose.capture
@@ -107,7 +103,7 @@ def fmri_decompose_run(smoothing_fwhm,
 
     spca_fmri = SpcaFmri(smoothing_fwhm=smoothing_fwhm,
                          mask=mask,
-                         memory=Memory(cachedir=expanduser("~/nilearn_cache"),
+                         memory=Memory(cachedir=get_cache_dirs()[0],
                                        verbose=0),
                          memory_level=2,
                          verbose=verbose,
@@ -133,4 +129,8 @@ def fmri_decompose_run(smoothing_fwhm,
         _run.add_artifact(filename)
 
     fig = display_maps(spca_fmri.components_)
-    plt.show(fig)
+    with TemporaryDirectory() as dir:
+        filename = join(dir, 'components.png')
+        plt.savefig(filename)
+        plt.close(fig)
+        _run.add_artifact(filename)

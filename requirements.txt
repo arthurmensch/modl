@@ -9,3 +9,4 @@ scikit_learn>=0.18rc2
 scikit-image>=0.12.3
 pandas>=0.18.1
 sacred>=0.6.10
+pymongo>=3.3.0
