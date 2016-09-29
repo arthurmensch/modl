@@ -22,6 +22,7 @@ from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
 
 from .dict_fact import DictFact
+from math import log
 
 
 class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
@@ -234,8 +235,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if hasattr(self.verbose, '__iter__'):
             verbose_iter = np.array(self.verbose).astype('int')
         else:
-            verbose_iter = np.linspace(0, len(imgs) * self.n_epochs - 1,
-                                       self.verbose).astype('int')
+            verbose_iter = np.unique(np.logspace(0, log(len(imgs) *
+                                                        self.n_epochs, 10),
+                                                 self.verbose).astype(
+                'int')) - 1
 
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]

@@ -7,6 +7,8 @@ from sklearn.utils import check_random_state
 from modl._utils.enet_proj import enet_scale
 from .dict_fact_fast import DictFactImpl
 
+from math import log
+
 max_int = np.iinfo(np.uint32).max
 
 
@@ -106,7 +108,7 @@ class DictFact(BaseEstimator):
     def D_(self):
         if self._impl.proj == 2 and self._impl.l1_ratio == 0:
             return np.array(self._impl.D_) * np.array(self._impl.D_mult)[:,
-                                            np.newaxis]
+                                             np.newaxis]
         else:
             return np.array(self._impl.D_)
 
@@ -144,7 +146,7 @@ class DictFact(BaseEstimator):
         if self.n_samples is not None:
             self.n_samples_ = self.n_samples
         else:
-            self.n_samples_ = self.n_samples_
+            self.n_samples_ = n_samples
 
         random_state = check_random_state(self.random_state)
         if self.dict_init is not None:
@@ -213,6 +215,14 @@ class DictFact(BaseEstimator):
         else:
             self.sample_learning_rate_ = self.sample_learning_rate
 
+        if self.verbose > 0:
+            verbose_iter = np.unique(np.logspace(0, log(self.n_samples_ *
+                                                        self.n_epochs, 10),
+                                                 self.verbose).astype(
+                'i4')) - 1
+        else:
+            verbose_iter = None
+
         res = {'alpha': self.alpha,
                "l1_ratio": self.l1_ratio,
                'pen_l1_ratio': self.pen_l1_ratio,
@@ -223,13 +233,13 @@ class DictFact(BaseEstimator):
                'offset': self.offset,
                'batch_size': self.batch_size,
                'G_agg': G_agg[self.G_agg],
-               'Dx_agg': Dx_agg[self.G_agg],
+               'Dx_agg': Dx_agg[self.Dx_agg],
                'AB_agg': AB_agg[self.AB_agg],
                'proj': proj[self.proj],
                'subset_sampling': subset_sampling[self.subset_sampling],
                'dict_reduction': dict_reduction,
                'reduction': self.reduction,
-               'verbose': self.verbose,
+               'verbose_iter': verbose_iter,
                'callback': None if self.callback is None else lambda:
                self.callback(self)}
         return res

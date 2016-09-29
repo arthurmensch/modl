@@ -107,7 +107,8 @@ cdef class DictFactImpl(object):
     cdef readonly int n_threads
     cdef readonly int n_thread_batches
     cdef readonly unsigned long random_seed
-    cdef public int verbose
+    cdef public int[:] verbose_iter
+    cdef public int verbose_iter_idx_
     cdef readonly int proj
 
     cdef readonly double[::1, :] D_
@@ -176,7 +177,7 @@ cdef class DictFactImpl(object):
                  # Dict parameter
                  # Generic parameters
                  unsigned long random_seed=0,
-                 int verbose=0,
+                 int[:] verbose_iter=None,
                  int n_threads=1,
                  object callback=None):
         cdef int i
@@ -343,7 +344,8 @@ cdef class DictFactImpl(object):
                                format='d')
         self.profiling_[:] = 0
 
-        self.verbose = verbose
+        self.verbose_iter = verbose_iter
+        self.verbose_iter_idx_ = 0
 
     cpdef void set_impl_params(self,
                                double alpha=1.0,
@@ -364,7 +366,7 @@ cdef class DictFactImpl(object):
                                bint proj=1,
                                int subset_sampling=1,
                                int dict_reduction=0,
-                               int verbose=0,
+                               int[:] verbose_iter=None,
                                # Dict parameter
                                # Generic parameters
                                object callback=None):
@@ -447,19 +449,17 @@ cdef class DictFactImpl(object):
         self.sample_learning_rate = sample_learning_rate
         self.offset = offset
 
-        self.verbose = verbose
+        self.verbose_iter = verbose_iter
+        self.verbose_iter_idx_ = 0
         self.callback = callback
 
     cpdef void partial_fit(self, double[:, ::1] X, int[:] sample_indices,
                            ) except *:
         cdef int this_n_samples = X.shape[0]
-        cdef int n_batches = int(ceil(this_n_samples / self.batch_size))
+        cdef int n_batches = int(ceil(float(this_n_samples) / self.batch_size))
         cdef int start = 0
         cdef int stop = 0
         cdef int len_batch = 0
-
-        cdef int old_total_counter = self.total_counter_
-        cdef int new_verbose_iter = 0
 
         cdef int i, ii, jj, bb, j, k, t, p
 
@@ -471,12 +471,18 @@ cdef class DictFactImpl(object):
 
         cdef int reduction_int = int(self.reduction)
 
+        cdef int verbose_iter = 0
+        if self.verbose_iter is not None:
+            verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+
+
         with nogil:
             for k in range(n_batches):
-                if self.verbose and self.total_counter_\
-                        - old_total_counter >= new_verbose_iter:
+                if self.verbose_iter is not None and \
+                                self.total_counter_ >= verbose_iter:
+                    self.verbose_iter_idx_ += 1
+                    verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
                     printf("Iteration %i\n", self.total_counter_)
-                    new_verbose_iter += this_n_samples / self.verbose
                     if self.callback is not None:
                         with gil:
                             self.callback()
