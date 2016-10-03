@@ -216,10 +216,12 @@ class DictFact(BaseEstimator):
             self.sample_learning_rate_ = self.sample_learning_rate
 
         if self.verbose > 0:
-            verbose_iter = np.unique(np.logspace(0, log(self.n_samples_ *
-                                                        self.n_epochs, 10),
-                                                 self.verbose).astype(
-                'i4')) - 1
+            verbose_iter = np.unique((np.logspace(0, log(self.n_samples_ *
+                                                         self.n_epochs // self.batch_size,
+                                                         10),
+                                                  self.verbose).astype(
+                'i4') - 1) * self.batch_size)
+            print(verbose_iter)
         else:
             verbose_iter = None
 
@@ -282,8 +284,8 @@ class DictFact(BaseEstimator):
             Dataset to learn the dictionary from
         """
         X = check_array(X, dtype='float', order='C')
-        if not X.flags['WRITEABLE']:
-            X = np.array(X, copy=True)
+        # if not X.flags['WRITEABLE']:
+        #     X = np.array(X, copy=True)
         self._initialize(X.shape, data_for_init=X)
         sample_indices = np.arange(X.shape[0], dtype='i4')
         if self.max_n_iter > 0:

@@ -453,7 +453,8 @@ cdef class DictFactImpl(object):
         self.verbose_iter_idx_ = 0
         self.callback = callback
 
-    cpdef void partial_fit(self, double[:, ::1] X, int[:] sample_indices,
+    cpdef void partial_fit(self, np.ndarray[double, ndim=2,
+                                            mode='c'] X, int[:] sample_indices,
                            ) except *:
         cdef int this_n_samples = X.shape[0]
         cdef int n_batches = int(ceil(float(this_n_samples) / self.batch_size))
@@ -500,11 +501,13 @@ cdef class DictFactImpl(object):
                     j = subset[jj]
                     self.feature_counter_[j] += len_batch
 
-                for bb, ii in enumerate(range(start, stop)):
-                    self.sample_indices_batch[bb] =\
-                        sample_indices[random_order[ii]]
-                    self.X_batch[bb] = X[random_order[ii]]
-                    self.sample_counter_[self.sample_indices_batch[bb]] += 1
+                with gil:
+                    for bb, ii in enumerate(range(start, stop)):
+                        self.sample_indices_batch[bb] =\
+                            sample_indices[random_order[ii]]
+                        for j in range(self.n_features):
+                            self.X_batch[bb, j] = X[random_order[ii], j]
+                        self.sample_counter_[self.sample_indices_batch[bb]] += 1
                 self.update_code(subset, self.X_batch[:len_batch],
                                  self.sample_indices_batch[:len_batch])
                 self.random_state_.shuffle(self.D_range)

@@ -1,18 +1,24 @@
+from tempfile import NamedTemporaryFile, TemporaryFile
+
+import atexit
 from joblib import Memory
 from modl.datasets import get_data_dirs
-from os.path import join
+import os
+from os.path import join, expanduser
 from skimage.io import imread
 from scipy.misc import face
 from skimage.transform import rescale
 from sklearn.feature_extraction.image import extract_patches_2d
 from spectral import open_image
 
+from joblib import dump, load
+
 import numpy as np
 
 from sacred.ingredient import Ingredient
 
 data_ing = Ingredient('data')
-patch_ing = Ingredient('patches')
+patch_ing = Ingredient('patches', ingredients=[data_ing])
 
 @patch_ing.config
 def config():
@@ -59,6 +65,11 @@ def load_data(source,
         image = image.open_memmap()
         if in_memory:
             image = np.array(image)
+        else:
+            f = NamedTemporaryFile()
+            dump(image, f.name)
+            image = load(f.name, mmap_mode='readwrite')
+
         image -= image.min()
         image = image / (256 * 256 - 1)
         return image
@@ -67,9 +78,24 @@ def load_data(source,
 
 
 @patch_ing.capture
-def make_patches(img, patch_size, max_patches, test_size,
+def make_patches(patch_size, max_patches, test_size,
                  normalize_per_channel,
-                 _run, _seed):
+                 _run, _seed, data):
+    if data['source'] == 'aviris':
+        try:
+            train_data, test_data = load(join(get_data_dirs()[0],
+                                              'modl_data', 'aviris.pkl'),
+                                         mmap_mode='r')
+            test_data = np.array(test_data)
+            _run.info['data_shape'] = (16, 16, 224)
+            train_data = train_data[:max_patches]
+            print("Return data")
+            return train_data, test_data
+        except:
+            print('fallback')
+            pass
+
+    img = load_data()
     if img.ndim == 3:
         height, width, n_channels = img.shape
         _run.info['data_shape'] = (patch_size[0], patch_size[1], n_channels)

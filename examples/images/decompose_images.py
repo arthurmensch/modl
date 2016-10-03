@@ -8,21 +8,18 @@ from os.path import join
 from tempfile import TemporaryDirectory
 
 import matplotlib.pyplot as plt
-from data import load_data, data_ing, patch_ing, make_patches
+import numpy as np
+from data import data_ing, patch_ing, make_patches
 from joblib import Memory
 from modl._utils.system import get_cache_dirs
 from modl.dict_fact import DictFact
-from modl.plotting.fmri import display_maps
 from modl.plotting.images import plot_patches
 from sacred import Experiment
 from sacred.observers import MongoObserver
-from sklearn.feature_extraction.image import extract_patches_2d
 
-import numpy as np
-
-decompose_ex = Experiment('decompose',
-                          ingredients=[data_ing, patch_ing])
-decompose_ex.observers.append(MongoObserver.create(db_name='images'))
+decompose_ex = Experiment('decompose_images',
+                          ingredients=[patch_ing])
+decompose_ex.observers.append(MongoObserver.create())
 
 
 @decompose_ex.config
@@ -41,20 +38,21 @@ def config():
     n_epochs = 5
     verbose = 20
     n_components = 100
-    n_threads = 3
+    n_threads = 1
 
 
 @data_ing.config
 def config():
-    source = 'lisboa'
-    gray = True
-    scale = 4
+    source = 'aviris'
+    gray = False
+    scale = 1
+    in_memory = False
 
 
 @patch_ing.config
 def config():
-    patch_size = (64, 64)
-    max_patches = 10000
+    patch_size = (16, 16)
+    max_patches = 1000
     test_size = 2000
     normalize_per_channel = True
 
@@ -113,10 +111,7 @@ def decompose_run(batch_size,
                   _seed,
                   _run
                   ):
-    image = load_data(memory=Memory(cachedir=get_cache_dirs()[0],
-                                       verbose=0))
-    train_data, test_data = make_patches(image)
-    print('seed: ', _seed)
+    train_data, test_data = make_patches()
     if _run.observers:
         cb = ImageScorer(test_data)
     else:

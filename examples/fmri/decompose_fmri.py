@@ -16,9 +16,9 @@ from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
 
-decompose_ex = Experiment('decompose',
+decompose_ex = Experiment('decompose_fmri',
                           ingredients=[data_ing, init_ing])
-decompose_ex.observers.append(MongoObserver.create(db_name='fmri'))
+decompose_ex.observers.append(MongoObserver.create())
 
 
 @data_ing.config
@@ -117,10 +117,15 @@ def decompose_run(smoothing_fwhm,
 
     n_components, init = load_init()
 
+    if raw:
+        memory = None
+    else:
+        memory = Memory(cachedir=get_cache_dirs()[0],
+                        verbose=0)
+
     spca_fmri = SpcaFmri(smoothing_fwhm=smoothing_fwhm,
                          mask=mask,
-                         memory=Memory(cachedir=get_cache_dirs()[0],
-                                       verbose=0),
+                         memory=memory,
                          memory_level=2,
                          verbose=verbose,
                          n_epochs=n_epochs,

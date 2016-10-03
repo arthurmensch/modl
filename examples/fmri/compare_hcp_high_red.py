@@ -8,16 +8,17 @@ from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Parallel, delayed
 
-compare_ex = Experiment('compare_adhd', ingredients=[decompose_ex])
+compare_ex = Experiment('compare_hcp_high_red', ingredients=[decompose_ex])
 observer = MongoObserver.create()
 compare_ex.observers.append(observer)
 
 
 @data_ing.config
 def config():
-    dataset = 'adhd'
+    dataset = 'hcp'
     raw = True
-    n_subjects = 40
+    n_subjects = 2000
+    test_size = 4
 
 
 @init_ing.config
@@ -39,19 +40,19 @@ def config():
     Dx_agg = 'full'
     reduction = 3
     alpha = 1e-4
-    l1_ratio = 1
-    n_epochs = 30
-    verbose = 150
+    l1_ratio = 0.5
+    n_epochs = 10
+    verbose = 200
     n_jobs = 1
-    smoothing_fwhm = 6
+    smoothing_fwhm = 3
 
 
 @compare_ex.config
 def config():
-    n_jobs = 21
+    n_jobs = 6
     param_updates_list = [
         # Reduction on BCD only
-        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
+        # {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
         # TSP
         {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
@@ -59,17 +60,14 @@ def config():
         # ICML with full parameter update
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
-        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}]
+        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
+        ]
     config_updates_list = []
-    reductions = [2, 4, 8, 12]
+    reductions = [16, 20, 24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
-    # Reference
-    config_updates_list.append({'G_agg': 'full',
-                           'Dx_agg': 'full', 'AB_agg': 'full',
-                           'reduction': 1})
     del param_updates_list, reductions #, param
 
 # Cannot capture in joblib

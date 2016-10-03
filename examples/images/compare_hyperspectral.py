@@ -2,14 +2,14 @@
 
 from copy import copy
 
-from decompose import decompose_ex, decompose_run
+from decompose_images import decompose_ex, decompose_run
 from data import data_ing, patch_ing
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Parallel, delayed
 
 compare_ex = Experiment('compare_hyperspectral', ingredients=[decompose_ex])
-observer = MongoObserver.create(db_name='images')
+observer = MongoObserver.create()
 compare_ex.observers.append(observer)
 
 
@@ -22,7 +22,7 @@ def config():
     G_agg = 'full'
     Dx_agg = 'full'
     reduction = 1
-    alpha = 0.2
+    alpha = 0.6
     l1_ratio = 0
     pen_l1_ratio = 0.9
     n_jobs = 1
@@ -36,20 +36,21 @@ def config():
 def config():
     source = 'aviris'
     gray = False
-    scale = 2
+    scale = 1
 
 
 @patch_ing.config
 def config():
     patch_size = (16, 16)
-    max_patches = 100000
+    max_patches = 2000
     test_size = 2000
-    normalize_per_channel = False
+    in_memory = False
+    normalize_per_channel = True
 
 
 @compare_ex.config
 def config():
-    n_jobs = 26
+    n_jobs = 1
     param_updates_list = [
         # Reduction on BCD only
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
@@ -80,17 +81,19 @@ def single_run(our_config_updates=None):
         _run.info['parent_id'] = compare_ex.observers[0].run_entry['_id']
         _run.info['updated_params'] = our_config_updates
 
-    single_observer = MongoObserver.create(db_name='fmri')
+    single_observer = MongoObserver.create()
     decompose_ex.pre_run_hooks = [pre_run_hook]
     decompose_ex.observers = [single_observer]
 
-    config_updates = compare_ex.current_run.config['decompose'].copy()
+    config_updates = compare_ex.current_run.config['decompose_images'].copy()
+    config_updates['seed'] = compare_ex.current_run.config['seed']
     for key, value in our_config_updates.items():
         config_updates[key] = value
     for ingredient in decompose_ex.ingredients:
         path = ingredient.path
         config_updates[path] = {}
         ingredient_config_update = compare_ex.current_run.config[path]
+        config_updates[path]['seed'] = compare_ex.current_run.config['seed']
         for key, value in ingredient_config_update.items():
             config_updates[path][key] = value
 
