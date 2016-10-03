@@ -70,6 +70,7 @@ def config():
 
 @compare_ex.named_config
 def ref():
+    n_jobs=1
     config_updates_list = []
     # Reference
     config_updates_list.append({'G_agg': 'full',
