@@ -57,11 +57,11 @@ def hcp():
     AB_agg = 'full'
 
 @plot_ex.named_config
-def hcp_high_red():
+def hcp_first_run():
     sub_db = 'sacred'
     exp_name = ['compare_hcp', 'compare_hcp_high_red']
     oid = ["57ee59fdfb5c866503c34aef", "57ee917cfb5c869f5d171f60"]
-    name = 'compare_hcp'
+    name = 'hcp_first_run'
     status = 'INTERRUPTED'
     ylim_zoom = [1e-2, 1e-1]
     xlim_zoom = [1e3, 2e5]

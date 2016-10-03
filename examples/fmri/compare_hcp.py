@@ -68,6 +68,15 @@ def config():
                                             **param))
     del param_updates_list, reductions #, param
 
+@compare_ex.named_config
+def ref():
+    config_updates_list = []
+    # Reference
+    config_updates_list.append({'G_agg': 'full',
+                           'Dx_agg': 'full', 'AB_agg': 'full',
+                           'reduction': 1})
+
+
 # Cannot capture in joblib
 def single_run(our_config_updates=None):
     @decompose_ex.capture
