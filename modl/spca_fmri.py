@@ -235,10 +235,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if hasattr(self.verbose, '__iter__'):
             verbose_iter = np.array(self.verbose).astype('int')
         else:
-            verbose_iter = np.unique(np.logspace(0, log(len(imgs) *
+            verbose_iter = np.unique(np.logspace(2, log(len(imgs) *
                                                         self.n_epochs, 10),
                                                  self.verbose).astype(
-                'int')) - 1
+                'int')) - 100
 
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
@@ -317,6 +317,6 @@ def _normalize_and_flip(components):
     # flip signs in each composant positive part is l1 larger
     #  than negative part
     for component in components:
-        if np.sum(component > 0) < np.sum(component < 0):
+        if np.sum(component < 0) < np.sum(component > 0):
             component *= -1
     return components

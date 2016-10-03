@@ -23,7 +23,7 @@ def config():
     normalize_per_channel = False
 
 @extract_ex.automain
-def run():
+def run(patches):
     image = load_data()
     data = make_patches(image)
-    dump(data, join(get_data_dirs()[0], 'modl_data', 'aviris_%s.pkl' % normalize_per_channel))
+    dump(data, join(get_data_dirs()[0], 'modl_data', 'aviris_%s.pkl' % patches['normalize_per_channel']))

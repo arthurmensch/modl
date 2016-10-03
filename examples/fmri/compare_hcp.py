@@ -29,18 +29,16 @@ def config():
 
 @decompose_ex.config
 def config():
-    reduction = 3
+    reduction = 1
     n_epochs = 10
-    verbose = 20
     batch_size = 50
     learning_rate = 0.9
     offset = 0
     AB_agg = 'full'
     G_agg = 'full'
     Dx_agg = 'full'
-    reduction = 3
     alpha = 1e-4
-    l1_ratio = 0.5
+    l1_ratio = 0.9
     n_epochs = 10
     verbose = 200
     n_jobs = 1
@@ -49,28 +47,25 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 21
+    n_jobs = 9
     param_updates_list = [
         # Reduction on BCD only
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
         # TSP
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
         {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'full'},
         # ICML with full parameter update
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
-        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}]
+        # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
+        ]
     config_updates_list = []
-    reductions = [2, 4, 8, 12]
+    reductions = [4, 12, 24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
-    # Reference
-    config_updates_list.append({'G_agg': 'full',
-                           'Dx_agg': 'full', 'AB_agg': 'full',
-                           'reduction': 1})
     del param_updates_list, reductions #, param
 
 # Cannot capture in joblib

@@ -3,7 +3,6 @@ from tempfile import NamedTemporaryFile
 
 import gridfs
 import matplotlib.pyplot as plt
-from bson import ObjectId
 from modl.plotting.fmri import display_maps
 from modl.plotting.images import plot_patches
 from nilearn._utils import check_niimg
@@ -22,10 +21,8 @@ def config():
     exp_name = 'compare_hyperspectral'
     name = 'compare_hyperspectral'
     status = 'INTERRUPTED'
-    ylim_zoom = None
-    xlim_zoom = None
-    ylim = None
-    xlim = None
+    ylim_log = [.9e-2, 4e-1]
+    ylim = [9000, 16000]
     AB_agg = 'full'
 
 
@@ -40,7 +37,7 @@ def adhd():
     exp_name = 'compare_adhd'
     name = 'compare_adhd'
     status = 'RUNNING'
-    ylim_zoom = [.9e-2, 2e-1]
+    ylim_log = [.9e-2, 2e-1]
     ylim = [21000, 34000]
     AB_agg = 'full'
 
@@ -51,7 +48,7 @@ def hcp():
     exp_name = 'compare_hcp'
     name = 'compare_hcp'
     status = 'RUNNING'
-    ylim_zoom = [.9e-2, 2e-1]
+    ylim_log = [.9e-2, 2e-1]
     ylim = [97000, 106500]
     AB_agg = 'full'
 
@@ -59,13 +56,11 @@ def hcp():
 def hcp_high_red():
     sub_db = 'sacred'
     exp_name = ['compare_hcp', 'compare_hcp_high_red']
-    oid = ["57ee59fdfb5c866503c34aef", "57ee917cfb5c869f5d171f60"]
     name = 'compare_hcp'
-    status = 'INTERRUPTED'
-    ylim_zoom = [1e-2, 1e-1]
-    xlim_zoom = [1e3, 2e5]
+    status = 'RUNNING'
+    ylim_log = [95000, 100000]
+    xlim_log = [1e3, 2e5]
     ylim = [95000, 106500]
-    xlim = [1e3, 1e7]
     AB_agg = 'full'
 
 
@@ -79,21 +74,14 @@ def get_connections(sub_db):
 
 
 @plot_ex.automain
-def plot(exp_name, oid, status, xlim, ylim, ylim_zoom, xlim_zoom, AB_agg, name):
+def plot(exp_name, status, ylim, ylim_log, xlim_log, AB_agg, name):
     db, fs = get_connections()
-    if oid != None:
-        oid = [ObjectId(this_oid) for this_oid in oid]
-        parent_exps = db.find({'_id': {"$in": oid},
-                               'status': status
-                               }).sort('_id', -1)
-        parent_ids = [parent_exp['_id'] for parent_exp in parent_exps]
-    else:
-        if not isinstance(exp_name, (list, tuple)):
-            exp_name = [exp_name]
-        parent_exps = db.find({'experiment.name': {"$in": exp_name},
-                              'status': status
-                              }).sort('_id', -1)[:len(exp_name)]
-        parent_ids = [parent_exp['_id'] for parent_exp in parent_exps]
+    if not isinstance(exp_name, (list, tuple)):
+        exp_name = [exp_name]
+    parent_exps = db.find({'experiment.name': {"$in": exp_name},
+                          'status': status
+                          }).sort('_id', -1)[:len(exp_name)]
+    parent_ids = [parent_exp['_id'] for parent_exp in parent_exps]
 
     algorithms = {
         'icml': ['masked', 'masked', AB_agg],
@@ -101,6 +89,8 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom, xlim_zoom, AB_agg, name):
         'full': ['full', 'full', 'full']
     }
     algorithm_exps = {}
+    reductions = [4, 12, 24]
+    n_red = len(reductions) + 1
     for algorithm in algorithms:
         (G_agg, Dx_agg, this_AB_agg) = algorithms[algorithm]
         algorithm_exps[algorithm] = list(db.find({"$or":
@@ -109,39 +99,34 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom, xlim_zoom, AB_agg, name):
                 "config.AB_agg": this_AB_agg,
                 "config.G_agg": G_agg,
                 "config.Dx_agg": Dx_agg,
-                "config.reduction": {"$ne": 1}
+                'config.reduction': {
+                    '$in': reductions},
             }, {
                 'info.parent_id':
                     {"$in": parent_ids},
                 "config.reduction": 1}
             ]}))
 
-    reductions = np.unique(np.array([exp['config']
-                                     ['reduction']
-                                    for this_algorithm in algorithms
-                                    for exp in algorithm_exps[this_algorithm]
-                                    ]))
-    n_red = len(reductions)
-
     # Plotting
-    fig, axes = plt.subplots(4, 3, figsize=(12, 10))
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3), squeeze=False)
     fig.subplots_adjust(top=0.95, bottom=0.2, wspace=0.3)
 
     colormap = sns.cubehelix_palette(n_red, rot=0.3, light=0.85, reverse=False)
     ref_colormap = sns.cubehelix_palette(n_red, start=2, rot=0.2, light=0.7,
                                          reverse=False)
     color_dict = {reduction: color for reduction, color in
-                  zip(reductions, colormap)}
+                  zip([1] + reductions, colormap)}
     color_dict[1] = ref_colormap[0]
-    ref = min([np.min(np.array(exp['info']['score']))  for this_algorithm in algorithm_exps for exp in
-               algorithm_exps[this_algorithm]]) * 0.99
+    ref = min([np.min(np.array(exp['info']['score'])) for exp in
+               algorithm_exps[algorithm]
+               for algorithm in algorithm_exps]) * 0.99
     style = {'icml': ':', 'tsp': '-', 'full': '--'}
     for i, algorithm in enumerate(['tsp', 'icml', 'full']):
         exps = algorithm_exps[algorithm]
         for exp in sorted(exps,
                           key=lambda exp: int(exp['config']['reduction'])):
-            axes[i, 1].annotate(algorithm, xy=(0.5, 0.8),
-                                xycoords='axes fraction')
+            # axes[i, 1].annotate(algorithm, xy=(0.5, 0.8),
+            #                     xycoords='axes fraction')
             updated_params = exp['info']['updated_params']
             score = np.array(exp['info']['score'])
             iter = np.array(exp['info']['iter'])
@@ -150,74 +135,32 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom, xlim_zoom, AB_agg, name):
             reduction = exp['config']['reduction']
             color = color_dict[reduction]
             rel_score = (score - ref) / ref
-            axes[i, 0].plot(iter + 10, score,
-                            label="Reduction = %i" % reduction, color=color,
-                            linestyle=style[algorithm],
-                            # marker='o',
-                            markersize=2)
-            axes[i, 1].plot(time, rel_score,
-                            label="Reduction = %i" % reduction, color=color,
-                            linestyle=style[algorithm],
-                            # marker='o',
-                            markersize=2)
-            axes[i, 2].plot(iter + 10,
-                            time,
+            axes[0, 0].plot(time, score,
                             label="Reduction = %i" % reduction, color=color,
                             linestyle=style[algorithm],
                             markersize=2)
-            axes[3, 0].plot(iter + 10, score,
+            axes[0, 1].plot(time, score,
                             label="Reduction = %i" % reduction, color=color,
                             linestyle=style[algorithm],
                             markersize=2)
-            axes[3, 1].plot(time, rel_score,
-                            label="Reduction = %i" % reduction, color=color,
-                            linestyle=style[algorithm],
-                            markersize=2)
-            axes[3, 2].plot(iter + 10,
-                            time,
-                            linestyle=style[algorithm],
-                            label="Reduction = %i" % reduction, color=color,
-                            markersize=2)
-        axes[i, 0].set_ylabel('Test loss')
-        axes[i, 1].set_ylabel('Test loss (relative)')
-        for j in range(2):
-            axes[i, j].set_xscale('log')
-        # axes[i, 1].set_yscale('log')
-        axes[i, 2].set_yscale('log')
-        axes[i, 2].set_xscale('log')
-        axes[i, 2].set_ylabel('Time (s)')
-        axes[i, 1].set_ylim(ylim_zoom)
-        axes[i, 1].set_xlim(xlim_zoom)
+    for j in range(2):
+        sns.despine(fig, axes[0, j])
+    axes[0, 0].set_xlabel('Iter')
+    axes[0, 1].set_xlabel('Time (s)')
+    axes[0, 0].set_xlabel('Time (s)')
+    axes[0, 1].set_xscale('log')
+    axes[0, 0].set_xscale('log')
+    axes[0, 1].set_ylim(ylim_log)
+    axes[0, 1].set_xlim(xlim_log)
+    axes[0, 0].set_ylim(ylim)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
 
-        axes[i, 0].set_ylim(ylim)
-        axes[i, 0].set_xlim(xlim)
-
-    for i in range(3):
-        for j in range(3):
-            sns.despine(fig, axes[i, j])
-    axes[3, 0].set_xlabel('Iter')
-    axes[3, 1].set_xlabel('Time (s)')
-    axes[3, 2].set_xlabel('Iter')
-    axes[3, 2].set_yscale('log')
-    axes[3, 2].set_xscale('log')
-    # axes[3, 1].set_yscale('log')
-    axes[3, 1].set_xscale('log')
-    axes[3, 0].set_xscale('log')
-
-    axes[3, 1].set_ylim(ylim_zoom)
-    axes[3, 1].set_xlim(xlim_zoom)
-
-    axes[3, 0].set_ylim(ylim)
-    axes[3, 0].set_xlim(xlim)
-
-    handles, labels = axes[3, 0].get_legend_handles_labels()
-
-    first_legend = axes[3, 0].legend(handles[:n_red], labels[:n_red],
+    first_legend = axes[0, 0].legend(handles[:n_red], labels[:n_red],
                                      bbox_to_anchor=(0, -.3), loc='upper left',
                                      ncol=1)
-    axes[3, 0].add_artist(first_legend)
+    axes[0, 0].add_artist(first_legend)
 
-    axes[3, 0].legend(handles[::n_red], ['tsp', 'icml', 'full'],
+    axes[0, 0].legend(handles[::n_red], ['tsp', 'icml', 'full'],
                       bbox_to_anchor=(1, -.3), loc='upper left', ncol=1)
     print('Done plotting figure')
     plt.savefig(name + AB_agg + '.pdf')
