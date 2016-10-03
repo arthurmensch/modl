@@ -26,6 +26,7 @@ def config():
     xlim_zoom = None
     ylim = None
     xlim = None
+    oid = None
     AB_agg = 'full'
 
 
