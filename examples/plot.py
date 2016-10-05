@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn.apionly as sns
 from bson import ObjectId
+from matplotlib.lines import Line2D
 from modl.plotting.fmri import display_maps
 from modl.plotting.images import plot_patches
 from pymongo import MongoClient
@@ -34,7 +35,10 @@ def config():
 
 @plot_ex.named_config
 def aviris():
-    pass
+    ylim_zoom = [.1e-2, 5e-2]
+    # xlim_zoom = [1e3, 2e4]
+    # xlim = [1e1, 2e4]
+    # ylim = [97000, 106500]
 
 
 @plot_ex.named_config
@@ -43,8 +47,10 @@ def adhd():
     exp_name = 'compare_adhd'
     name = 'compare_adhd'
     status = 'RUNNING'
-    ylim_zoom = [.9e-2, 2e-1]
-    ylim = [21000, 34000]
+    ylim_zoom = [1e-1, 2e-1]
+    ylim = [21000, 31000]
+    xlim = [10, 1000]
+    xlim_zoom = [100, 1000]
     AB_agg = 'full'
 
 
@@ -57,11 +63,27 @@ def hcp():
     name = 'compare_hcp'
     status = 'RUNNING'
     ylim_zoom = [.1e-2, 5e-2]
-    xlim_zoom = [1e3, 3e4]
-    xlim = [1e1, 3e4]
+    xlim_zoom = [1e3, 2e4]
+    xlim = [1e1, 2e4]
     ylim = [97000, 106500]
     AB_agg = 'full'
     plot_components = False
+
+@plot_ex.named_config
+def hcp_compare():
+    sub_db = 'sacred'
+    exp_name = ['compare_hcp']
+    oid = ['57f22495fb5c86780390bca7',
+           '57f22489fb5c8677ec4a8414']
+    name = 'method_comparison'
+    status = 'RUNNING'
+    ylim_zoom = [.1e-2, 5e-2]
+    xlim_zoom = [1e3, 2e4]
+    xlim = [1e1, 2e4]
+    ylim = [97000, 106500]
+    AB_agg = 'full'
+    plot_components = False
+    plot_type = 'method_comparison'
 
 
 @plot_ex.named_config
@@ -148,8 +170,8 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
     style = {'icml': ':', 'tsp': '-', 'full': '--'}
     names = {
         'tsp': 'Variance reduction',
-             'icml': 'Masked loss',
-             'full': 'No subsampling'}
+        'icml': 'Masked loss',
+        'full': 'No subsampling'}
     algorithm_keys = ['tsp', 'full', 'icml']
     if plot_type == 'debug':
         fig, axes = plt.subplots(4, 3, figsize=(12, 10))
@@ -245,10 +267,10 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                           bbox_to_anchor=(1, -.3), loc='upper left', ncol=1)
         print('Done plotting figure')
         plt.savefig(name + AB_agg + '.pdf')
-    else:
+    elif plot_type == 'method_comparison':
         fig, axes = plt.subplots(1, 2, figsize=(7.166, 1.5))
-        fig.subplots_adjust(right=0.85, left=0.09, bottom=0.13, top=0.9,
-                            wspace=0.18)
+        fig.subplots_adjust(right=0.75, left=0.09, bottom=0.13, top=0.9,
+                            wspace=0.24)
         for i, algorithm in enumerate(algorithm_keys):
             exps = algorithm_exps[algorithm]
             for exp in sorted(exps,
@@ -271,30 +293,30 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                              label="r = %i" % reduction if reduction != 1 else "None",
                              color=color,
                              markersize=2)
-        axes[0].set_ylabel('Test loss (left: relative)')
-        # axes[1].set_ylabel('Test loss (relative)')
+        axes[0].set_ylabel('Test objective function')
+        axes[1].set_ylabel('(relative to lowest value)', rotation=0)
+        axes[1].yaxis.set_label_coords(0.3, 0.01)
         for j in range(2):
             axes[j].set_xscale('log')
             sns.despine(fig, axes[j])
         axes[1].set_xlabel('Time')
+        axes[1].xaxis.set_label_coords(1.18, -.08)
 
         axes[1].set_yscale('log')
         axes[1].set_ylim(ylim_zoom)
         axes[1].set_xlim(xlim_zoom)
         axes[0].set_ylim(ylim)
         axes[0].set_xlim(xlim)
-        axes[1].set_xticks([1000, 10000])
-        axes[1].set_xticklabels(["1000 s", "10000 s"])
-        axes[1].set_yticks([1e-2, 1e-3])
-        axes[1].set_yticklabels(["1\%", ".1\%"])
-        axes[0].set_xticks([10, 100, 1000, 10000])
-        axes[0].set_xticklabels(["10 s", "100 s", "1000 s", "10000 s"])
+        # axes[1].set_xticks([1000, 10000])
+        # axes[1].set_xticklabels(["1000 s", "10000 s"])
+        # axes[1].set_yticks([3e-2, 1e-2, 1e-3])
+        # axes[1].set_yticklabels(["3\%", "1\%", ".1\%"])
+        # axes[0].set_xticks([10, 100, 1000, 10000])
+        # axes[0].set_xticklabels(["10 s", "100 s", "1000 s", "10000 s"])
 
-        axes[0].xaxis.set_label_coords(1.1, -.065)
-        axes[1].xaxis.set_label_coords(1.1, -.065)
         rect_0 = (xlim_zoom[0], (1 + ylim_zoom[0]) * ref)
         rect_len = (
-        xlim_zoom[1] - rect_0[0], (1 + ylim_zoom[1]) * ref - rect_0[1])
+            xlim_zoom[1] - rect_0[0], (1 + ylim_zoom[1]) * ref - rect_0[1])
         patch = patches.Rectangle(
             rect_0,
             rect_len[0],
@@ -311,26 +333,31 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                 linestyle='dashed'  # remove background
             )
         )
+        line1 = [(rect_0[0] + rect_len[0], rect_0[1] + rect_len[1]), (xlim[1], ylim[1])]
+        (line1_xs, line1_ys) = zip(*line1)
+        axes[0].add_line(Line2D(line1_xs , line1_ys, linewidth=2, color='black', linestyle='dashed'))
         axes[0].annotate("Zoom", xycoords='data',
-                         xy=(rect_0[0], (rect_0[1] + rect_len[1]) * 1.001))
+                         xy=(
+                         rect_0[0] * 1.2, (rect_0[1] + rect_len[1]) * 1.005))
 
         handles, labels = axes[1].get_legend_handles_labels()
 
         first_legend = axes[1].legend(handles[:n_red], labels[:n_red],
-                                      bbox_to_anchor=(0.8, 1.1),
+                                      bbox_to_anchor=(1.05, 1.1),
                                       loc='upper left',
                                       ncol=2, title='Subsampling ratio',
                                       frameon=False)
         axes[1].add_artist(first_legend)
 
-        l = axes[1].legend(handles[::n_red],
-                       [names[algorithm] for algorithm in algorithm_keys],
-                       bbox_to_anchor=(0.8, 0.65), loc='upper left', ncol=1,
-                       title='Code computation method',
-                       frameon=False)
+        l = axes[1].legend(handles[n_red - 1::n_red],
+                           [names[algorithm] for algorithm in algorithm_keys],
+                           bbox_to_anchor=(1.05, 0.65), loc='upper left',
+                           ncol=1,
+                           title='Code computation',
+                           frameon=False)
         # l.get_title().set_ha('center')
-        print('Done plotting figure')
-        plt.savefig(name + AB_agg + '.pdf')
+    print('Done plotting figure')
+    plt.savefig(name + AB_agg + '.pdf')
 
     if plot_components:
         for i, algorithm in enumerate(['tsp']):

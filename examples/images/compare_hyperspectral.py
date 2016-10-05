@@ -22,7 +22,7 @@ def config():
     G_agg = 'full'
     Dx_agg = 'full'
     reduction = 1
-    alpha = 0.6
+    alpha = 0.01
     l1_ratio = 0
     pen_l1_ratio = 0.9
     n_jobs = 1
@@ -42,7 +42,7 @@ def config():
 @patch_ing.config
 def config():
     patch_size = (16, 16)
-    max_patches = 2000
+    max_patches = 100000
     test_size = 2000
     in_memory = False
     normalize_per_channel = True
@@ -50,20 +50,21 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 1
+    n_jobs = 13
     param_updates_list = [
         # Reduction on BCD only
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
         # TSP
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
         {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'full'},
         # ICML with full parameter update
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
-        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}]
+        # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}]
+    ]
     config_updates_list = []
-    reductions = [2, 4, 8, 12]
+    reductions = [4, 8, 12, 24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,

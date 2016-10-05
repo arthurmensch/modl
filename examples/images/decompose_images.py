@@ -24,21 +24,21 @@ decompose_ex.observers.append(MongoObserver.create())
 
 @decompose_ex.config
 def config():
-    batch_size = 50
+    batch_size = 100
     learning_rate = 0.9
     offset = 0
     AB_agg = 'full'
     G_agg = 'full'
     Dx_agg = 'full'
-    reduction = 1
-    alpha = 1
+    reduction = 10
+    alpha = 0.01
     l1_ratio = 0
-    pen_l1_ratio = 0.9
+    pen_l1_ratio = 1
     n_jobs = 1
-    n_epochs = 5
-    verbose = 20
+    n_epochs = 1
+    verbose = 4
     n_components = 100
-    n_threads = 1
+    n_threads = 3
 
 
 @data_ing.config
@@ -51,8 +51,8 @@ def config():
 
 @patch_ing.config
 def config():
-    patch_size = (16, 16)
-    max_patches = 1000
+    patch_size = (8, 8)
+    max_patches = 10000
     test_size = 2000
     normalize_per_channel = True
 

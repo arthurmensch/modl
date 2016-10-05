@@ -14,7 +14,6 @@ font.size: 8
 legend.fontsize: 8
 xtick.labelsize: 8
 ytick.labelsize: 8
-figure.figsize: 7.166, 1.8
 
 pgf.preamble: \usepackage[utf8x]{inputenc},\usepackage[T1]{fontenc},\usepackage{lmodern}
 
