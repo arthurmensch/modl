@@ -26,6 +26,7 @@ def config():
     max_patches = 10000
     test_size = 2000
     normalize_per_channel = False
+    pickle = True
 
 
 @data_ing.config
@@ -80,20 +81,16 @@ def load_data(source,
 @patch_ing.capture
 def make_patches(patch_size, max_patches, test_size,
                  normalize_per_channel,
+                 pickle,
                  _run, _seed, data):
-    if data['source'] == 'aviris':
-        try:
-            train_data, test_data = load(join(get_data_dirs()[0],
-                                              'modl_data', 'aviris.pkl'),
-                                         mmap_mode='r')
-            test_data = np.array(test_data)
-            _run.info['data_shape'] = (16, 16, 224)
-            train_data = train_data[:max_patches]
-            print("Return data")
-            return train_data, test_data
-        except:
-            print('fallback')
-            pass
+    if pickle and data['source'] == 'aviris':
+        train_data, test_data = load(join(get_data_dirs()[0],
+                                          'modl_data', 'aviris.pkl'),
+                                     mmap_mode='r')
+        test_data = np.array(test_data)
+        _run.info['data_shape'] = (patch_size[0], patch_size[1], 224)
+        train_data = train_data[:max_patches]
+        return train_data, test_data
 
     img = load_data()
     if img.ndim == 3:

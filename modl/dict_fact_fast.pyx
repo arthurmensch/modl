@@ -3,6 +3,7 @@
 # cython: boundscheck=False
 # cython: wraparound=False
 # noinspection PyUnresolvedReferences
+
 cimport cython
 
 cimport numpy as np
@@ -23,7 +24,9 @@ from ._utils.randomkit.random_fast cimport Sampler, RandomState
 from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, \
       enet_scale_fast, enet_scale_matrix_fast
 
+from tempfile import NamedTemporaryFile
 import numpy as np
+import os
 
 # import
 from cython.parallel import parallel, prange
@@ -119,6 +122,7 @@ cdef class DictFactImpl(object):
     cdef readonly double[::1, :] G_
 
     cdef readonly double[::1, :, :] G_average_
+    cdef readonly double[::1, :, :] G_average_temp
     cdef readonly double[::1, :] Dx_average_
 
     cdef readonly int[:] sample_counter_
@@ -150,8 +154,8 @@ cdef class DictFactImpl(object):
     cdef RandomState random_state_
 
     cdef object callback
-
-
+    cdef readonly unicode G_average_filename
+    cdef readonly unicode temp_dir
 
     def __init__(self,
                  double[::1, :] D,
@@ -179,11 +183,13 @@ cdef class DictFactImpl(object):
                  unsigned long random_seed=0,
                  int[:] verbose_iter=None,
                  int n_threads=1,
+                 unicode temp_dir=u'/tmp',
                  object callback=None):
         cdef int i
         cdef double* G_ptr
         cdef double* D_ptr
 
+        self.temp_dir = temp_dir
         self.n_samples = n_samples
         self.n_components = D.shape[0]
         self.n_features = D.shape[1]
@@ -264,8 +270,20 @@ cdef class DictFactImpl(object):
                   )
         elif self.G_agg == 3:
             self.G_average_ = view.array((self.n_components, self.n_components,
-                        self.n_samples), sizeof(double),
-                                        format='d', mode='fortran')
+            self.n_samples), sizeof(double),
+                            format='d', mode='fortran')
+            # f = NamedTemporaryFile(dir=self.temp_dir,
+            #                        buffering=(8 * self.n_components ** 2))
+            # self.G_average_filename = f.name
+            # self.G_average_ = np.memmap(self.G_average_filename,
+            #                         dtype='double',
+            #                         mode='w+',
+            #                         order='F',
+            #                         shape=(self.n_components, self.n_components,
+            #                                self.n_samples))
+            # self.G_average_temp = view.array((self.n_components, self.n_components,
+            #             self.batch_size), sizeof(double),
+            #                             format='d', mode='fortran')
         if self.Dx_agg == 3:
             self.Dx_average_ = view.array((self.n_components, self.n_samples),
                                               sizeof(double),
@@ -450,7 +468,8 @@ cdef class DictFactImpl(object):
         self.offset = offset
 
         self.verbose_iter = verbose_iter
-        self.verbose_iter_idx_ = 0
+        if not hasattr(self, 'verbose_iter_idx_'):
+            self.verbose_iter_idx_ = 0
         self.callback = callback
 
     cpdef void partial_fit(self, np.ndarray[double, ndim=2,
@@ -722,8 +741,23 @@ cdef class DictFactImpl(object):
                   &FZERO,
                   G_ptr, &n_components
                   )
-
+        else:
+            dgemm(&NTRANS, &TRANS,
+                              &n_components, &n_components, &n_features,
+                              &reduction,
+                              D_ptr, &n_components,
+                              D_ptr, &n_components,
+                              &FZERO,
+                              G_ptr, &n_components
+                              )
         if self.G_agg == 3:
+            # Load on disk
+            if self.temp_dir is not None:
+                for ii in range(len_batch):
+                    i = sample_indices[ii]
+                    for p in range(n_components):
+                        for q in range(n_components):
+                            self.G_average_temp[p, q, ii] = self.G_average_[p, q, i]
             with parallel(num_threads=self.n_threads):
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * sample_step
@@ -735,9 +769,23 @@ cdef class DictFactImpl(object):
                                        -self.sample_learning_rate)
                         for p_ in range(n_components):
                             for q_ in range(n_components):
-                                self.G_average_[p_, q_, i_] *= 1 - w_sample_
-                                self.G_average_[p_, q_, i_] += self.G_[p_, q_]\
+                                if self.temp_dir is not None:
+                                    self.G_average_temp[p_, q_, ii_] *= 1 - w_sample_
+                                    self.G_average_temp[p_, q_, ii_] += self.G_[p_, q_]\
+                                                               * w_sample_
+                                else:
+                                    self.G_average_[p_, q_, i_] *= 1 - w_sample_
+                                    self.G_average_[p_, q_, i_] += self.G_[p_, q_]\
                                                            * w_sample_
+
+            # Write on disk
+            if self.temp_dir is not None:
+                for ii in range(len_batch):
+                    i = sample_indices[ii]
+                    for p in range(n_components):
+                        for q in range(n_components):
+                            self.G_average_[p, q, i] = self.G_average_temp[p, q, ii]
+
         clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
         self.profiling_[1] += tv1.tv_sec-tv0.tv_sec
         self.profiling_[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9

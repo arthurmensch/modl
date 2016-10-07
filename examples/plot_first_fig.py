@@ -19,7 +19,7 @@ plot_ex = Experiment('plot')
 
 @plot_ex.config
 def config():
-    name = 'compare'
+    name = 'compare_reductions'
 
 
 def get_connections(sub_db):
@@ -39,7 +39,7 @@ def plot(name):
         'adhd': {'sub_db': 'fmri',
                  'parent_ids': [ObjectId("57ed4726fb5c86523cf8e674")]},
         'aviris': {'sub_db': 'sacred',
-                   'parent_ids': [ObjectId("57ee4810fb5c86bbd1786c35")]}
+                   'parent_ids': [ObjectId("57f665e9fb5c86aff0ab4036")]}
     }
     dataset_exps = {}
     for dataset in ['adhd', 'aviris', 'hcp']:
@@ -49,8 +49,8 @@ def plot(name):
             [{
                 'info.parent_id': {"$in": parent_ids},
                 "config.AB_agg": 'full',
-                "config.G_agg": 'full',
-                "config.Dx_agg": 'full',
+                "config.G_agg": 'full' if dataset != 'aviris' else 'average',
+                "config.Dx_agg": 'average',
                 "config.reduction": {"$ne": [1, 2]},
             }, {
                 'info.parent_id':
@@ -62,7 +62,7 @@ def plot(name):
     n_red = len(reductions)
 
     fig, axes = plt.subplots(1, 3, figsize=(7.166, 1.5))
-    fig.subplots_adjust(right=0.97, left=0.1, bottom=0.3, top=0.9,
+    fig.subplots_adjust(right=0.94, left=0.08, bottom=0.3, top=0.9,
                         wspace=0.24)
 
     # Plotting
@@ -77,27 +77,30 @@ def plot(name):
         for exp in sorted(exps,
                           key=lambda exp: int(exp['config']['reduction'])):
             score = np.array(exp['info']['score'])
-            time = np.array(exp['info']['time'])
+            time = np.array(exp['info']['time']) / 3600
             reduction = exp['config']['reduction']
             color = color_dict[reduction]
             axes[i].plot(time, score,
                       label="$r = %i$" % reduction if reduction != 1 else "None",
+                      zorder=reduction if reduction != 1 else 1,
                       color=color,
                       markersize=2)
+            for tick in axes[i].yaxis.get_major_ticks():
+                tick.label.set_fontsize(7)
         axes[i].set_xscale('log')
         sns.despine(fig, axes)
 
     axes[0].set_ylabel('Test objective function')
 
-    axes[2].set_xlabel('Time')
-    axes[2].xaxis.set_label_coords(1.02, -.105)
+    axes[2].set_xlabel('Time (h)')
+    axes[2].xaxis.set_label_coords(1.1, -.105)
 
-    axes[0].set_xlim([5e1, 5e3])
-    axes[1].set_xlim([4e1, 5e3])
+    axes[0].set_xlim([5e1 / 3600, 1e4 / 3600])
     axes[0].set_ylim([21800, 24200])
-    axes[1].set_ylim([9600, 11000])
-    axes[2].set_xlim([5e1, 3e4])
-    axes[2].set_ylim([97000, 104200])
+    axes[1].set_xlim([11e1 / 3600, 1e4 / 3600])
+    axes[1].set_ylim([15700, 17500])
+    axes[2].set_xlim([5e1 / 3600, 2e5 / 3600])
+    axes[2].set_ylim([96800, 104200])
 
     axes[0].annotate('ADHD',
     # '$p = 6\\cdot 10^4\\ \\: n = 6000$',
@@ -110,7 +113,7 @@ def plot(name):
                                              xy=(0.6, 0.9), xycoords='axes fraction', ha='center')
 
     axes[0].annotate('\\textbf{2 GB}', xy=(0.9, 0.6), xycoords='axes fraction', ha='center')
-    axes[1].annotate('\\textbf{45 GB}', xy=(0.9, 0.6), xycoords='axes fraction', ha='center')
+    axes[1].annotate('\\textbf{69 GB}', xy=(0.9, 0.6), xycoords='axes fraction', ha='center')
     axes[2].annotate('\\textbf{2 TB}', xy=(0.9, 0.6), xycoords='axes fraction', ha='center')
 
     handles, labels = axes[0].get_legend_handles_labels()
@@ -127,5 +130,5 @@ def plot(name):
                                   frameon=False)
 
     print('Done plotting figure')
-    plt.savefig(name + 'bench' + '.pdf')
+    plt.savefig(name + '.pdf')
     plt.show()

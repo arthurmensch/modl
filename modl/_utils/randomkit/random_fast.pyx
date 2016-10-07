@@ -126,17 +126,17 @@ cdef class Sampler(object):
 
     cpdef int[:] yield_subset(self) nogil:
         cdef int remainder
-        cdef int len_subset = self.random_state.binomial(self.n_features,
-                                                         1. / self.reduction)
-        # cdef int len_subset = min(self.n_features,
-        #                           self.random_state.geometric(
-        #                               self.reduction / self.n_features) + 1)
+        cdef int len_subset
+        # cdef int len_subset =
         #
         if self.subset_sampling == 1:
+            len_subset = self.random_state.binomial(self.n_features,
+                                                         1. / self.reduction)
             self.random_state.shuffle(self.feature_range)
             self.lim_inf = 0
             self.lim_sup = len_subset
         else:
+            len_subset = int(self.n_features / self.reduction)
             if self.n_features != len_subset:
                 self.lim_inf = self.lim_sup
                 remainder = self.n_features - self.lim_inf

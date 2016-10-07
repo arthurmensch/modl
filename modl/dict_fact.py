@@ -44,8 +44,10 @@ class DictFact(BaseEstimator):
                  random_state=None,
                  verbose=0,
                  n_threads=1,
+                 temp_dir=None,
                  callback=None,
                  ):
+        self.temp_dir = temp_dir
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.offset = offset
@@ -174,6 +176,7 @@ class DictFact(BaseEstimator):
         self._impl = DictFactImpl(D, n_samples,
                                   n_threads=self.n_threads,
                                   random_seed=random_seed,
+                                  temp_dir=self.temp_dir,
                                   **params)
 
     def _update_impl_params(self):

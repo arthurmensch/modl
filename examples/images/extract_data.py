@@ -17,13 +17,13 @@ def config():
 
 @patch_ing.config
 def config():
-    patch_size = (16, 16)
+    patch_size = (20, 20)
     max_patches = 100000
     test_size = 2000
-    normalize_per_channel = False
+    normalize_per_channel = True
+    pickle = False
 
 @extract_ex.automain
 def run(patches):
-    image = load_data()
-    data = make_patches(image)
-    dump(data, join(get_data_dirs()[0], 'modl_data', 'aviris_%s.pkl' % patches['normalize_per_channel']))
+    data = make_patches()
+    dump(data, join(get_data_dirs()[0], 'modl_data', 'aviris.pkl'))

@@ -13,7 +13,7 @@ def get_image(data_dir=None,
               scale=1,
               gray=False, in_memory=False):
     data_dirs = get_data_dirs(data_dir=data_dir)
-    data_dir = join(data_dirs[0], 'modl_data')
+    data_dir = data_dirs[0]
     if source == 'face':
         image = face(gray=gray)
         image = image / 255

@@ -21,15 +21,14 @@ plot_ex = Experiment('plot')
 def config():
     sub_db = 'sacred'
     exp_name = 'compare_hyperspectral'
-    name = 'compare_hyperspectral'
-    status = 'INTERRUPTED'
+    name = 'compare_aviris'
+    status = 'RUNNING'
     ylim_zoom = None
     xlim_zoom = None
     ylim = None
     xlim = None
     oid = None
     AB_agg = 'full'
-    plot_components = False
     plot_type = 'debug'
 
 
@@ -60,14 +59,13 @@ def hcp():
     exp_name = ['compare_hcp']
     oid = ['57f22495fb5c86780390bca7',
            '57f22489fb5c8677ec4a8414']
-    name = 'compare_hcp'
+    name = 'compare_methods'
     status = 'RUNNING'
-    ylim_zoom = [.1e-2, 5e-2]
-    xlim_zoom = [1e3, 2e4]
-    xlim = [1e1, 2e4]
-    ylim = [97000, 106500]
+    ylim_zoom = [1e-3, 1e-2]
+    xlim_zoom = [0.5, 100]
+    xlim = [1e-3, 100]
+    ylim = [96600, 106000]
     AB_agg = 'full'
-    plot_components = False
 
 @plot_ex.named_config
 def hcp_compare():
@@ -77,28 +75,12 @@ def hcp_compare():
            '57f22489fb5c8677ec4a8414']
     name = 'method_comparison'
     status = 'RUNNING'
+    AB_agg = 'full'
+    plot_type = 'method_comparison'
     ylim_zoom = [.1e-2, 5e-2]
     xlim_zoom = [1e3, 2e4]
     xlim = [1e1, 2e4]
     ylim = [97000, 106500]
-    AB_agg = 'full'
-    plot_components = False
-    plot_type = 'method_comparison'
-
-
-@plot_ex.named_config
-def hcp_first_run():
-    sub_db = 'sacred'
-    exp_name = ['compare_hcp', 'compare_hcp_high_red']
-    oid = ["57ee59fdfb5c866503c34aef", "57ee917cfb5c869f5d171f60"]
-    name = 'hcp_first_run'
-    status = 'INTERRUPTED'
-    ylim_zoom = [1e-2, 10e-2]
-    xlim_zoom = [1e4, 2e5]
-    ylim = [95000, 106500]
-    xlim = [1e1, 3e5]
-    AB_agg = 'full'
-
 
 @plot_ex.capture
 def get_connections(sub_db):
@@ -111,12 +93,11 @@ def get_connections(sub_db):
 
 @plot_ex.automain
 def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
-         xlim_zoom, AB_agg, name, plot_type, plot_components):
+         xlim_zoom, AB_agg, name, plot_type):
     db, fs = get_connections()
-    if oid != None:
+    if oid is not None:
         oid = [ObjectId(this_oid) for this_oid in oid]
         parent_exps = db.find({'_id': {"$in": oid},
-                               'status': status
                                }).sort('_id', -1)
         parent_ids = [parent_exp['_id'] for parent_exp in parent_exps]
     else:
@@ -124,13 +105,14 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
             exp_name = [exp_name]
         parent_exps = db.find({'experiment.name': {"$in": exp_name},
                                'status': status
-                               }).sort('_id', -1)[:2]
+                               }).sort('_id', -1)[:1]
         parent_ids = [parent_exp['_id'] for parent_exp in parent_exps]
 
     print(parent_ids)
     algorithms = {
         'icml': ['masked', 'masked', AB_agg],
-        'tsp': ['full', 'average', AB_agg],
+        'tsp': ['average', 'average', AB_agg] if name == 'compare_aviris' else
+                ['full', 'average', AB_agg],
         'full': ['full', 'full', 'full']
     }
     algorithm_exps = {}
@@ -178,10 +160,10 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
         fig.subplots_adjust(top=0.95, bottom=0.2, wspace=0.3)
         for i, algorithm in enumerate(algorithms):
             exps = algorithm_exps[algorithm]
+            axes[i, 1].annotate(algorithm, xy=(0.5, 0.8),
+                                xycoords='axes fraction')
             for exp in sorted(exps,
                               key=lambda exp: int(exp['config']['reduction'])):
-                axes[i, 1].annotate(algorithm, xy=(0.5, 0.8),
-                                    xycoords='axes fraction')
                 updated_params = exp['info']['updated_params']
                 score = np.array(exp['info']['score'])
                 iter = np.array(exp['info']['iter'])
@@ -194,12 +176,14 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                                 label="Reduction = %i" % reduction,
                                 color=color,
                                 linestyle=style[algorithm],
+                                zorder=reduction if reduction != 1 else 100,
                                 # marker='o',
                                 markersize=2)
                 axes[i, 1].plot(time, rel_score,
                                 label="Reduction = %i" % reduction,
                                 color=color,
                                 linestyle=style[algorithm],
+                                zorder=reduction if reduction != 1 else 100,
                                 # marker='o',
                                 markersize=2)
                 axes[i, 2].plot(iter + 10,
@@ -207,6 +191,7 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                                 label="Reduction = %i" % reduction,
                                 color=color,
                                 linestyle=style[algorithm],
+                                zorder=reduction if reduction != 1 else 100,
                                 markersize=2)
                 axes[3, 0].plot(iter + 10, score,
                                 label="Reduction = %i" % reduction,
@@ -217,25 +202,28 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                                 label="Reduction = %i" % reduction,
                                 color=color,
                                 linestyle=style[algorithm],
+                                zorder=reduction if reduction != 1 else 100,
                                 markersize=2)
                 axes[3, 2].plot(iter + 10,
                                 time,
                                 linestyle=style[algorithm],
                                 label="Reduction = %i" % reduction,
+                                zorder=reduction if reduction != 1 else 100,
                                 color=color,
                                 markersize=2)
-            axes[i, 0].set_ylabel('Test loss')
-            axes[i, 1].set_ylabel('Test loss (relative)')
-            axes[0, 1].set_xscale('log')
-            axes[1, 1].set_xscale('log')
-            axes[i, 2].set_yscale('log')
-            axes[i, 2].set_xscale('log')
-            axes[i, 2].set_ylabel('Time (s)')
-            axes[i, 1].set_ylim(ylim_zoom)
-            axes[i, 1].set_xlim(xlim_zoom)
+                axes[i, 0].set_ylabel('Test loss')
+                axes[i, 1].set_ylabel('Test loss (relative)')
+                axes[i, 0].set_xscale('log')
+                axes[i, 1].set_yscale('log')
+                axes[i, 1].set_xscale('log')
+                axes[i, 2].set_yscale('log')
+                axes[i, 2].set_xscale('log')
+                axes[i, 2].set_ylabel('Time (s)')
+                axes[i, 1].set_ylim(ylim_zoom)
+                axes[i, 1].set_xlim(xlim_zoom)
 
-            axes[i, 0].set_ylim(ylim)
-            axes[i, 0].set_xlim(xlim)
+                axes[i, 0].set_ylim(ylim)
+                axes[i, 0].set_xlim(xlim)
 
         for i in range(3):
             for j in range(3):
@@ -243,11 +231,11 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
         axes[3, 0].set_xlabel('Iter')
         axes[3, 1].set_xlabel('Time (s)')
         axes[3, 2].set_xlabel('Iter')
+        axes[3, 0].set_xscale('log')
+        axes[3, 1].set_yscale('log')
+        axes[3, 1].set_xscale('log')
         axes[3, 2].set_yscale('log')
         axes[3, 2].set_xscale('log')
-        # axes[3, 1].set_xscale('log')
-        # axes[3, 1].set_yscale('log')
-        axes[3, 0].set_xscale('log')
 
         axes[3, 1].set_ylim(ylim_zoom)
         axes[3, 1].set_xlim(xlim_zoom)
@@ -263,10 +251,13 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                                          ncol=1)
         axes[3, 0].add_artist(first_legend)
 
-        axes[3, 0].legend(handles[::n_red], labels[::n_red],
+        axes[3, 0].legend(handles[::n_red], algorithm_keys,
                           bbox_to_anchor=(1, -.3), loc='upper left', ncol=1)
         print('Done plotting figure')
-        plt.savefig(name + AB_agg + '.pdf')
+        plt.savefig(name + '.pdf')
+
+        plt.savefig(name + '.pdf')
+
     elif plot_type == 'method_comparison':
         fig, axes = plt.subplots(1, 2, figsize=(7.166, 1.5))
         fig.subplots_adjust(right=0.75, left=0.09, bottom=0.13, top=0.9,
@@ -277,13 +268,14 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                               key=lambda exp: int(exp['config']['reduction'])):
                 score = np.array(exp['info']['score'])
                 iter = np.array(exp['info']['iter'])
-                time = np.array(exp['info']['time'])
+                time = np.array(exp['info']['time']) / 3600
                 # time = np.logspace(1e-1, log(time[-1], 10), time.shape[0])
                 reduction = exp['config']['reduction']
                 color = color_dict[reduction]
                 rel_score = (score - ref) / ref
                 axes[0].plot(time, score,
                              label="r = %i" % reduction if reduction != 1 else "None",
+                             zorder=reduction if reduction != 1 else 1,
                              color=color,
                              linestyle=style[algorithm],
                              markersize=2)
@@ -291,6 +283,7 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                              rel_score,
                              linestyle=style[algorithm],
                              label="r = %i" % reduction if reduction != 1 else "None",
+                             zorder=reduction if reduction != 1 else 1,
                              color=color,
                              markersize=2)
         axes[0].set_ylabel('Test objective function')
@@ -303,42 +296,33 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
         axes[1].xaxis.set_label_coords(1.18, -.08)
 
         axes[1].set_yscale('log')
-        axes[1].set_ylim(ylim_zoom)
+        axes[1].set_ylim([ylim_zoom[0], ylim_zoom[1]])
         axes[1].set_xlim(xlim_zoom)
         axes[0].set_ylim(ylim)
         axes[0].set_xlim(xlim)
-        # axes[1].set_xticks([1000, 10000])
-        # axes[1].set_xticklabels(["1000 s", "10000 s"])
-        # axes[1].set_yticks([3e-2, 1e-2, 1e-3])
-        # axes[1].set_yticklabels(["3\%", "1\%", ".1\%"])
-        # axes[0].set_xticks([10, 100, 1000, 10000])
-        # axes[0].set_xticklabels(["10 s", "100 s", "1000 s", "10000 s"])
+        if 'compare_hcp' in exp_name:
+            axes[1].set_xticks([1, 10, 100])
+            axes[1].set_xticklabels(["1 h", "10 h", "100 h"])
+            axes[1].set_yticks([1e-3, 1e-2])
+            axes[1].set_yticklabels(["0.1\%", "1\%"])
+            axes[0].set_xticks([1 / 60, 1, 10, 100])
+            axes[0].set_xticklabels(["1 min", "1 h", "10 h", "100 h"])
 
         rect_0 = (xlim_zoom[0], (1 + ylim_zoom[0]) * ref)
         rect_len = (
             xlim_zoom[1] - rect_0[0], (1 + ylim_zoom[1]) * ref - rect_0[1])
-        patch = patches.Rectangle(
-            rect_0,
-            rect_len[0],
-            rect_len[1],
-            fill=False,
-            linestyle='dashed'  # remove background
-        )
         axes[0].add_patch(
             patches.Rectangle(
                 rect_0,
-                rect_len[0] * 2,
+                rect_len[0] * 0.9,
                 rect_len[1],
                 fill=False,
                 linestyle='dashed'  # remove background
             )
         )
-        line1 = [(rect_0[0] + rect_len[0], rect_0[1] + rect_len[1]), (xlim[1], ylim[1])]
-        (line1_xs, line1_ys) = zip(*line1)
-        axes[0].add_line(Line2D(line1_xs , line1_ys, linewidth=2, color='black', linestyle='dashed'))
         axes[0].annotate("Zoom", xycoords='data',
                          xy=(
-                         rect_0[0] * 1.2, (rect_0[1] + rect_len[1]) * 1.005))
+                         rect_0[0] * 0.9, rect_0[1] + 0.5 * rect_len[1]), va='center', ha='right')
 
         handles, labels = axes[1].get_legend_handles_labels()
 
@@ -355,18 +339,16 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                            ncol=1,
                            title='Code computation',
                            frameon=False)
-        # l.get_title().set_ha('center')
-    print('Done plotting figure')
-    plt.savefig(name + AB_agg + '.pdf')
+        plt.savefig(name + '.pdf')
 
-    if plot_components:
+    elif plot_type == 'plot_components':
         for i, algorithm in enumerate(['tsp']):
             exps = algorithm_exps[algorithm]
             for exp in sorted(exps,
                               key=lambda exp: int(exp['config']['reduction'])):
                 print('Plot')
                 reduction = exp['config']['reduction']
-                if exp_name == 'compare_hyperspectral':
+                if name == 'compare_aviris':
                     with NamedTemporaryFile(suffix='.npy',
                                             dir='/run/shm') as f:
                         f.write(fs.get(exp['artifacts'][-1]).read())

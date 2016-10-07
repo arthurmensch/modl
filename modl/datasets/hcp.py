@@ -5,13 +5,12 @@ from os.path import join
 
 import numpy as np
 import pandas as pd
+from modl.datasets import get_data_dirs
 from nilearn.datasets.utils import _get_dataset_dir
 from nilearn.input_data import NiftiMasker
 from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
-
-from modl import datasets
 
 
 def _fetch_hcp_behavioral_data(resource_dir):
@@ -69,13 +68,11 @@ def _single_mask(masker, metadata, data_dir, dest_data_dir):
         json.dump(origin, f)
 
 
-def fetch_hcp_rest(data_dir, n_subjects=40):
+def fetch_hcp_rest(data_dir=None, n_subjects=40):
     """Nilearn like fetcher"""
-    dataset_name = 'HCP'
-    source_dir = _get_dataset_dir(dataset_name, data_dir=data_dir,
-                                  verbose=0)
-    extra_dir = _get_dataset_dir('HCP_extra', data_dir=data_dir,
-                                 verbose=0)
+    data_dir = get_data_dirs(data_dir)
+    source_dir = join(data_dir, 'HCP')
+    extra_dir = join(data_dir, 'HCP_extra')
     mask = join(extra_dir, 'mask_img.nii.gz')
     behavioral_df = _fetch_hcp_behavioral_data(join(extra_dir, 'behavioral'))
     func = []
@@ -121,11 +118,17 @@ def fetch_hcp_rest(data_dir, n_subjects=40):
     return Bunch(**results)
 
 
-def prepare_hcp_raw_data(data_dir):
+def prepare_hcp_raw_data(data_dir=None):
+    data_dir = get_data_dirs(data_dir)
     dataset = fetch_hcp_rest(data_dir=data_dir, n_subjects=500)
 
     dest_data_dir = 'HCP_unmasked'
-    mask_img = join(data_dir, 'HCP_extra/mask_img.nii.gz')
+    try:
+        os.mkdir(dest_data_dir)
+    except OSError:
+        raise ValueError('HCP_unmasked already exist,'
+                         'please delete manually before proceeding')
+    mask_img = join(data_dir, 'HCP_extra', 'mask_img.nii.gz')
 
     masker = NiftiMasker(mask_img=mask_img,
                          smoothing_fwhm=3, standardize=True).fit()
@@ -134,7 +137,8 @@ def prepare_hcp_raw_data(data_dir):
     _gather(dest_data_dir)
 
 
-def get_hcp_data(data_dir, raw):
+def get_hcp_data(raw=False, data_dir=None):
+    data_dir = get_data_dirs(data_dir)
     if not os.path.exists(join(data_dir, 'HCP_extra')):
         raise ValueError(
             'Please download HCP_extra folder using make download-hcp_extra'

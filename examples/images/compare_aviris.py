@@ -8,7 +8,7 @@ from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Parallel, delayed
 
-compare_ex = Experiment('compare_hyperspectral', ingredients=[decompose_ex])
+compare_ex = Experiment('compare_aviris', ingredients=[decompose_ex])
 observer = MongoObserver.create()
 compare_ex.observers.append(observer)
 
@@ -16,7 +16,7 @@ compare_ex.observers.append(observer)
 @decompose_ex.config
 def config():
     batch_size = 100
-    learning_rate = 0.9
+    learning_rate = 1
     offset = 0
     AB_agg = 'full'
     G_agg = 'full'
@@ -30,6 +30,7 @@ def config():
     verbose = 50
     n_components = 100
     n_threads = 1
+    temp_dir = '/storage/workspace/amensch/tmp'
 
 
 @data_ing.config
@@ -41,23 +42,24 @@ def config():
 
 @patch_ing.config
 def config():
-    patch_size = (16, 16)
+    patch_size = (20, 20)
     max_patches = 100000
     test_size = 2000
     in_memory = False
     normalize_per_channel = True
+    pickle = True
 
 
 @compare_ex.config
 def config():
-    n_jobs = 13
+    n_jobs = 1
     param_updates_list = [
         # Reduction on BCD only
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
         # TSP
         # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'full'},
+        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'full'},
         # ICML with full parameter update
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
