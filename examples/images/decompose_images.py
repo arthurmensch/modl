@@ -26,8 +26,8 @@ decompose_ex.observers.append(MongoObserver.create())
 def config():
     batch_size = 100
     learning_rate = 0.9
-    offset = 0
-    AB_agg = 'async'
+    offset = 1
+    AB_agg = 'full'
     G_agg = 'average'
     Dx_agg = 'average'
     reduction = 10
@@ -36,12 +36,12 @@ def config():
     pen_l1_ratio = 0.9
     n_jobs = 1
     n_epochs = 2
-    verbose = 8
+    verbose = 15
     n_components = 100
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
-    temp_dir = None
+    temp_dir = '/tmp'
 
 
 @data_ing.config
@@ -85,6 +85,9 @@ class ImageScorer():
         #     _run.add_artifact(filename)
 
         score = dict_fact.score(self.test_data)
+        print(score)
+        if score > 20:
+            print('WTF')
         self.test_time += time.clock() - test_time
         this_time = time.clock() - self.start_time - self.test_time
 

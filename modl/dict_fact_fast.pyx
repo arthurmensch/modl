@@ -284,7 +284,7 @@ cdef class DictFactImpl(object):
                                         shape=(self.n_components, self.n_components,
                                                self.n_samples))
                 self.G_average_temp = view.array((self.n_components, self.n_components,
-                            self.batch_size), sizeof(double),
+                            self.batch_size * 10), sizeof(double),
                                             format='d', mode='fortran')
         if self.Dx_agg == 3:
             self.Dx_average_ = view.array((self.n_components, self.n_samples),
@@ -479,11 +479,15 @@ cdef class DictFactImpl(object):
                            ) except *:
         cdef int this_n_samples = X.shape[0]
         cdef int n_batches = int(ceil(float(this_n_samples) / self.batch_size))
+        cdef int size_big_batch = self.G_average_temp.shape[2] / self.batch_size \
+            if self.G_agg == 3 and self.temp_dir is not None else n_batches
+        cdef int n_big_batches = int(ceil(float(n_batches) / size_big_batch))
         cdef int start = 0
         cdef int stop = 0
         cdef int len_batch = 0
 
-        cdef int i, ii, jj, bb, j, k, t, p
+        cdef int i, ii, jj, bb, j, k, t, p, iii, kk, h
+        cdef int batch_start, sample_start, batch_stop, sample_stop
 
         cdef int[:] subset
 
@@ -497,59 +501,85 @@ cdef class DictFactImpl(object):
         if self.verbose_iter is not None:
             verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
 
-
         with nogil:
-            for k in range(n_batches):
-                if self.verbose_iter is not None and \
-                                self.total_counter_ >= verbose_iter:
-                    self.verbose_iter_idx_ += 1
-                    verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
-                    printf("Iteration %i\n", self.total_counter_)
-                    if self.callback is not None:
-                        with gil:
-                            self.callback()
-                clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
-                start = k * self.batch_size
-                stop = start + self.batch_size
-                if stop > this_n_samples:
-                    stop = this_n_samples
-                len_batch = stop - start
+            # Outer loop for G_agg = 'average'
+            for h in range(n_big_batches):
+                batch_start = h * size_big_batch
+                sample_start = batch_start * self.batch_size
+                batch_stop = batch_start + size_big_batch
+                if batch_stop > n_batches:
+                    batch_stop = n_batches
+                sample_stop = batch_stop * self.batch_size
+                if sample_stop > this_n_samples:
+                    sample_stop = this_n_samples
+                # Read on disk
+                if self.temp_dir is not None and self.G_agg == 3:
+                    for iii, ii in enumerate(range(sample_start, sample_stop)):
+                        i = sample_indices[random_order[ii]]
+                        for p in range(self.n_components):
+                            for q in range(self.n_components):
+                                self.G_average_temp[p, q, iii] = self.G_average_[p, q, i]
+                for kk, k in enumerate(range(batch_start, batch_stop)):
+                    if self.verbose_iter is not None and \
+                                    self.total_counter_ >= verbose_iter:
+                        self.verbose_iter_idx_ += 1
+                        verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+                        printf("Iteration %i\n", self.total_counter_)
+                        if self.callback is not None:
+                            with gil:
+                                self.callback()
+                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
+                    start = k * self.batch_size
+                    stop = start + self.batch_size
+                    if stop > this_n_samples:
+                        stop = this_n_samples
+                    len_batch = stop - start
 
-                self.total_counter_ += len_batch
+                    self.total_counter_ += len_batch
 
-                subset = self.feature_sampler_1.yield_subset()
-                for jj in range(subset.shape[0]):
-                    j = subset[jj]
-                    self.feature_counter_[j] += len_batch
+                    subset = self.feature_sampler_1.yield_subset()
+                    for jj in range(subset.shape[0]):
+                        j = subset[jj]
+                        self.feature_counter_[j] += len_batch
 
-                with gil:
-                    for bb, ii in enumerate(range(start, stop)):
-                        self.sample_indices_batch[bb] =\
-                            sample_indices[random_order[ii]]
-                        for j in range(self.n_features):
-                            self.X_batch[bb, j] = X[random_order[ii], j]
-                        self.sample_counter_[self.sample_indices_batch[bb]] += 1
-                self.update_code(subset, self.X_batch[:len_batch],
-                                 self.sample_indices_batch[:len_batch])
-                self.random_state_.shuffle(self.D_range)
+                    # X is a numpy array
+                    with gil:
+                        for bb, ii in enumerate(range(start, stop)):
+                            self.sample_indices_batch[bb] =\
+                                sample_indices[random_order[ii]]
+                            for j in range(self.n_features):
+                                self.X_batch[bb, j] = X[random_order[ii], j]
+                            self.sample_counter_[self.sample_indices_batch[bb]] += 1
+                    self.update_code(subset, self.X_batch[:len_batch],
+                                     self.sample_indices_batch[:len_batch],
+                                     kk * self.batch_size if self.G_agg == 3 and self.temp_dir is not None else 0
+                                     )
+                    self.random_state_.shuffle(self.D_range)
 
-                if self.dict_reduction != 0:
-                    subset = self.feature_sampler_2.yield_subset()
+                    if self.dict_reduction != 0:
+                        subset = self.feature_sampler_2.yield_subset()
 
-                if self.purge_tol > 0 and not self.total_counter_ % reduction_int:
-                    self.clean_dict()
-                self.update_dict(subset)
+                    if self.purge_tol > 0 and not self.total_counter_ % reduction_int:
+                        self.clean_dict()
+                    self.update_dict(subset)
 
-                if self.proj == 2 and self.l1_ratio == 0:
-                    for p in range(self.n_components):
-                        if self.D_mult_[p] < 1e-30:
-                            for jj in range(self.n_features):
-                                self.D_[p, jj] *= self.D_mult_[p]
-                            self.D_mult_[p] = 1
+                    if self.proj == 2 and self.l1_ratio == 0:
+                        for p in range(self.n_components):
+                            if self.D_mult_[p] < 1e-30:
+                                for jj in range(self.n_features):
+                                    self.D_[p, jj] *= self.D_mult_[p]
+                                self.D_mult_[p] = 1
 
-                clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-                self.profiling_[5] += tv1.tv_sec-tv0.tv_sec
-                self.profiling_[5] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+                    self.profiling_[5] += tv1.tv_sec-tv0.tv_sec
+                    self.profiling_[5] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+                # Write on disk
+                if self.temp_dir is not None and self.G_agg == 3:
+                    for iii, ii in enumerate(range(sample_start, sample_stop)):
+                        i = sample_indices[random_order[ii]]
+                        for p in range(self.n_components):
+                            for q in range(self.n_components):
+                                self.G_average_[p, q, i] = self.G_average_temp[p, q, iii]
 
     cdef void clean_dict(self) nogil:
         cdef int k, p
@@ -601,7 +631,8 @@ cdef class DictFactImpl(object):
                 # self.norm_[k] = 1
 
     cdef int update_code(self, int[:] subset, double[:, ::1] X,
-                         int[:] sample_indices) nogil except *:
+                         int[:] sample_indices,
+                         int G_average_offset) nogil except *:
         """
         Compute code_ for A_ mini-batch and update algorithm statistics accordingly
 
@@ -609,22 +640,6 @@ cdef class DictFactImpl(object):
         ----------
         sample_indices
         X: masked data matrix
-        this_subset: indices (loci) of masked data
-        alpha: regularization parameter
-        learning_rate: decrease rate in the learning sequence (in [.5, 1])
-        offset: offset in the learning se   quence
-        D_: Dictionary
-        A_: algorithm variable
-        B_: algorithm variable
-        counter_: algorithm variable
-        G_: algorithm variable
-        T: algorithm variable
-        impute: Online update of Gram matrix
-        D_subset : Temporary array. Holds the subdictionary
-        Dx: Temporary array. Holds the codes for the mini batch
-        G_temp: emporary array. Holds the Gram matrix.
-        subset_mask: Holds the binary mask for visited features
-        weights: Temporary array. Holds the update weights
 
         """
         cdef int len_batch = sample_indices.shape[0]
@@ -655,6 +670,8 @@ cdef class DictFactImpl(object):
         cdef double one_m_w, w_sample, w_sample_, w_batch, w_norm, w_A, w_B
         cdef int this_subset_thread_size
         cdef double this_X_norm
+
+        cdef double[::1, :, :] this_G
 
         cdef int sample_step = int(ceil(float(len_batch)
                                         / self.n_thread_batches))
@@ -753,13 +770,6 @@ cdef class DictFactImpl(object):
                               G_ptr, &n_components
                               )
         if self.G_agg == 3:
-            # Load on disk
-            if self.temp_dir is not None:
-                for ii in range(len_batch):
-                    i = sample_indices[ii]
-                    for p in range(n_components):
-                        for q in range(n_components):
-                            self.G_average_temp[p, q, ii] = self.G_average_[p, q, i]
             with parallel(num_threads=self.n_threads):
                 for t in prange(self.n_threads, schedule='static'):
                     start = t * sample_step
@@ -772,21 +782,14 @@ cdef class DictFactImpl(object):
                         for p_ in range(n_components):
                             for q_ in range(n_components):
                                 if self.temp_dir is not None:
-                                    self.G_average_temp[p_, q_, ii_] *= 1 - w_sample_
-                                    self.G_average_temp[p_, q_, ii_] += self.G_[p_, q_]\
+                                    self.G_average_temp[p_, q_, G_average_offset + ii_] *= 1 - w_sample_
+                                    self.G_average_temp[p_, q_, G_average_offset + ii_] += self.G_[p_, q_]\
                                                                * w_sample_
                                 else:
                                     self.G_average_[p_, q_, i_] *= 1 - w_sample_
                                     self.G_average_[p_, q_, i_] += self.G_[p_, q_]\
                                                            * w_sample_
 
-            # Write on disk
-            if self.temp_dir is not None:
-                for ii in range(len_batch):
-                    i = sample_indices[ii]
-                    for p in range(n_components):
-                        for q in range(n_components):
-                            self.G_average_[p, q, i] = self.G_average_temp[p, q, ii]
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
         self.profiling_[1] += tv1.tv_sec-tv0.tv_sec
@@ -804,8 +807,10 @@ cdef class DictFactImpl(object):
                             i_ = sample_indices[ii_]
                             for p_ in range(n_components):
                                 for q_ in range(n_components):
-                                    self.G_temp[p_, q_, t] = self.G_average_[p_, q_,
-                                                                          i_]
+                                    if self.temp_dir is not None:
+                                        self.G_temp[p_, q_, t] = self.G_average_temp[p_, q_, G_average_offset + ii_]
+                                    else:
+                                        self.G_temp[p_, q_, t] = self.G_average_[p_, q_, i_]
                                 self.G_temp[p_, p_, t] += self.alpha
                             dposv(&UP, &n_components, &ONE, G_temp_ptr
                                   + t * n_components * n_components,
@@ -857,11 +862,19 @@ cdef class DictFactImpl(object):
                                                &self.batch_size,
                                                this_X_ptr + ii_,
                                                &self.batch_size) * (reduction ** 2)
+                        # if self.G_agg == 3:
+                        #     if self.temp_dir is None:
+                        #         this_G = self.G_average_[:, :, i_]
+                        #     else:
+                        #         this_G = self.G_average_temp[:, :, G_average_offset + ii_]
+                        # else:
+                        #     this_G = self.G_
                         enet_coordinate_descent_gram(
                             self.code_[i_], self.alpha * self.pen_l1_ratio,
                                           self.alpha * (1 - self.pen_l1_ratio),
-                            self.G_average_[:, :, i_] if self.G_agg == 3
-                            else self.G_,
+                            self.G_average_[:, :, i_] if self.temp_dir is None
+                            else self.G_average_temp[:, :, G_average_offset + ii_]
+                            if self.G_agg == 3 else self.G_,
                             self.Dx[:, ii_],
                             this_X_norm,
                             self.H[t],
@@ -1149,11 +1162,6 @@ cdef class DictFactImpl(object):
 
         cdef int info = 0
 
-        # if self.proj == 2 and self.l1_ratio == 0:
-        #     for p in range(n_components):
-        #         for jj in range(n_features):
-        #             D_[p, jj] *= self.D_mult_[p]
-
         if self.pen_l1_ratio != 0:
             H = view.array((n_thread_batches, n_components),
                   sizeof(double),
@@ -1239,10 +1247,6 @@ cdef class DictFactImpl(object):
                     for ii in range(start, stop):
                         for p in range(n_components):
                             code_[ii, p] = Dx[p, ii]
-        # if self.proj == 2 and self.l1_ratio == 0:
-        #     for p in range(n_components):
-        #         for jj in range(n_features):
-        #             D_[p, jj] /= self.D_mult_[p]
         return code_
 
 cdef double[:] enet_coordinate_descent_gram(double[:] w, double alpha,
