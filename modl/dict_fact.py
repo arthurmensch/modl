@@ -46,6 +46,7 @@ class DictFact(BaseEstimator):
                  n_threads=1,
                  temp_dir=None,
                  callback=None,
+                 buffer_size=None,
                  ):
         self.temp_dir = temp_dir
         self.batch_size = batch_size
@@ -81,6 +82,8 @@ class DictFact(BaseEstimator):
         self.n_threads = n_threads
 
         self.callback = callback
+
+        self.buffer_size = buffer_size
 
     @property
     def initialized(self):
@@ -173,10 +176,20 @@ class DictFact(BaseEstimator):
         params = self._get_impl_params()
         random_seed = random_state.randint(max_int)
 
+        if self.buffer_size is None:
+            buffer_size = self.n_samples_ // 10
+            temp_dir = self.temp_dir
+        elif self.buffer_size >= self.n_samples_:
+            temp_dir = None
+            buffer_size = 0
+        else:
+            buffer_size = self.buffer_size
+            temp_dir = self.temp_dir
         self._impl = DictFactImpl(D, n_samples,
                                   n_threads=self.n_threads,
                                   random_seed=random_seed,
-                                  temp_dir=self.temp_dir,
+                                  temp_dir=temp_dir,
+                                  buffer_size=buffer_size,
                                   **params)
 
     def _update_impl_params(self):

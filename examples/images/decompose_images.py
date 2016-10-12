@@ -55,7 +55,7 @@ def config():
 @patch_ing.config
 def config():
     patch_size = (8, 8)
-    max_patches = 10000
+    max_patches = 100000
     test_size = 2000
     normalize_per_channel = True
     pickle = True
@@ -85,9 +85,6 @@ class ImageScorer():
         #     _run.add_artifact(filename)
 
         score = dict_fact.score(self.test_data)
-        print(score)
-        if score > 20:
-            print('WTF')
         self.test_time += time.clock() - test_time
         this_time = time.clock() - self.start_time - self.test_time
 

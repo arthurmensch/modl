@@ -157,6 +157,8 @@ cdef class DictFactImpl(object):
     cdef readonly unicode G_average_filename
     cdef readonly unicode temp_dir
 
+    cdef readonly int buffer_size
+
     def __init__(self,
                  double[::1, :] D,
                  int n_samples,
@@ -183,11 +185,13 @@ cdef class DictFactImpl(object):
                  unsigned long random_seed=0,
                  int[:] verbose_iter=None,
                  int n_threads=1,
+                 int buffer_size=1000,
                  unicode temp_dir=None,
                  object callback=None):
         cdef int i
         cdef double* G_ptr
         cdef double* D_ptr
+        cdef int G_average_temp_size
 
         self.temp_dir = temp_dir
         self.n_samples = n_samples
@@ -284,7 +288,7 @@ cdef class DictFactImpl(object):
                                         shape=(self.n_components, self.n_components,
                                                self.n_samples))
                 self.G_average_temp = view.array((self.n_components, self.n_components,
-                            self.batch_size * 10), sizeof(double),
+                            self.buffer_size), sizeof(double),
                                             format='d', mode='fortran')
         if self.Dx_agg == 3:
             self.Dx_average_ = view.array((self.n_components, self.n_samples),
@@ -479,9 +483,7 @@ cdef class DictFactImpl(object):
                            ) except *:
         cdef int this_n_samples = X.shape[0]
         cdef int n_batches = int(ceil(float(this_n_samples) / self.batch_size))
-        cdef int size_big_batch = self.G_average_temp.shape[2] / self.batch_size \
-            if self.G_agg == 3 and self.temp_dir is not None else n_batches
-        cdef int n_big_batches = int(ceil(float(n_batches) / size_big_batch))
+        cdef int n_big_batches = int(ceil(float(n_batches) / self.buffer_size))
         cdef int start = 0
         cdef int stop = 0
         cdef int len_batch = 0
@@ -504,9 +506,9 @@ cdef class DictFactImpl(object):
         with nogil:
             # Outer loop for G_agg = 'average'
             for h in range(n_big_batches):
-                batch_start = h * size_big_batch
+                batch_start = h * self.buffer_size
                 sample_start = batch_start * self.batch_size
-                batch_stop = batch_start + size_big_batch
+                batch_stop = batch_start + self.buffer_size
                 if batch_stop > n_batches:
                     batch_stop = n_batches
                 sample_stop = batch_stop * self.batch_size
@@ -519,6 +521,9 @@ cdef class DictFactImpl(object):
                         for p in range(self.n_components):
                             for q in range(self.n_components):
                                 self.G_average_temp[p, q, iii] = self.G_average_[p, q, i]
+
+
+
                 for kk, k in enumerate(range(batch_start, batch_stop)):
                     if self.verbose_iter is not None and \
                                     self.total_counter_ >= verbose_iter:
@@ -1194,6 +1199,7 @@ cdef class DictFactImpl(object):
                         G_[p, q] *= self.D_mult_[p] * self.D_mult_[q]
         # Dx = D_.dot(X.T)
         # Hack as X is C-ordered
+        with nogil, parallel(num_threads=this_n_threads):
             for t in prange(n_thread_batches, schedule='static'):
                 start = t * sample_step
                 stop = min(n_samples, (t + 1) * sample_step)
@@ -1209,7 +1215,8 @@ cdef class DictFactImpl(object):
                 for jj in range(start, stop):
                     for p in range(n_components):
                         Dx[p, jj] *= self.D_mult_[p]
-            if self.pen_l1_ratio != 0:
+        if self.pen_l1_ratio != 0:
+            with nogil, parallel(num_threads=this_n_threads):
                 for t in prange(n_thread_batches, schedule='static'):
                     start = t * sample_step
                     stop = min(n_samples, (t + 1) * sample_step)
@@ -1227,7 +1234,8 @@ cdef class DictFactImpl(object):
                                     XtA[t],
                                     self.n_components,
                                     self.lasso_tol, self.random_state_, 0, 0)
-            else:
+        else:
+            with nogil, parallel(num_threads=this_n_threads):
                 for t in prange(n_thread_batches, schedule='static'):
                     for p in range(n_components):
                         for q in range(n_components):
@@ -1244,9 +1252,9 @@ cdef class DictFactImpl(object):
                     if info != 0:
                         with gil:
                             raise ValueError
-                    for ii in range(start, stop):
+                    for i in range(start, stop):
                         for p in range(n_components):
-                            code_[ii, p] = Dx[p, ii]
+                            code_[i, p] = Dx[p, i]
         return code_
 
 cdef double[:] enet_coordinate_descent_gram(double[:] w, double alpha,
