@@ -1071,10 +1071,6 @@ cdef class DictFactImpl(object):
                 j = subset[jj]
                 for k in range(n_components):
                     if self.proj == 1:
-                        # if self.AB_agg == 2:
-                        #     self.D_[k, j] *= (1 - 1. / self.reduction)
-                        #     self.D_[k, j] += self.D_subset[k, jj] / self.reduction
-                        # else:
                         self.D_[k, j] = self.D_subset[k, jj]
                     else:
                         self.D_[k, j] = self.D_subset[k, jj] / self.D_mult_[k]
@@ -1085,7 +1081,7 @@ cdef class DictFactImpl(object):
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         if self.G_agg == 2:
-            if self.proj == 1 and len_subset < self.n_features / 2.: # and self.AB_agg != 2:
+            if self.proj == 1 and len_subset < self.n_features / 2.:
                 dgemm(&NTRANS, &TRANS,
                       &n_components, &n_components, &len_subset,
                       &FONE,
