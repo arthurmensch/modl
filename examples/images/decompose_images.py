@@ -55,7 +55,7 @@ def config():
 @patch_ing.config
 def config():
     patch_size = (8, 8)
-    max_patches = 100000
+    max_patches = 10000
     test_size = 2000
     normalize_per_channel = True
     pickle = True
