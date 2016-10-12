@@ -3,10 +3,10 @@ import json
 import os
 from os.path import join
 
+from ..datasets import get_data_dirs
+
 import numpy as np
 import pandas as pd
-from modl.datasets import get_data_dirs
-from nilearn.datasets.utils import _get_dataset_dir
 from nilearn.input_data import NiftiMasker
 from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
@@ -70,7 +70,7 @@ def _single_mask(masker, metadata, data_dir, dest_data_dir):
 
 def fetch_hcp_rest(data_dir=None, n_subjects=40):
     """Nilearn like fetcher"""
-    data_dir = get_data_dirs(data_dir)
+    data_dir = get_data_dirs(data_dir)[0]
     source_dir = join(data_dir, 'HCP')
     extra_dir = join(data_dir, 'HCP_extra')
     mask = join(extra_dir, 'mask_img.nii.gz')
@@ -119,7 +119,7 @@ def fetch_hcp_rest(data_dir=None, n_subjects=40):
 
 
 def prepare_hcp_raw_data(data_dir=None):
-    data_dir = get_data_dirs(data_dir)
+    data_dir = get_data_dirs(data_dir)[0]
     dataset = fetch_hcp_rest(data_dir=data_dir, n_subjects=500)
 
     dest_data_dir = 'HCP_unmasked'
@@ -138,7 +138,7 @@ def prepare_hcp_raw_data(data_dir=None):
 
 
 def get_hcp_data(raw=False, data_dir=None):
-    data_dir = get_data_dirs(data_dir)
+    data_dir = get_data_dirs(data_dir)[0]
     if not os.path.exists(join(data_dir, 'HCP_extra')):
         raise ValueError(
             'Please download HCP_extra folder using make download-hcp_extra'

@@ -27,7 +27,7 @@ def config():
     batch_size = 100
     learning_rate = 0.9
     offset = 0
-    AB_agg = 'full'
+    AB_agg = 'async'
     G_agg = 'average'
     Dx_agg = 'average'
     reduction = 10
@@ -36,11 +36,12 @@ def config():
     pen_l1_ratio = 0.9
     n_jobs = 1
     n_epochs = 2
-    verbose = 30
+    verbose = 8
     n_components = 100
     n_threads = 3
     subset_sampling = 'random'
-    temp_dir = '/tmp'
+    dict_reduction = 'follow'
+    temp_dir = None
 
 
 @data_ing.config
@@ -54,7 +55,7 @@ def config():
 @patch_ing.config
 def config():
     patch_size = (8, 8)
-    max_patches = 100000
+    max_patches = 10000
     test_size = 2000
     normalize_per_channel = True
     pickle = True
@@ -76,8 +77,6 @@ class ImageScorer():
     def __call__(self, dict_fact, _run):
         test_time = time.clock()
 
-        print(dict_fact.feature_counter_)
-
         filename = 'record_%s.npy' % dict_fact.n_iter_
 
         # with TemporaryDirectory() as dir:
@@ -95,7 +94,7 @@ class ImageScorer():
         _run.info['score'].append(score)
         _run.info['profiling'].append(dict_fact.profiling_.tolist())
         _run.info['iter'].append(dict_fact.n_iter_)
-        _run.info['components'].append(filename)
+        # _run.info['components'].append(filename)
 
         self.test_time += time.clock() - test_time
 
@@ -113,6 +112,7 @@ def decompose_run(batch_size,
                   n_components,
                   n_threads,
                   subset_sampling,
+                  dict_reduction,
                   n_epochs,
                   temp_dir,
                   _seed,
@@ -134,6 +134,7 @@ def decompose_run(batch_size,
                          offset=offset,
                          batch_size=batch_size,
                          subset_sampling=subset_sampling,
+                         dict_reduction=dict_reduction,
                          temp_dir=temp_dir,
                          AB_agg=AB_agg,
                          G_agg=G_agg,

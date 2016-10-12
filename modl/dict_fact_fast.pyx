@@ -183,7 +183,7 @@ cdef class DictFactImpl(object):
                  unsigned long random_seed=0,
                  int[:] verbose_iter=None,
                  int n_threads=1,
-                 unicode temp_dir=u'/tmp',
+                 unicode temp_dir=None,
                  object callback=None):
         cdef int i
         cdef double* G_ptr
@@ -269,21 +269,23 @@ cdef class DictFactImpl(object):
                   G_ptr, &self.n_components
                   )
         elif self.G_agg == 3:
-            self.G_average_ = view.array((self.n_components, self.n_components,
-            self.n_samples), sizeof(double),
-                            format='d', mode='fortran')
-            # f = NamedTemporaryFile(dir=self.temp_dir,
-            #                        buffering=(8 * self.n_components ** 2))
-            # self.G_average_filename = f.name
-            # self.G_average_ = np.memmap(self.G_average_filename,
-            #                         dtype='double',
-            #                         mode='w+',
-            #                         order='F',
-            #                         shape=(self.n_components, self.n_components,
-            #                                self.n_samples))
-            # self.G_average_temp = view.array((self.n_components, self.n_components,
-            #             self.batch_size), sizeof(double),
-            #                             format='d', mode='fortran')
+            if self.temp_dir is None:
+                self.G_average_ = view.array((self.n_components, self.n_components,
+                self.n_samples), sizeof(double),
+                                format='d', mode='fortran')
+            else:
+                f = NamedTemporaryFile(dir=self.temp_dir,
+                                       buffering=(8 * self.n_components ** 2))
+                self.G_average_filename = f.name
+                self.G_average_ = np.memmap(self.G_average_filename,
+                                        dtype='double',
+                                        mode='w+',
+                                        order='F',
+                                        shape=(self.n_components, self.n_components,
+                                               self.n_samples))
+                self.G_average_temp = view.array((self.n_components, self.n_components,
+                            self.batch_size), sizeof(double),
+                                            format='d', mode='fortran')
         if self.Dx_agg == 3:
             self.Dx_average_ = view.array((self.n_components, self.n_samples),
                                               sizeof(double),
@@ -1069,6 +1071,10 @@ cdef class DictFactImpl(object):
                 j = subset[jj]
                 for k in range(n_components):
                     if self.proj == 1:
+                        # if self.AB_agg == 2:
+                        #     self.D_[k, j] *= (1 - 1. / self.reduction)
+                        #     self.D_[k, j] += self.D_subset[k, jj] / self.reduction
+                        # else:
                         self.D_[k, j] = self.D_subset[k, jj]
                     else:
                         self.D_[k, j] = self.D_subset[k, jj] / self.D_mult_[k]
@@ -1079,7 +1085,7 @@ cdef class DictFactImpl(object):
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         if self.G_agg == 2:
-            if self.proj == 1 and len_subset < self.n_features / 2.:
+            if self.proj == 1 and len_subset < self.n_features / 2.: # and self.AB_agg != 2:
                 dgemm(&NTRANS, &TRANS,
                       &n_components, &n_components, &len_subset,
                       &FONE,

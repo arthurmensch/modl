@@ -61,7 +61,7 @@ def hcp():
            '57f22489fb5c8677ec4a8414']
     name = 'compare_methods'
     status = 'RUNNING'
-    ylim_zoom = [1e-3, 1e-2]
+    ylim_zoom = [1e-3, 2e-2]
     xlim_zoom = [0.5, 100]
     xlim = [1e-3, 100]
     ylim = [96600, 106000]

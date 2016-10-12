@@ -73,10 +73,10 @@ class SpcaFmriScorer():
 
         filename = 'record_%s.nii.gz' % spca_fmri.n_iter_
 
-        with TemporaryDirectory() as dir:
-            filename = join(dir, filename)
-            spca_fmri.components_.to_filename(filename)
-            _run.add_artifact(filename)
+        # with TemporaryDirectory() as dir:
+        #     filename = join(dir, filename)
+        #     spca_fmri.components_.to_filename(filename)
+        #     _run.add_artifact(filename)
 
         score = spca_fmri.score(self.test_data, raw=self.raw)
         self.test_time += time.clock() - test_time
@@ -88,7 +88,7 @@ class SpcaFmriScorer():
         _run.info['score'].append(score)
         _run.info['profiling'].append(spca_fmri.profiling_.tolist())
         _run.info['iter'].append(spca_fmri.n_iter_)
-        _run.info['components'].append(filename)
+        # _run.info['components'].append(filename)
 
         self.test_time += time.clock() - test_time
 
@@ -152,6 +152,7 @@ def decompose_run(smoothing_fwhm,
         _run.add_artifact(filename)
 
     fig = display_maps(spca_fmri.components_)
+
     with TemporaryDirectory() as dir:
         filename = join(dir, 'components.png')
         plt.savefig(filename)

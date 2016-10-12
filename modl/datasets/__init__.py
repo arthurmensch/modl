@@ -1,6 +1,3 @@
-import os
-from .hcp import get_hcp_data
-
 def get_data_dirs(data_dir=None):
     paths = []
 
@@ -20,3 +17,7 @@ def get_data_dirs(data_dir=None):
 
         paths.append(os.path.expanduser('~/data/modl_data'))
     return paths
+
+
+import os
+from .hcp import get_hcp_data

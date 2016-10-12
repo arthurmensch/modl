@@ -224,7 +224,7 @@ class DictFact(BaseEstimator):
                                                          10),
                                                   self.verbose).astype(
                 'i4') - 1) * self.batch_size)
-            print(verbose_iter)
+            print("Verbose iter: %s" % verbose_iter)
         else:
             verbose_iter = None
 

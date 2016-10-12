@@ -85,7 +85,7 @@ def make_patches(patch_size, max_patches, test_size,
                  _run, _seed, data):
     if pickle and data['source'] == 'aviris':
         train_data, test_data = load(join(get_data_dirs()[0],
-                                          'modl_data', 'aviris.pkl'),
+                                          'aviris.pkl'),
                                      mmap_mode='r')
         test_data = np.array(test_data)
         _run.info['data_shape'] = (patch_size[0], patch_size[1], 224)
