@@ -48,10 +48,12 @@ def config():
     reduction = 12
     alpha = 1e-4
     l1_ratio = 1
-    n_epochs = 5
-    verbose = 30
-    n_jobs = 1
+    n_epochs = 1
+    verbose = 15
+    n_jobs = 3
     smoothing_fwhm = 6
+    buffer_size = None
+    temp_dir = '/storage/workspace/amensch/tmp'
 
 
 class SpcaFmriScorer():
@@ -105,6 +107,8 @@ def decompose_run(smoothing_fwhm,
                   l1_ratio,
                   n_jobs,
                   n_epochs,
+                  buffer_size,
+                  temp_dir,
                   _seed,
                   _run
                   ):
@@ -142,20 +146,29 @@ def decompose_run(smoothing_fwhm,
                          reduction=reduction,
                          alpha=alpha,
                          l1_ratio=l1_ratio,
+                         buffer_size=buffer_size,
+                         temp_dir=temp_dir,
                          callback=cb,
                          )
     spca_fmri.fit(train_data, raw=raw)
 
-    with TemporaryDirectory() as dir:
-        filename = join(dir, 'components.nii.gz')
-        spca_fmri.components_.to_filename(filename)
-        _run.add_artifact(filename)
-
+    try:
+        with TemporaryDirectory() as dir:
+            filename = join(dir, 'components.nii.gz')
+            spca_fmri.components_.to_filename(filename)
+            _run.add_artifact(filename)
+    except KeyError:
+        pass
     fig = display_maps(spca_fmri.components_)
 
     with TemporaryDirectory() as dir:
         filename = join(dir, 'components.png')
         plt.savefig(filename)
-        plt.show()
-        plt.close(fig)
         _run.add_artifact(filename)
+    plt.savefig('test.png')
+    plt.close(fig)
+
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(_run.info['time'], _run.info['score'])
+    plt.savefig('score.png')
+    plt.close(fig)

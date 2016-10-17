@@ -42,14 +42,14 @@ def aviris():
 
 @plot_ex.named_config
 def adhd():
-    sub_db = 'fmri'
+    sub_db = 'sacred'
     exp_name = 'compare_adhd'
     name = 'compare_adhd'
     status = 'RUNNING'
     ylim_zoom = [1e-1, 2e-1]
-    ylim = [21000, 31000]
-    xlim = [10, 1000]
-    xlim_zoom = [100, 1000]
+    # ylim = [21000, 31000]
+    # xlim = [10, 1000]
+    # xlim_zoom = [100, 1000]
     AB_agg = 'full'
 
 
@@ -104,15 +104,14 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
         if not isinstance(exp_name, (list, tuple)):
             exp_name = [exp_name]
         parent_exps = db.find({'experiment.name': {"$in": exp_name},
-                               'status': status
+                               # 'status': status
                                }).sort('_id', -1)[:1]
         parent_ids = [parent_exp['_id'] for parent_exp in parent_exps]
 
     print(parent_ids)
     algorithms = {
         'icml': ['masked', 'masked', AB_agg],
-        'tsp': ['average', 'average', AB_agg] if name == 'compare_aviris' else
-                ['full', 'average', AB_agg],
+        'tsp': ['average', 'average', AB_agg],
         'full': ['full', 'full', 'full']
     }
     algorithm_exps = {}
@@ -125,6 +124,8 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                 "config.G_agg": G_agg,
                 "config.Dx_agg": Dx_agg,
                 "config.reduction": {"$ne": 1},
+                # 'info.score': {"$ne": []}
+                # "status": {'$ne': 'FAILED'},
                 # "config.reduction": {"$in": [4, 12, 24]}
             }, {
                 'info.parent_id':
@@ -146,9 +147,12 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
     color_dict = {reduction: color for reduction, color in
                   zip(reductions, colormap)}
     color_dict[1] = ref_colormap[0]
+
+
     ref = min([np.min(np.array(exp['info']['score']))
                for this_algorithm in algorithm_exps for exp in
                algorithm_exps[this_algorithm]]) * (1 - ylim_zoom[0])
+
     style = {'icml': ':', 'tsp': '-', 'full': '--'}
     names = {
         'tsp': 'Variance reduction',

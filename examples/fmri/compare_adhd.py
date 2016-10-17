@@ -53,9 +53,9 @@ def config():
         # Reduction on BCD only
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
         # TSP
-        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+#        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'full'},
+        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'full'},
         # ICML with full parameter update
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
@@ -68,9 +68,9 @@ def config():
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
     # Reference
-    config_updates_list.append({'G_agg': 'full',
-                           'Dx_agg': 'full', 'AB_agg': 'full',
-                           'reduction': 1})
+    # config_updates_list.append({'G_agg': 'full',
+    #                       'Dx_agg': 'full', 'AB_agg': 'full',
+    #                       'reduction': 1})
     del param_updates_list, reductions #, param
 
 # Cannot capture in joblib

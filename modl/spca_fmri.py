@@ -109,11 +109,13 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                  target_affine=None, target_shape=None,
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=0,
+                 buffer_size=None,
                  n_jobs=1, verbose=0,
                  G_agg='full',
                  AB_agg='masked',
                  subset_sampling='random',
                  Dx_agg='average', dict_reduction='follow',
+                 temp_dir=None,
                  callback=None):
         BaseDecomposition.__init__(self, n_components=n_components,
                                    random_state=random_state,
@@ -148,6 +150,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         self.learning_rate = learning_rate
         self.offset = offset
 
+        self.temp_dir = temp_dir
+        self.buffer_size = buffer_size
         self.callback = callback
 
     def fit(self, imgs, y=None, confounds=None, raw=False):
@@ -218,6 +222,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                                    dict_init=dict_init,
                                    n_threads=self.n_jobs,
                                    l1_ratio=self.l1_ratio,
+                                   buffer_size=self.buffer_size,
+                                   temp_dir=self.temp_dir,
                                    pen_l1_ratio=0,
                                    verbose=0)
         self._dict_fact._initialize((n_samples, n_voxels))
@@ -235,10 +241,10 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if hasattr(self.verbose, '__iter__'):
             verbose_iter = np.array(self.verbose).astype('int')
         else:
-            verbose_iter = np.unique(np.logspace(2, log(len(imgs) *
+            verbose_iter = np.unique(np.logspace(0, log(len(imgs) *
                                                         self.n_epochs, 10),
                                                  self.verbose).astype(
-                'int')) - 100
+                'int')) - 1
 
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]

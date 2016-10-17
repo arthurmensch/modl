@@ -43,6 +43,7 @@ def config():
     verbose = 200
     n_jobs = 1
     smoothing_fwhm = 3
+    buffer_size = 1200
 
 
 @compare_ex.config
@@ -54,28 +55,29 @@ def config():
         # TSP
         # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'full'},
+        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'full'},
         # ICML with full parameter update
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
         # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
-        ]
+    ]
     config_updates_list = []
     reductions = [4, 12, 24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
-    del param_updates_list, reductions #, param
+    del param_updates_list, reductions  # , param
+
 
 @compare_ex.named_config
 def ref():
-    n_jobs=1
+    n_jobs = 1
     config_updates_list = []
     # Reference
     config_updates_list.append({'G_agg': 'full',
-                           'Dx_agg': 'full', 'AB_agg': 'full',
-                           'reduction': 1})
+                                'Dx_agg': 'full', 'AB_agg': 'full',
+                                'reduction': 1})
 
 
 # Cannot capture in joblib
