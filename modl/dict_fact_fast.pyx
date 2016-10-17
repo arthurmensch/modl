@@ -261,6 +261,9 @@ cdef class DictFactImpl(object):
         self.G_ = view.array((self.n_components, self.n_components),
                                           sizeof(double),
                                           format='d', mode='fortran')
+        self.buffer_size = buffer_size
+
+
         if self.G_agg == 2:
             D_ptr = &self.D_[0, 0]
             G_ptr = &self.G_[0, 0]
@@ -522,8 +525,6 @@ cdef class DictFactImpl(object):
                             for q in range(self.n_components):
                                 self.G_average_temp[p, q, iii] = self.G_average_[p, q, i]
 
-
-
                 for kk, k in enumerate(range(batch_start, batch_stop)):
                     if self.verbose_iter is not None and \
                                     self.total_counter_ >= verbose_iter:
@@ -539,7 +540,6 @@ cdef class DictFactImpl(object):
                     if stop > this_n_samples:
                         stop = this_n_samples
                     len_batch = stop - start
-
                     self.total_counter_ += len_batch
 
                     subset = self.feature_sampler_1.yield_subset()

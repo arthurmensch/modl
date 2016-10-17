@@ -181,7 +181,7 @@ class DictFact(BaseEstimator):
             temp_dir = self.temp_dir
         elif self.buffer_size >= self.n_samples_:
             temp_dir = None
-            buffer_size = 0
+            buffer_size = self.n_samples_
         else:
             buffer_size = self.buffer_size
             temp_dir = self.temp_dir

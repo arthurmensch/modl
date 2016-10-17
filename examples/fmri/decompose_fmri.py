@@ -37,23 +37,21 @@ def config():
 @decompose_ex.config
 def config():
     reduction = 3
-    n_epochs = 10
-    verbose = 20
     batch_size = 50
     learning_rate = 0.9
     offset = 0
     AB_agg = 'full'
     G_agg = 'full'
     Dx_agg = 'full'
-    reduction = 12
+    reduction = 10
     alpha = 1e-4
     l1_ratio = 1
     n_epochs = 1
-    verbose = 15
+    verbose = 5
     n_jobs = 3
     smoothing_fwhm = 6
     buffer_size = None
-    temp_dir = '/storage/workspace/amensch/tmp'
+    temp_dir = '/tmp'
 
 
 class SpcaFmriScorer():
