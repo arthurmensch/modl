@@ -4,32 +4,22 @@
 # cython: wraparound=False
 # noinspection PyUnresolvedReferences
 
+from tempfile import NamedTemporaryFile
+
 cimport cython
-
 cimport numpy as np
+import numpy as np
 from cython cimport view
-
-from libc.stdio cimport printf
-# noinspection PyUnresolvedReferences
+from cython.parallel import parallel, prange
 from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
-from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec, time_t
-
 from libc.math cimport sqrt
+from libc.stdio cimport printf
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
-# noinspection PyUnresolvedReferences
-from ._utils.randomkit.random_fast cimport Sampler, RandomState
-# noinspection PyUnresolvedReferences
 from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, \
       enet_scale_fast, enet_scale_matrix_fast
-
-from tempfile import NamedTemporaryFile
-import numpy as np
-import os
-
-# import
-from cython.parallel import parallel, prange
+from ._utils.randomkit.random_fast cimport Sampler, RandomState
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -765,15 +755,7 @@ cdef class DictFactImpl(object):
                   &FZERO,
                   G_ptr, &n_components
                   )
-        else:
-            dgemm(&NTRANS, &TRANS,
-                              &n_components, &n_components, &n_features,
-                              &reduction,
-                              D_ptr, &n_components,
-                              D_ptr, &n_components,
-                              &FZERO,
-                              G_ptr, &n_components
-                              )
+
         if self.G_agg == 3:
             with parallel(num_threads=self.n_threads):
                 for t in prange(self.n_threads, schedule='static'):
