@@ -207,9 +207,9 @@ class DictFact(BaseEstimator):
             'average': 3
         }
         AB_agg = {
-            'masked': 1,
-            'full': 2,
-            'async': 3
+            'full': 1,
+            'async': 2,
+            'noisy': 3
         }
         subset_sampling = {
             'random': 1,

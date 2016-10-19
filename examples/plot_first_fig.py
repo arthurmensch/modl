@@ -36,8 +36,10 @@ def plot(name):
         'hcp': {'sub_db': 'sacred',
                 'parent_ids': [ObjectId('57f22495fb5c86780390bca7'),
                                ObjectId('57f22489fb5c8677ec4a8414')]},
-        'adhd': {'sub_db': 'fmri',
-                 'parent_ids': [ObjectId("57ed4726fb5c86523cf8e674")]},
+        'adhd': {'sub_db': 'sacred',
+                 'parent_ids': [ObjectId("5804f140fb5c860e90e8db74"),
+                                ObjectId("5804f404fb5c861a5f45a222")
+                                ]},
         'aviris': {'sub_db': 'sacred',
                    'parent_ids': [ObjectId("57f665e9fb5c86aff0ab4036")]}
     }
@@ -49,7 +51,7 @@ def plot(name):
             [{
                 'info.parent_id': {"$in": parent_ids},
                 "config.AB_agg": 'full',
-                "config.G_agg": 'full' if dataset != 'aviris' else 'average',
+                "config.G_agg": 'full' if dataset == 'hcp' else 'average',
                 "config.Dx_agg": 'average',
                 "config.reduction": {"$ne": [1, 2]},
             }, {
@@ -58,7 +60,7 @@ def plot(name):
                 "config.reduction": 1}
             ]}))
 
-    reductions = [1, 2, 4, 8, 12, 16, 20, 24]
+    reductions = [1, 4, 8, 12, 24]
     n_red = len(reductions)
 
     fig, axes = plt.subplots(1, 3, figsize=(7.166, 1.5))
@@ -95,8 +97,8 @@ def plot(name):
     axes[2].set_xlabel('Time (h)')
     axes[2].xaxis.set_label_coords(1.1, -.105)
 
-    axes[0].set_xlim([5e1 / 3600, 1e4 / 3600])
-    axes[0].set_ylim([21800, 24200])
+    axes[0].set_xlim([1e-3, 2e-1])
+    axes[0].set_ylim([21800, 26200])
     axes[1].set_xlim([11e1 / 3600, 1e4 / 3600])
     axes[1].set_ylim([15700, 17500])
     axes[2].set_xlim([5e1 / 3600, 2e5 / 3600])

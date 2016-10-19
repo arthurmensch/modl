@@ -36,21 +36,20 @@ def config():
 
 @decompose_ex.config
 def config():
-    reduction = 3
     batch_size = 50
     learning_rate = 0.9
     offset = 0
-    AB_agg = 'full'
-    G_agg = 'full'
-    Dx_agg = 'full'
+    AB_agg = 'async'
+    G_agg = 'average'
+    Dx_agg = 'average'
     reduction = 10
-    alpha = 1e-4
+    alpha = 1e-3
     l1_ratio = 1
     n_epochs = 1
     verbose = 5
     n_jobs = 3
     smoothing_fwhm = 6
-    buffer_size = None
+    buffer_size = 1200
     temp_dir = '/tmp'
 
 
@@ -69,8 +68,8 @@ class SpcaFmriScorer():
 
     @decompose_ex.capture
     def __call__(self, spca_fmri, _run):
-        test_time = time.clock()
-
+        test_time = time.perf_counter()
+        print(spca_fmri.AB_agg)
         filename = 'record_%s.nii.gz' % spca_fmri.n_iter_
 
         # with TemporaryDirectory() as dir:
@@ -79,10 +78,10 @@ class SpcaFmriScorer():
         #     _run.add_artifact(filename)
 
         score = spca_fmri.score(self.test_data, raw=self.raw)
-        self.test_time += time.clock() - test_time
-        this_time = time.clock() - self.start_time - self.test_time
+        self.test_time += time.perf_counter() - test_time
+        this_time = time.perf_counter() - self.start_time - self.test_time
 
-        test_time = time.clock()
+        test_time = time.perf_counter()
 
         _run.info['time'].append(this_time)
         _run.info['score'].append(score)
@@ -90,7 +89,7 @@ class SpcaFmriScorer():
         _run.info['iter'].append(spca_fmri.n_iter_)
         # _run.info['components'].append(filename)
 
-        self.test_time += time.clock() - test_time
+        self.test_time += time.perf_counter() - test_time
 
 
 @decompose_ex.automain
@@ -144,6 +143,7 @@ def decompose_run(smoothing_fwhm,
                          reduction=reduction,
                          alpha=alpha,
                          l1_ratio=l1_ratio,
+                         # subset_sampling='cyclic',
                          buffer_size=buffer_size,
                          temp_dir=temp_dir,
                          callback=cb,

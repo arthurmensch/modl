@@ -241,10 +241,11 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         if hasattr(self.verbose, '__iter__'):
             verbose_iter = np.array(self.verbose).astype('int')
         else:
-            verbose_iter = np.unique(np.logspace(0, log(len(imgs) *
-                                                        self.n_epochs, 10),
-                                                 self.verbose).astype(
-                'int')) - 1
+            log_verbose = log(len(imgs) * self.n_epochs, 10)
+            verbose_iter = np.unique((np.logspace(log_verbose - 1, log_verbose,
+                                                 self.verbose) - len(imgs) * self.n_epochs / 10).astype(
+                'int'))
+            print(verbose_iter)
 
         for record, this_data_idx in enumerate(data_idx):
             this_data = data_list[this_data_idx]
@@ -267,6 +268,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
                         this_data[0],
                         confounds=this_data[1])
             self._io_time += time.time() - t0
+            # if record > self.reduction:
+            #     self._dict_fact.set_params(AB_agg=self.AB_agg)
             self._dict_fact.partial_fit(data_array[:this_n_samples],
                                         sample_indices=sample_indices,
                                         check_input=False)

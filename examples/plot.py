@@ -1,6 +1,9 @@
 from os.path import expanduser
 from tempfile import NamedTemporaryFile
 
+import matplotlib
+matplotlib.use('Qt5Agg')
+
 import gridfs
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,22 +16,19 @@ from pymongo import MongoClient
 from sacred.experiment import Experiment
 
 import matplotlib.patches as patches
-
+from math import log
 plot_ex = Experiment('plot')
-
 
 @plot_ex.config
 def config():
     sub_db = 'sacred'
     exp_name = 'compare_hyperspectral'
     name = 'compare_aviris'
-    status = 'RUNNING'
     ylim_zoom = None
     xlim_zoom = None
     ylim = None
     xlim = None
     oid = None
-    AB_agg = 'full'
     plot_type = 'debug'
 
 
@@ -45,27 +45,27 @@ def adhd():
     sub_db = 'sacred'
     exp_name = 'compare_adhd'
     name = 'compare_adhd'
-    status = 'RUNNING'
-    ylim_zoom = [1e-1, 2e-1]
+    ylim_zoom = [1e-2, 5e-1]
     # ylim = [21000, 31000]
     # xlim = [10, 1000]
     # xlim_zoom = [100, 1000]
-    AB_agg = 'full'
-
 
 @plot_ex.named_config
 def hcp():
     sub_db = 'sacred'
     exp_name = ['compare_hcp']
-    oid = ['57f22495fb5c86780390bca7',
-           '57f22489fb5c8677ec4a8414']
-    name = 'compare_methods'
-    status = 'RUNNING'
-    ylim_zoom = [1e-3, 2e-2]
-    xlim_zoom = [0.5, 100]
-    xlim = [1e-3, 100]
-    ylim = [96600, 106000]
-    AB_agg = 'full'
+    # oid = ['57f22495fb5c86780390bca7',
+    #        '57f22489fb5c8677ec4a8414']
+    # oid = ['5805374bfb5c8663ab366cf4',
+    #        '5804f8d4fb5c862f0efe72fd',
+    #        '57f22489fb5c8677ec4a8414']
+    # oid = ['58075073fb5c866f3e7a89e9',
+    #         '58074ff6fb5c866eb5eb4ecb']
+    name = 'compare_hcp'
+    ylim_zoom = [1e-3, 5e-2]
+    # xlim_zoom = [0.5, 100]
+    # xlim = [1e-3, 100]
+    # ylim = [96600, 106000]
 
 @plot_ex.named_config
 def hcp_compare():
@@ -74,8 +74,6 @@ def hcp_compare():
     oid = ['57f22495fb5c86780390bca7',
            '57f22489fb5c8677ec4a8414']
     name = 'method_comparison'
-    status = 'RUNNING'
-    AB_agg = 'full'
     plot_type = 'method_comparison'
     ylim_zoom = [.1e-2, 5e-2]
     xlim_zoom = [1e3, 2e4]
@@ -84,16 +82,16 @@ def hcp_compare():
 
 @plot_ex.capture
 def get_connections(sub_db):
-    # client = MongoClient('localhost', 27017)
-    client = MongoClient('localhost', 27018)
+    client = MongoClient('localhost', 27017)
+    # client = MongoClient('localhost', 27018)
     db = client[sub_db]
     fs = gridfs.GridFS(db, collection='default')
     return db.default.runs, fs
 
 
 @plot_ex.automain
-def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
-         xlim_zoom, AB_agg, name, plot_type):
+def plot(exp_name, oid, xlim, ylim, ylim_zoom,
+         xlim_zoom, name, plot_type):
     db, fs = get_connections()
     if oid is not None:
         oid = [ObjectId(this_oid) for this_oid in oid]
@@ -104,29 +102,26 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
         if not isinstance(exp_name, (list, tuple)):
             exp_name = [exp_name]
         parent_exps = db.find({'experiment.name': {"$in": exp_name},
-                               # 'status': status
                                }).sort('_id', -1)[:1]
         parent_ids = [parent_exp['_id'] for parent_exp in parent_exps]
 
     print(parent_ids)
     algorithms = {
-        'icml': ['masked', 'masked', AB_agg],
-        'tsp': ['average', 'average', AB_agg],
-        'full': ['full', 'full', 'full']
+        # 'icml': ['masked', 'masked', 'full'],
+        'tsp': ['average', 'average', 'full'],
+        'tsp gram': ['average', 'average', 'async'],
+        # 'full': ['full', 'full', 'full']
     }
     algorithm_exps = {}
     for algorithm in algorithms:
-        (G_agg, Dx_agg, this_AB_agg) = algorithms[algorithm]
+        (G_agg, Dx_agg, AB_agg) = algorithms[algorithm]
         algorithm_exps[algorithm] = list(db.find({"$or":
             [{
                 'info.parent_id': {"$in": parent_ids},
-                "config.AB_agg": this_AB_agg,
+                "config.AB_agg": AB_agg,
                 "config.G_agg": G_agg,
                 "config.Dx_agg": Dx_agg,
-                "config.reduction": {"$ne": 1},
-                # 'info.score': {"$ne": []}
-                # "status": {'$ne': 'FAILED'},
-                # "config.reduction": {"$in": [4, 12, 24]}
+                "config.reduction": {"$in": [6, 12, 24]}
             }, {
                 'info.parent_id':
                     {"$in": parent_ids},
@@ -138,6 +133,7 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                                      for this_algorithm in algorithms
                                      for exp in algorithm_exps[this_algorithm]
                                      ]))
+    # reductions = [1, 4, 12, 24]
     n_red = len(reductions)
 
     # Plotting
@@ -153,14 +149,15 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                for this_algorithm in algorithm_exps for exp in
                algorithm_exps[this_algorithm]]) * (1 - ylim_zoom[0])
 
-    style = {'icml': ':', 'tsp': '-', 'full': '--'}
+    style = {'icml': ':', 'tsp': '-', 'full': '--', 'tsp gram': '-.'}
     names = {
         'tsp': 'Variance reduction',
+        'tsp_gram': 'Variance reduction (full Gram)',
         'icml': 'Masked loss',
         'full': 'No subsampling'}
-    algorithm_keys = ['tsp', 'full', 'icml']
+    algorithm_keys = ['tsp', 'icml']
     if plot_type == 'debug':
-        fig, axes = plt.subplots(4, 3, figsize=(12, 10))
+        fig, axes = plt.subplots(5, 3, figsize=(12, 10))
         fig.subplots_adjust(top=0.95, bottom=0.2, wspace=0.3)
         for i, algorithm in enumerate(algorithms):
             exps = algorithm_exps[algorithm]
@@ -172,7 +169,8 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                 score = np.array(exp['info']['score'])
                 iter = np.array(exp['info']['iter'])
                 time = np.array(exp['info']['time'])
-                # time = np.logspace(1e-1, log(time[-1], 10), time.shape[0])
+                # time = iter * time[-1] / iter[-1] + 1
+                print(time)
                 reduction = exp['config']['reduction']
                 color = color_dict[reduction]
                 rel_score = (score - ref) / ref
@@ -197,24 +195,25 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                                 linestyle=style[algorithm],
                                 zorder=reduction if reduction != 1 else 100,
                                 markersize=2)
-                axes[3, 0].plot(iter + 10, score,
-                                label="Reduction = %i" % reduction,
-                                color=color,
-                                linestyle=style[algorithm],
-                                markersize=2)
-                axes[3, 1].plot(time, rel_score,
-                                label="Reduction = %i" % reduction,
-                                color=color,
-                                linestyle=style[algorithm],
-                                zorder=reduction if reduction != 1 else 100,
-                                markersize=2)
-                axes[3, 2].plot(iter + 10,
-                                time,
-                                linestyle=style[algorithm],
-                                label="Reduction = %i" % reduction,
-                                zorder=reduction if reduction != 1 else 100,
-                                color=color,
-                                markersize=2)
+                if reduction != 1 or (reduction == 1 and algorithm == 'tsp'):
+                    axes[-1, 0].plot(iter + 10, score,
+                                    label="Reduction = %i" % reduction,
+                                    color=color,
+                                    linestyle=style[algorithm],
+                                    markersize=2)
+                    axes[-1, 1].plot(time, rel_score,
+                                    label="Reduction = %i" % reduction,
+                                    color=color,
+                                    linestyle=style[algorithm],
+                                    zorder=reduction if reduction != 1 else 100,
+                                    markersize=2)
+                    axes[-1, 2].plot(iter + 10,
+                                    time,
+                                    linestyle=style[algorithm],
+                                    label="Reduction = %i" % reduction,
+                                    zorder=reduction if reduction != 1 else 100,
+                                    color=color,
+                                    markersize=2)
                 axes[i, 0].set_ylabel('Test loss')
                 axes[i, 1].set_ylabel('Test loss (relative)')
                 axes[i, 0].set_xscale('log')
@@ -232,20 +231,18 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
         for i in range(3):
             for j in range(3):
                 sns.despine(fig, axes[i, j])
-        axes[3, 0].set_xlabel('Iter')
-        axes[3, 1].set_xlabel('Time (s)')
-        axes[3, 2].set_xlabel('Iter')
-        axes[3, 0].set_xscale('log')
-        axes[3, 1].set_yscale('log')
-        axes[3, 1].set_xscale('log')
-        axes[3, 2].set_yscale('log')
-        axes[3, 2].set_xscale('log')
-
-        axes[3, 1].set_ylim(ylim_zoom)
-        axes[3, 1].set_xlim(xlim_zoom)
-
-        axes[3, 0].set_ylim(ylim)
-        axes[3, 0].set_xlim(xlim)
+        axes[-1, 0].set_xlabel('Iter')
+        axes[-1, 1].set_xlabel('Time (s)')
+        axes[-1, 2].set_xlabel('Iter')
+        axes[-1, 0].set_xscale('log')
+        axes[-1, 1].set_yscale('log')
+        axes[-1, 1].set_xscale('log')
+        axes[-1, 2].set_yscale('log')
+        axes[-1, 2].set_xscale('log')
+        axes[-1, 1].set_ylim(ylim_zoom)
+        axes[-1, 1].set_xlim(xlim_zoom)
+        axes[-1, 0].set_ylim(ylim)
+        axes[-1, 0].set_xlim(xlim)
 
         handles, labels = axes[3, 0].get_legend_handles_labels()
 
@@ -258,9 +255,7 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
         axes[3, 0].legend(handles[::n_red], algorithm_keys,
                           bbox_to_anchor=(1, -.3), loc='upper left', ncol=1)
         print('Done plotting figure')
-        plt.savefig(name + '.pdf')
-
-        plt.savefig(name + '.pdf')
+        # plt.savefig(name + '.pdf')
 
     elif plot_type == 'method_comparison':
         fig, axes = plt.subplots(1, 2, figsize=(7.166, 1.5))
@@ -273,7 +268,7 @@ def plot(exp_name, oid, status, xlim, ylim, ylim_zoom,
                 score = np.array(exp['info']['score'])
                 iter = np.array(exp['info']['iter'])
                 time = np.array(exp['info']['time']) / 3600
-                # time = np.logspace(1e-1, log(time[-1], 10), time.shape[0])
+                # time = iter / 2e4
                 reduction = exp['config']['reduction']
                 color = color_dict[reduction]
                 rel_score = (score - ref) / ref

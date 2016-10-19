@@ -48,7 +48,7 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 9
+    n_jobs = 3
     param_updates_list = [
         # Reduction on BCD only
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
@@ -56,13 +56,14 @@ def config():
         # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
         {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'full'},
+        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # ICML with full parameter update
-        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
+        # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
         # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
     ]
     config_updates_list = []
-    reductions = [4, 12, 24]
+    reductions = [24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
@@ -107,8 +108,11 @@ def single_run(our_config_updates=None):
 
 
 @compare_ex.automain
-def compare_run(config_updates_list, n_jobs):
+def compare_run(config_updates_list, n_jobs, _run):
+    parent_id = _run.observers[0].run_entry['_id']
+    config = _run.config
     Parallel(n_jobs=n_jobs,
              backend='multiprocessing')(
-        delayed(single_run)(our_config_updates=our_config_updates)
+        delayed(single_run)(our_config_updates=our_config_updates,
+                            parent_id=parent_id, config=config)
         for our_config_updates in config_updates_list)
