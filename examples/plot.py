@@ -82,8 +82,8 @@ def hcp_compare():
 
 @plot_ex.capture
 def get_connections(sub_db):
-    client = MongoClient('localhost', 27017)
-    # client = MongoClient('localhost', 27018)
+    # client = MongoClient('localhost', 27017)
+    client = MongoClient('localhost', 27018)
     db = client[sub_db]
     fs = gridfs.GridFS(db, collection='default')
     return db.default.runs, fs
@@ -108,9 +108,9 @@ def plot(exp_name, oid, xlim, ylim, ylim_zoom,
     print(parent_ids)
     algorithms = {
         # 'icml': ['masked', 'masked', 'full'],
-        'tsp': ['average', 'average', 'full'],
-        'tsp gram': ['average', 'average', 'async'],
-        # 'full': ['full', 'full', 'full']
+        'tsp': ['average', 'average', 'async'],
+        'tsp gram': ['full', 'average', 'async'],
+        'full': ['full', 'full', 'async']
     }
     algorithm_exps = {}
     for algorithm in algorithms:
@@ -169,8 +169,6 @@ def plot(exp_name, oid, xlim, ylim, ylim_zoom,
                 score = np.array(exp['info']['score'])
                 iter = np.array(exp['info']['iter'])
                 time = np.array(exp['info']['time'])
-                # time = iter * time[-1] / iter[-1] + 1
-                print(time)
                 reduction = exp['config']['reduction']
                 color = color_dict[reduction]
                 rel_score = (score - ref) / ref

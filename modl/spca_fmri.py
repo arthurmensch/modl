@@ -242,8 +242,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
             verbose_iter = np.array(self.verbose).astype('int')
         else:
             log_verbose = log(len(imgs) * self.n_epochs, 10)
-            verbose_iter = np.unique((np.logspace(log_verbose - 1, log_verbose,
-                                                 self.verbose) - len(imgs) * self.n_epochs / 10).astype(
+            verbose_iter = np.unique((np.logspace(2, log_verbose,
+                                                 self.verbose) - 100).astype(
                 'int'))
             print(verbose_iter)
 

@@ -69,7 +69,6 @@ class SpcaFmriScorer():
     @decompose_ex.capture
     def __call__(self, spca_fmri, _run):
         test_time = time.perf_counter()
-        print(spca_fmri.AB_agg)
         filename = 'record_%s.nii.gz' % spca_fmri.n_iter_
 
         # with TemporaryDirectory() as dir:

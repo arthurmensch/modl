@@ -32,7 +32,6 @@ class DictFact(BaseEstimator):
                  AB_agg='masked',
                  subset_sampling='random',  # ['random', 'cyclic']
                  dict_reduction='follow',
-                 proj='partial',
                  # ['independent', 'coupled']
                  # Dict parameter
                  dict_init=None,
@@ -67,7 +66,6 @@ class DictFact(BaseEstimator):
         self.G_agg = G_agg
         self.Dx_agg = Dx_agg
         self.AB_agg = AB_agg
-        self.proj = proj
         self.subset_sampling = subset_sampling
         self.dict_reduction = dict_reduction
 
@@ -111,11 +109,7 @@ class DictFact(BaseEstimator):
 
     @property
     def D_(self):
-        if self._impl.proj == 2 and self._impl.l1_ratio == 0:
-            return np.array(self._impl.D_) * np.array(self._impl.D_mult)[:,
-                                             np.newaxis]
-        else:
-            return np.array(self._impl.D_)
+        return np.array(self._impl.D_)
 
     @property
     def code_(self):
@@ -215,10 +209,6 @@ class DictFact(BaseEstimator):
             'random': 1,
             'cyclic': 2,
         }
-        proj = {
-            'partial': 1,
-            'full': 2
-        }
         if self.dict_reduction == 'follow':
             dict_reduction = 0
         elif self.dict_reduction == 'same':
@@ -253,7 +243,6 @@ class DictFact(BaseEstimator):
                'G_agg': G_agg[self.G_agg],
                'Dx_agg': Dx_agg[self.Dx_agg],
                'AB_agg': AB_agg[self.AB_agg],
-               'proj': proj[self.proj],
                'subset_sampling': subset_sampling[self.subset_sampling],
                'dict_reduction': dict_reduction,
                'reduction': self.reduction,
