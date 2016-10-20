@@ -1,7 +1,4 @@
 # encoding: utf-8
-# cython: cdivision=True
-# cython: boundscheck=False
-# cython: wraparound=False
 # noinspection PyUnresolvedReferences
 
 cimport cython
@@ -358,7 +355,7 @@ cdef class DictFactImpl(object):
 
         self.callback = callback
 
-        self.profiling_ = view.array((6, ), sizeof(double),
+        self.profiling_ = view.array((7, ), sizeof(double),
                                format='d')
         self.profiling_[:] = 0
 
@@ -474,7 +471,8 @@ cdef class DictFactImpl(object):
                            ) except *:
         cdef int this_n_samples = X.shape[0]
         cdef int n_batches = int(ceil(float(this_n_samples) / self.batch_size))
-        cdef int n_big_batches = int(ceil(float(n_batches) / self.buffer_size))
+        cdef int n_big_batches = int(ceil(float(this_n_samples) / self.buffer_size))
+        cdef int big_step = n_batches / n_big_batches
         cdef int start = 0
         cdef int stop = 0
         cdef int len_batch = 0
@@ -486,7 +484,7 @@ cdef class DictFactImpl(object):
 
         cdef int[:] random_order = self.random_state_.permutation(this_n_samples)
 
-        cdef timespec tv0, tv1
+        cdef timespec tv0, tv1, tv2, tv3
 
         cdef int reduction_int = int(self.reduction)
 
@@ -501,27 +499,34 @@ cdef class DictFactImpl(object):
         with nogil:
             # Outer loop for G_agg = 'average'
             for h in range(n_big_batches):
-                batch_start = h * self.buffer_size
+                batch_start = h * big_step
                 sample_start = batch_start * self.batch_size
-                batch_stop = batch_start + self.buffer_size
+                batch_stop = batch_start + big_step
                 if batch_stop > n_batches:
                     batch_stop = n_batches
                 sample_stop = batch_stop * self.batch_size
                 if sample_stop > this_n_samples:
                     sample_stop = this_n_samples
                 # Read on disk
+                clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
                 if self.temp_dir is not None and self.G_agg == 3:
                     for iii, ii in enumerate(range(sample_start, sample_stop)):
                         i = sample_indices[random_order[ii]]
                         for p in range(self.n_components):
                             for q in range(self.n_components):
                                 self.G_average_temp[p, q, iii] = self.G_average_[p, q, i]
+                clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+                self.profiling_[6] += tv1.tv_sec-tv0.tv_sec
+                self.profiling_[6] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
                 for kk, k in enumerate(range(batch_start, batch_stop)):
-                    if self.verbose_iter is not None and \
-                                    self.total_counter_ >= verbose_iter:
+                    if self.verbose_iter is not None and\
+                            self.total_counter_ >= verbose_iter >= 0:
                         self.verbose_iter_idx_ += 1
-                        verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+                        if self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
+                            verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+                        else:
+                            verbose_iter = -1
                         printf("Iteration %i\n", self.total_counter_)
                         if self.callback is not None:
                             with gil:
@@ -568,6 +573,7 @@ cdef class DictFactImpl(object):
                                 if i == 0:
                                     self.update_dict(subset)
                                 else:
+                                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv2)
                                     w_A = get_simple_weights(self.total_counter_, len_batch,
                                      self.learning_rate,
                                      self.offset)
@@ -581,18 +587,25 @@ cdef class DictFactImpl(object):
                                           &self.X_batch[0, 0], &self.n_features,
                                           &one_m_w,
                                           &self.B_[0, 0], &self.n_components)
+                                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv3)
+                                    self.profiling_[3] += tv3.tv_sec-tv2.tv_sec
+                                    self.profiling_[3] += (tv3.tv_nsec - tv2.tv_nsec) / 1e9
 
 
                     clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
                     self.profiling_[5] += tv1.tv_sec-tv0.tv_sec
                     self.profiling_[5] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
                 # Write on disk
+                clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
                 if self.temp_dir is not None and self.G_agg == 3:
                     for iii, ii in enumerate(range(sample_start, sample_stop)):
                         i = sample_indices[random_order[ii]]
                         for p in range(self.n_components):
                             for q in range(self.n_components):
                                 self.G_average_[p, q, i] = self.G_average_temp[p, q, iii]
+                clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
+                self.profiling_[6] += tv1.tv_sec-tv0.tv_sec
+                self.profiling_[6] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
     cdef void clean_dict(self) nogil:
         cdef int k, p
@@ -916,7 +929,7 @@ cdef class DictFactImpl(object):
                           X_ptr + start, &n_features,
                           &one_m_w,
                           B_ptr + start * n_components, &n_components)
-            for jj in range(self.n_features):
+            for jj in range(len_subset):
                 j = subset[jj]
                 for k in range(n_components):
                     self.R_[k, jj] = self.B_[k, j]

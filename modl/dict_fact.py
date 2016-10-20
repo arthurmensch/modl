@@ -179,7 +179,7 @@ class DictFact(BaseEstimator):
         else:
             buffer_size = self.buffer_size
             temp_dir = self.temp_dir
-        self._impl = DictFactImpl(D, n_samples,
+        self._impl = DictFactImpl(D, self.n_samples_,
                                   n_threads=self.n_threads,
                                   random_seed=random_seed,
                                   temp_dir=temp_dir,

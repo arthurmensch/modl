@@ -7,18 +7,20 @@ import time
 from os.path import join
 from tempfile import TemporaryDirectory
 
+import itertools
 import matplotlib.pyplot as plt
 import numpy as np
-from data import data_ing, patch_ing, make_patches
-from joblib import Memory
-from modl._utils.system import get_cache_dirs
+from data import load_data, data_ing
+from modl.datasets.images import gen_patch_batches, get_num_patches
 from modl.dict_fact import DictFact
 from modl.plotting.images import plot_patches
 from sacred import Experiment
 from sacred.observers import MongoObserver
+from sklearn.feature_extraction.image import extract_patches_2d
+from sklearn.utils import check_random_state
 
 decompose_ex = Experiment('decompose_images',
-                          ingredients=[patch_ing])
+                          ingredients=[data_ing])
 decompose_ex.observers.append(MongoObserver.create())
 
 
@@ -27,11 +29,11 @@ def config():
     batch_size = 100
     learning_rate = 0.9
     offset = 1
-    AB_agg = 'full'
-    G_agg = 'average'
-    Dx_agg = 'average'
+    AB_agg = 'async'
+    G_agg = 'full'
+    Dx_agg = 'full'
     reduction = 10
-    alpha = 0.1
+    alpha = 0.001
     l1_ratio = 0
     pen_l1_ratio = 0.9
     n_jobs = 1
@@ -42,6 +44,11 @@ def config():
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = '/tmp'
+    buffer_size = 1000
+    test_size = 2000
+    max_patches = None
+    patch_shape = (8, 8)
+    max_patches = 2000
 
 
 @data_ing.config
@@ -49,16 +56,6 @@ def config():
     source = 'aviris'
     gray = False
     scale = 1
-    in_memory = False
-
-
-@patch_ing.config
-def config():
-    patch_size = (8, 8)
-    max_patches = 10000
-    test_size = 2000
-    normalize_per_channel = True
-    pickle = True
 
 
 class ImageScorer():
@@ -115,15 +112,43 @@ def decompose_run(batch_size,
                   dict_reduction,
                   n_epochs,
                   temp_dir,
+                  patch_shape,
+                  test_size,
+                  buffer_size,
+                  max_patches,
+                  data,
                   _seed,
                   _run
                   ):
-    train_data, test_data = make_patches()
+    image = load_data()
+    width, height, n_channel = image.shape
+    if data['source'] == 'aviris':
+        test_data = gen_patch_batches(image[height // 2:, :],
+                                      patch_shape=patch_shape,
+                                      batch_size=test_size,
+                                      random_state=_seed)
+        test_data, _ = next(test_data)
+        n_samples = get_num_patches(image[:height // 2, :],
+                                    patch_shape=patch_shape)
+    else:
+        test_data = extract_patches_2d(image[height // 2:, :],
+                                       patch_size=patch_shape,
+                                       max_patches=test_size,
+                                       random_state=_seed)
+        n_samples = None
+    _run.info['data_shape'] = (test_data.shape[1],
+                               test_data.shape[2],
+                               test_data.shape[3])
+    test_data = test_data.reshape((test_data.shape[0], -1))
+    test_data -= np.mean(test_data, axis=1)[:, np.newaxis]
+    std = np.std(test_data, axis=1)
+    std[std == 0] = 1
+    test_data /= std[:, np.newaxis]
+
     if _run.observers:
         cb = ImageScorer(test_data)
     else:
         cb = None
-
     dict_fact = DictFact(verbose=verbose,
                          n_epochs=n_epochs,
                          random_state=_seed,
@@ -143,8 +168,35 @@ def decompose_run(batch_size,
                          alpha=alpha,
                          l1_ratio=l1_ratio,
                          callback=cb,
+                         buffer_size=buffer_size,
+                         n_samples=n_samples
                          )
-    dict_fact.fit(train_data)
+    if data['source'] == 'aviris':
+        seeds = check_random_state(_seed).randint(np.iinfo('i4').max,
+                                                  size=n_epochs)
+        for seed in seeds:
+            train_data = gen_patch_batches(image[:height // 2, :],
+                                           patch_shape=patch_shape,
+                                           batch_size=buffer_size,
+                                           random_state=seed)
+            for batch, indices in itertools.islice(train_data, 20):
+                batch = batch.reshape((batch.shape[0], -1))
+                batch -= np.mean(batch, axis=1)[:, np.newaxis]
+                std = np.std(batch, axis=1)
+                std[std == 0] = 1
+                batch /= std[:, np.newaxis]
+                dict_fact.partial_fit(batch, indices, check_input=False)
+    else:
+        train_data = extract_patches_2d(image[:height // 2, :],
+                                        patch_size=patch_shape,
+                                        max_patches=max_patches,
+                                        random_state=_seed)
+        train_data = train_data.reshape((test_data.shape[0], -1))
+        train_data -= np.mean(train_data, axis=1)[:, np.newaxis]
+        std = np.std(train_data, axis=1)
+        std[std == 0] = 1
+        train_data /= std[:, np.newaxis]
+        dict_fact.fit(train_data)
 
     with TemporaryDirectory() as dir:
         filename = join(dir, 'components.npy')
@@ -159,4 +211,3 @@ def decompose_run(batch_size,
     fig, ax = plt.subplots(1, 1)
     ax.plot(_run.info['time'], _run.info['score'])
     plt.show()
-

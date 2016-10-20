@@ -12,18 +12,18 @@ def config():
     source = 'aviris'
     gray = False
     scale = 1
-    in_memory = True
+    in_memory = False
 
 
 @patch_ing.config
 def config():
     patch_size = (20, 20)
-    max_patches = 100000
+    max_patches = None
     test_size = 2000
     normalize_per_channel = True
     pickle = False
 
 @extract_ex.automain
-def run(patches):
+def run():
     data = make_patches()
-    dump(data, join(get_data_dirs()[0], 'modl_data', 'aviris.pkl'))
+    dump(data, join(get_data_dirs()[0], 'aviris.pkl'))

@@ -31,8 +31,8 @@ def config():
 
 @decompose_ex.config
 def config():
-    reduction = 3
-    batch_size = 50
+    reduction = 1
+    batch_size = 10
     learning_rate = 0.9
     offset = 0
     alpha = 1e-3
@@ -46,14 +46,14 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 10
+    n_jobs = 7
     param_updates_list = [
         # Reduction on BCD only
-        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
         # TSP full Gram with full parameter update
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # ICML with full parameter update
         # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
@@ -64,6 +64,8 @@ def config():
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
+                                            **param))
+            config_updates_list.append(dict(batch_size=10 * reduction,
                                             **param))
     # Reference
     config_updates_list.append({'G_agg': 'full',

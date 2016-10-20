@@ -287,9 +287,9 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
 
     @property
     def profiling_(self):
-        this_time = np.zeros(7)
-        this_time[:6] = self._dict_fact.profiling_
-        this_time[6] = self._io_time
+        this_time = np.zeros(8)
+        this_time[:7] = self._dict_fact.profiling_
+        this_time[7] = self._io_time
         return this_time
 
     def score(self, imgs, confounds=None, raw=False):

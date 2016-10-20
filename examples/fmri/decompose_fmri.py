@@ -56,7 +56,7 @@ def config():
 class SpcaFmriScorer():
     @decompose_ex.capture
     def __init__(self, test_data, raw, _run):
-        self.start_time = time.clock()
+        self.start_time = time.perf_counter()
         self.test_data = test_data
         self.test_time = 0
         self.raw = raw

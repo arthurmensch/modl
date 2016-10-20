@@ -48,15 +48,15 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 9
+    n_jobs = 3
     param_updates_list = [
         # Reduction on BCD only
-        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
+        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
         # TSP
         # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
-        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # ICML with full parameter update
         # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
         # ICML
