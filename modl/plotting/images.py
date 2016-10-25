@@ -13,7 +13,7 @@ def plot_patches(patches, shape):
             #                                 i * step:min(shape[2], (i + 1) * step)],
             #                                 axis=2)[:, :, np.newaxis]
             #                         for i in range(3, 0, -1)], axis=2)
-            patch = patch[:, :, 0]
+            patch = np.sum(patch, axis=2)
         plt.imshow(
             patch,
             cmap=plt.cm.gray_r,

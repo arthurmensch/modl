@@ -36,17 +36,17 @@ def config():
 
 @decompose_ex.config
 def config():
-    batch_size = 50
+    batch_size = 200
     learning_rate = 0.9
     offset = 0
-    AB_agg = 'async'
-    G_agg = 'average'
-    Dx_agg = 'average'
+    AB_agg = 'full'
+    G_agg = 'full'
+    Dx_agg = 'full'
     reduction = 10
     alpha = 1e-3
     l1_ratio = 1
-    n_epochs = 1
-    verbose = 5
+    n_epochs = 3
+    verbose = 15
     n_jobs = 3
     smoothing_fwhm = 6
     buffer_size = 1200

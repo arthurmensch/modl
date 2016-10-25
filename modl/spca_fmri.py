@@ -22,7 +22,7 @@ from sklearn.linear_model import Ridge
 from sklearn.utils import check_random_state
 
 from .dict_fact import DictFact
-from math import log
+from math import log, ceil
 
 
 class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
@@ -231,47 +231,55 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
         max_sample_size = max(n_samples_list)
         sample_subset_range = np.arange(max_sample_size, dtype='i4')
 
-        data_array = np.empty((max_sample_size, n_voxels),
+        data_array = np.empty((max_sample_size * 4, n_voxels),
                               dtype='float', order='C')
 
+        sample_indices = np.empty(max_sample_size * 4, dtype='i4')
+
         # Epoch logic
-        data_idx = itertools.chain(*[random_state.permutation(
-            len(imgs)) for _ in range(n_epochs)])
+        data_idx = list(itertools.chain(*[random_state.permutation(
+            len(imgs)) for _ in range(n_epochs)]))
 
         if hasattr(self.verbose, '__iter__'):
             verbose_iter = np.array(self.verbose).astype('int')
         else:
-            log_verbose = log(len(imgs) * self.n_epochs, 10)
+            log_verbose = log(len(imgs) * self.n_epochs // 4, 10)
             verbose_iter = np.unique((np.logspace(2, log_verbose,
-                                                 self.verbose) - 100).astype(
-                'int'))
+                                                  self.verbose) - 1e2).astype(
+                'int')) * 4
             print(verbose_iter)
 
-        for record, this_data_idx in enumerate(data_idx):
-            this_data = data_list[this_data_idx]
-            this_n_samples = n_samples_list[this_data_idx]
-            offset = offset_list[this_data_idx]
-            sample_indices = offset + sample_subset_range[:this_n_samples]
-            if record in verbose_iter:
-                print('Streaming record %s' % record)
-                if self.callback is not None:
-                    self.callback(self)
-            t0 = time.time()
-            if raw:
-                data_array[:this_n_samples] = np.load(this_data,
-                                                      mmap_mode='r')
-            else:
-                if self.shelve:
-                    data_array[:this_n_samples] = this_data.get()
+        for base_record in range(0, len(data_idx), 4):
+            start = 0
+            for i in range(4):
+                this_record = base_record + i
+                if this_record >= len(data_idx):
+                    continue
+                this_data_idx = data_idx[this_record]
+                this_data = data_list[this_data_idx]
+                this_n_samples = n_samples_list[this_data_idx]
+                stop = start + this_n_samples
+                offset = offset_list[this_data_idx]
+                sample_indices[start:stop] = offset + sample_subset_range[:this_n_samples]
+                if this_record in verbose_iter:
+                    print('Streaming record %s' % this_record)
+                    if self.callback is not None:
+                        self.callback(self)
+                t0 = time.time()
+                if raw:
+                    data_array[start:stop] = np.load(this_data,
+                                                          mmap_mode='r')
                 else:
-                    data_array[:this_n_samples] = self.masker_.transform(
-                        this_data[0],
-                        confounds=this_data[1])
-            self._io_time += time.time() - t0
-            # if record > self.reduction:
-            #     self._dict_fact.set_params(AB_agg=self.AB_agg)
-            self._dict_fact.partial_fit(data_array[:this_n_samples],
-                                        sample_indices=sample_indices,
+                    if self.shelve:
+                        data_array[start:stop] = this_data.get()
+                    else:
+                        data_array[start:stop] = self.masker_.transform(
+                            this_data[0],
+                            confounds=this_data[1])
+                self._io_time += time.time() - t0
+                start = stop
+            self._dict_fact.partial_fit(data_array[:stop],
+                                        sample_indices=sample_indices[:stop],
                                         check_input=False)
         return self
 
@@ -287,9 +295,8 @@ class SpcaFmri(BaseDecomposition, TransformerMixin, CacheMixin):
 
     @property
     def profiling_(self):
-        this_time = np.zeros(8)
-        this_time[:7] = self._dict_fact.profiling_
-        this_time[7] = self._io_time
+        this_time = self._dict_fact.profiling_
+        this_time = np.concatenate([this_time, np.array([self._io_time])])
         return this_time
 
     def score(self, imgs, confounds=None, raw=False):
@@ -329,3 +336,68 @@ def _normalize_and_flip(components):
         if np.sum(component < 0) < np.sum(component > 0):
             component *= -1
     return components
+
+#
+# def Batcher(object):
+#     def __init__(self, n_features=100, nominal_size=100):
+#         self.nominal_size = nominal_size
+#         self.n_features = n_features
+#         self.buffer_list = []
+#         self.cursor = 0
+#         self.available_size = 0
+#
+#     def _add_buffer(self, size):
+#         size = size - self.available_size
+#         n_buffers = int(ceil(size / self.nominal_size))
+#         self._buffer_list += [self._new_buffer() for _ in range(n_buffers)]
+#         self.available_size += n_buffers * self.nominal_size
+#
+#     def _new_buffer(self):
+#         return np.empty((self.nominal_size, self.n_features))
+#
+#     @property
+#     def ready(self):
+#         return len(self.buffer_list) > 1
+#
+#     def pop(self):
+#         if len(self.buffer_list) > 0:
+#             return self.buffer_list[0][:self.cursor]
+#         self.buffer_list = self.buffer_list[1:]
+#
+#     def pop_ready(self):
+#         if self.ready:
+#             return self.pop()
+#         else:
+#             return None
+#
+#     def add(self, array):
+#         if array.shape[1] != self.n_features:
+#             raise ValueError('Wrong input size')
+#         else:
+#             size = array.shape[0]
+#             if size <= self.available_size:
+#                 self.buffer_list[0][self.cursor:self.cursor + size] = array
+#                 self.available_size -= size
+#             else:
+#                 self._add_buffers(size)
+#                 first_cursor = self.nominal_size - self.cursor
+#                 self.buffer_list[-1][self.cursor:] = array[:first_cursor]
+#                 self.ready = True
+#                 for i, current_cursor in enumerate(range(first_cursor, size,
+#                                                          self.nominal_size)):
+#                     new_cursor = current_cursor + self.nominal_size
+#                     if new_cursor > size:
+#                         # last iteration
+#                         new_cursor = size
+#                         self.cursor = size - new_cursor
+#                         self.buffer_list[i + 1][:self.cursor] = array[current_cursor:new_cursor]
+#                         self.available_size -= self.cursor
+#                     else:
+#                         self.buffer_list[i] = array[current_cursor:new_cursor]
+#                         self.available_size -= self.nominal_size
+#
+# def nominal_batches(batches):
+#     batcher = Batcher(nominal_size=nominal_size)
+#     for batch in batches:
+
+

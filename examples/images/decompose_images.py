@@ -28,12 +28,12 @@ decompose_ex.observers.append(MongoObserver.create())
 def config():
     batch_size = 100
     learning_rate = 0.9
-    offset = 1
+    offset = 0
     AB_agg = 'async'
-    G_agg = 'full'
-    Dx_agg = 'full'
+    G_agg = 'average'
+    Dx_agg = 'average'
     reduction = 10
-    alpha = 0.001
+    alpha = 1e-3
     l1_ratio = 0
     pen_l1_ratio = 0.9
     n_jobs = 1
@@ -44,7 +44,7 @@ def config():
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = '/tmp'
-    buffer_size = 1000
+    buffer_size = 3000
     test_size = 2000
     max_patches = None
     patch_shape = (8, 8)
@@ -141,7 +141,7 @@ def decompose_run(batch_size,
                                test_data.shape[3])
     test_data = test_data.reshape((test_data.shape[0], -1))
     test_data -= np.mean(test_data, axis=1)[:, np.newaxis]
-    std = np.std(test_data, axis=1)
+    std = np.sqrt(np.sum(test_data ** 2, axis=1))
     std[std == 0] = 1
     test_data /= std[:, np.newaxis]
 
@@ -167,6 +167,8 @@ def decompose_run(batch_size,
                          reduction=reduction,
                          alpha=alpha,
                          l1_ratio=l1_ratio,
+                         # purge_tol=1e-1,
+                         # lasso_tol=1e-2,
                          callback=cb,
                          buffer_size=buffer_size,
                          n_samples=n_samples
@@ -179,10 +181,10 @@ def decompose_run(batch_size,
                                            patch_shape=patch_shape,
                                            batch_size=buffer_size,
                                            random_state=seed)
-            for batch, indices in itertools.islice(train_data, 20):
+            for batch, indices in itertools.islice(train_data, 10):
                 batch = batch.reshape((batch.shape[0], -1))
                 batch -= np.mean(batch, axis=1)[:, np.newaxis]
-                std = np.std(batch, axis=1)
+                std = np.sqrt(np.sum(batch ** 2, axis=1))
                 std[std == 0] = 1
                 batch /= std[:, np.newaxis]
                 dict_fact.partial_fit(batch, indices, check_input=False)

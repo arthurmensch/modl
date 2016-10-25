@@ -1,4 +1,7 @@
 # encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 # noinspection PyUnresolvedReferences
 
 cimport cython
@@ -355,7 +358,7 @@ cdef class DictFactImpl(object):
 
         self.callback = callback
 
-        self.profiling_ = view.array((7, ), sizeof(double),
+        self.profiling_ = view.array((8, ), sizeof(double),
                                format='d')
         self.profiling_[:] = 0
 
@@ -491,7 +494,7 @@ cdef class DictFactImpl(object):
         cdef int min_feature_counter = 0
 
         cdef int verbose_iter = 0
-        if self.verbose_iter is not None:
+        if self.verbose_iter is not None and self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
             verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
 
         cdef double w_A, w_batch, one_m_w
@@ -521,16 +524,14 @@ cdef class DictFactImpl(object):
 
                 for kk, k in enumerate(range(batch_start, batch_stop)):
                     if self.verbose_iter is not None and\
-                            self.total_counter_ >= verbose_iter >= 0:
+                            self.total_counter_ >= verbose_iter:
                         self.verbose_iter_idx_ += 1
                         if self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
                             verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
-                        else:
-                            verbose_iter = -1
-                        printf("Iteration %i\n", self.total_counter_)
-                        if self.callback is not None:
-                            with gil:
-                                self.callback()
+                            printf("Iteration %i\n", self.total_counter_)
+                            if self.callback is not None:
+                                with gil:
+                                    self.callback()
                     clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
                     start = k * self.batch_size
                     stop = start + self.batch_size
@@ -588,8 +589,8 @@ cdef class DictFactImpl(object):
                                           &one_m_w,
                                           &self.B_[0, 0], &self.n_components)
                                     clock_gettime(CLOCK_MONOTONIC_RAW, &tv3)
-                                    self.profiling_[3] += tv3.tv_sec-tv2.tv_sec
-                                    self.profiling_[3] += (tv3.tv_nsec - tv2.tv_nsec) / 1e9
+                                    self.profiling_[7] += tv3.tv_sec-tv2.tv_sec
+                                    self.profiling_[7] += (tv3.tv_nsec - tv2.tv_nsec) / 1e9
 
 
                     clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)

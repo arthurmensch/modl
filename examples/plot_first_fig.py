@@ -30,19 +30,72 @@ def get_connections(sub_db):
     return db.default.runs, fs
 
 
+datasets = {
+    # 'hcp': {'sub_db': 'sacred',
+    #         'parent_ids': [ObjectId('57f22495fb5c86780390bca7'),
+    #                        ObjectId('57f22489fb5c8677ec4a8414')]},
+    'hcp': {'sub_db': 'sacred',
+            'parent_ids': [ObjectId('580e4a3cfb5c865d3c831640'),
+                           ObjectId('580e4a30fb5c865d262d391a')]},
+    'adhd': {'sub_db': 'sacred',
+             'parent_ids': [ObjectId("5804f140fb5c860e90e8db74"),
+                            ObjectId("5804f404fb5c861a5f45a222")
+                            ]},
+    'aviris': {'sub_db': 'sacred',
+               'parent_ids': [ObjectId("57f665e9fb5c86aff0ab4036")]}
+}
+
+
+@plot_ex.command
+def table():
+    for dataset in ['adhd', 'aviris', 'hcp']:
+        print(dataset)
+        parent_ids = datasets[dataset]['parent_ids']
+        db, fs = get_connections(datasets[dataset]['sub_db'])
+        exps = list(db.find({"$or":
+            [{
+                'info.parent_id': {"$in": parent_ids},
+                "config.AB_agg": 'async' if dataset == 'hcp' else 'full',
+                "config.G_agg": 'average' if dataset == 'hcp' else 'average',
+                "config.Dx_agg": 'average',
+                "config.reduction": {"$ne": [1, 2]},
+            },
+                # {
+                # 'info.parent_id':
+                #     {"$in": parent_ids},
+                # "config.reduction": 1}
+            ]}))
+        ref = db.find_one({
+            'info.parent_id':
+                {"$in": parent_ids},
+            "config.reduction": 1})
+
+
+        time = np.array(ref['info']['profiling'])[:, 5]
+        tol = 1e-2
+        ref_loss = ref['info']['score'][-1]
+        rel_score = np.array(ref['info']['score']) / ref_loss
+        it_tol = np.where(rel_score < 1 + tol)[0][0]
+        ref_time = time[it_tol]
+        rel_times = []
+        for exp in exps:
+            # ref_loss = exp['info']['score'][-1]
+            time = np.array(exp['info']['profiling'])[:, 5]
+            rel_score = np.array(exp['info']['score']) / ref_loss
+            it_tol = np.where(rel_score < 1 + tol)[0]
+            if len(it_tol) > 0:
+                time = time[it_tol[0]]
+            else:
+                time = ref_time
+            rel_time = ref_time / time
+            rel_times.append([ref_time, time, ref_time / 3600, time / 3600, rel_time, exp['config']
+            ['reduction']])
+        for rel_time in rel_times:
+            print("%s" % rel_time)
+
+
 @plot_ex.automain
 def plot(name):
-    datasets = {
-        'hcp': {'sub_db': 'sacred',
-                'parent_ids': [ObjectId('57f22495fb5c86780390bca7'),
-                               ObjectId('57f22489fb5c8677ec4a8414')]},
-        'adhd': {'sub_db': 'sacred',
-                 'parent_ids': [ObjectId("5804f140fb5c860e90e8db74"),
-                                ObjectId("5804f404fb5c861a5f45a222")
-                                ]},
-        'aviris': {'sub_db': 'sacred',
-                   'parent_ids': [ObjectId("57f665e9fb5c86aff0ab4036")]}
-    }
     dataset_exps = {}
     for dataset in ['adhd', 'aviris', 'hcp']:
         parent_ids = datasets[dataset]['parent_ids']
@@ -50,8 +103,8 @@ def plot(name):
         dataset_exps[dataset] = list(db.find({"$or":
             [{
                 'info.parent_id': {"$in": parent_ids},
-                "config.AB_agg": 'full',
-                "config.G_agg": 'full' if dataset == 'hcp' else 'average',
+                "config.AB_agg": 'async' if dataset == 'hcp' else 'full',
+                "config.G_agg": 'average' if dataset == 'hcp' else 'average',
                 "config.Dx_agg": 'average',
                 "config.reduction": {"$ne": [1, 2]},
             }, {
@@ -60,7 +113,7 @@ def plot(name):
                 "config.reduction": 1}
             ]}))
 
-    reductions = [1, 4, 8, 12, 24]
+    reductions = [1, 4, 6, 8, 12, 24]
     n_red = len(reductions)
 
     fig, axes = plt.subplots(1, 3, figsize=(7.166, 1.5))
@@ -79,7 +132,7 @@ def plot(name):
         for exp in sorted(exps,
                           key=lambda exp: int(exp['config']['reduction'])):
             score = np.array(exp['info']['score'])
-            time = np.array(exp['info']['time']) / 3600
+            time = np.array(exp['info']['profiling'])[:, 5] / 3600 + 1e-3
             reduction = exp['config']['reduction']
             color = color_dict[reduction]
             axes[i].plot(time, score,
@@ -125,12 +178,11 @@ def plot(name):
     labels += labels_2[-1:]
 
     axes[0].annotate('Reduction', xy=(-0.18, -0.25), xycoords='axes fraction', va='top')
-    axes[0].legend(handles[:n_red], labels[:n_red],
+    axes[0].legend(handles[:n_red], [('$r = %s$' % reduction) if reduction != 1 else 'None' for reduction in reductions],
                                   bbox_to_anchor=(0.1, -0.15),
                                   loc='upper left',
                                   ncol=8,
                                   frameon=False)
 
-    print('Done plotting figure')
     plt.savefig(name + '.pdf')
     plt.show()

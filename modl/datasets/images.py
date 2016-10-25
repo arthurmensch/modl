@@ -79,12 +79,12 @@ def gen_patch_batches(image,
         patch = patches[patch_indices[i]]
         if np.any(patch == -50):
             continue
-        batch[ii % 100] = patch
+        batch[ii % batch_size] = patch
         if image.dtype == np.dtype('>i2'):
-            batch[ii % 100] /= 65535
-        indices[ii % 100] = i
+            batch[ii % batch_size] /= 65535
+        indices[ii % batch_size] = i
         ii += 1
-        if not ii % 100:
+        if not ii % batch_size:
             if image.dtype == np.dtype('>i2'):
                 batch /= 65535
             yield np.array(batch), np.array(indices)

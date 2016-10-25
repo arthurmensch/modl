@@ -31,7 +31,7 @@ def config():
 def config():
     reduction = 1
     n_epochs = 10
-    batch_size = 50
+    batch_size = 200
     learning_rate = 0.9
     offset = 0
     AB_agg = 'full'
@@ -43,24 +43,21 @@ def config():
     verbose = 200
     n_jobs = 2
     smoothing_fwhm = 3
-    buffer_size = 1200
+    buffer_size = 4800
 
 
 @compare_ex.config
 def config():
-    n_jobs = 3
+    n_jobs = 12
     param_updates_list = [
         # Reduction on BCD only
-        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
+        # {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
+        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
         # TSP
-        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
-        # TSP with full parameter update
-        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
-        # {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
-        # ICML with full parameter update
-        # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'full'},
+        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # ICML
-        # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
+        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
     ]
     config_updates_list = []
     reductions = [6, 12, 24]
@@ -69,6 +66,15 @@ def config():
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
     del param_updates_list, reductions  # , param
+
+@compare_ex.named_config
+def compare_batch_size():
+    n_jobs = 4
+    config_updates_list = []
+    batch_sizes = [50, 100, 200, 400]
+    for batch_size in batch_sizes:
+        config_updates_list.append(dict(batch_size=batch_size))
+    del batch_sizes, batch_size  # , param
 
 
 @compare_ex.named_config
