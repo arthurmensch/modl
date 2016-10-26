@@ -208,6 +208,7 @@ class DictFact(BaseEstimator):
         subset_sampling = {
             'random': 1,
             'cyclic': 2,
+            'fixed_size': 3
         }
         if self.dict_reduction == 'follow':
             dict_reduction = 0

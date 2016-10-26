@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn.apionly as sns
 from bson import ObjectId
+
+import matplotlib as mpl
+mpl.rcParams['ytick.labelsize'] = 7
+
 from matplotlib.lines import Line2D
 from modl.plotting.fmri import display_maps
 from modl.plotting.images import plot_patches
@@ -15,6 +19,8 @@ from sacred.experiment import Experiment
 import matplotlib.patches as patches
 
 plot_ex = Experiment('plot')
+
+
 
 
 @plot_ex.config
@@ -55,7 +61,7 @@ def table():
         exps = list(db.find({"$or":
             [{
                 'info.parent_id': {"$in": parent_ids},
-                "config.AB_agg": 'async' if dataset == 'hcp' else 'full',
+                "config.AB_agg": 'full' if dataset == 'hcp' else 'full',
                 "config.G_agg": 'average' if dataset == 'hcp' else 'average',
                 "config.Dx_agg": 'average',
                 "config.reduction": {"$ne": [1, 2]},
@@ -69,7 +75,6 @@ def table():
             'info.parent_id':
                 {"$in": parent_ids},
             "config.reduction": 1})
-
 
         time = np.array(ref['info']['profiling'])[:, 5]
         tol = 1e-2
@@ -88,8 +93,10 @@ def table():
             else:
                 time = ref_time
             rel_time = ref_time / time
-            rel_times.append([ref_time, time, ref_time / 3600, time / 3600, rel_time, exp['config']
-            ['reduction']])
+            rel_times.append(
+                [ref_time, time, ref_time / 3600, time / 3600, rel_time,
+                 exp['config']
+                 ['reduction']])
         for rel_time in rel_times:
             print("%s" % rel_time)
 
@@ -104,7 +111,7 @@ def plot(name):
             [{
                 'info.parent_id': {"$in": parent_ids},
                 "config.AB_agg": 'async' if dataset == 'hcp' else 'full',
-                "config.G_agg": 'average' if dataset == 'hcp' else 'average',
+                "config.G_agg": 'average',
                 "config.Dx_agg": 'average',
                 "config.reduction": {"$ne": [1, 2]},
             }, {
@@ -116,8 +123,8 @@ def plot(name):
     reductions = [1, 4, 6, 8, 12, 24]
     n_red = len(reductions)
 
-    fig, axes = plt.subplots(1, 3, figsize=(7.166, 1.5))
-    fig.subplots_adjust(right=0.94, left=0.08, bottom=0.3, top=0.9,
+    fig, axes = plt.subplots(1, 3, figsize=(7.166, 1.6))
+    fig.subplots_adjust(right=0.94, left=0.08, bottom=0.25, top=0.9,
                         wspace=0.24)
 
     # Plotting
@@ -132,16 +139,15 @@ def plot(name):
         for exp in sorted(exps,
                           key=lambda exp: int(exp['config']['reduction'])):
             score = np.array(exp['info']['score'])
-            time = np.array(exp['info']['profiling'])[:, 5] / 3600 + 1e-3
+            # time = np.array(exp['info']['profiling'])[:, 5] / 3600 + 1e-3
+            time = np.array(exp['info']['time']) / 3600 + 1e-3
             reduction = exp['config']['reduction']
             color = color_dict[reduction]
             axes[i].plot(time, score,
-                      label="$r = %i$" % reduction if reduction != 1 else "None",
-                      zorder=reduction if reduction != 1 else 1,
-                      color=color,
-                      markersize=2)
-            for tick in axes[i].yaxis.get_major_ticks():
-                tick.label.set_fontsize(7)
+                         label="$r = %i$" % reduction if reduction != 1 else "None",
+                         zorder=reduction if reduction != 1 else 1,
+                         color=color,
+                         markersize=2)
         axes[i].set_xscale('log')
         sns.despine(fig, axes)
 
@@ -158,18 +164,21 @@ def plot(name):
     axes[2].set_ylim([96800, 104200])
 
     axes[0].annotate('ADHD',
-    # '$p = 6\\cdot 10^4\\ \\: n = 6000$',
+                     # '$p = 6\\cdot 10^4\\ \\: n = 6000$',
                      xy=(0.6, 0.9), xycoords='axes fraction', ha='center')
     axes[1].annotate('Aviris',
                      # '$p = 6\\cdot 10^4\\ \\: n = 1\\cdot 10^5$',
                      xy=(0.6, 0.9), xycoords='axes fraction', ha='center')
     axes[2].annotate('HCP',
-    # 'p = 2\\cdot 10^5\\ \\: n = 2\\cdot 10^6$',
-                                             xy=(0.6, 0.9), xycoords='axes fraction', ha='center')
+                     # 'p = 2\\cdot 10^5\\ \\: n = 2\\cdot 10^6$',
+                     xy=(0.6, 0.9), xycoords='axes fraction', ha='center')
 
-    axes[0].annotate('\\textbf{2 GB}', xy=(0.9, 0.6), xycoords='axes fraction', ha='center')
-    axes[1].annotate('\\textbf{69 GB}', xy=(0.9, 0.6), xycoords='axes fraction', ha='center')
-    axes[2].annotate('\\textbf{2 TB}', xy=(0.9, 0.6), xycoords='axes fraction', ha='center')
+    axes[0].annotate('\\textbf{2 GB}', xy=(0.9, 0.6), xycoords='axes fraction',
+                     ha='center')
+    axes[1].annotate('\\textbf{69 GB}', xy=(0.9, 0.6),
+                     xycoords='axes fraction', ha='center')
+    axes[2].annotate('\\textbf{2 TB}', xy=(0.9, 0.6), xycoords='axes fraction',
+                     ha='center')
 
     handles, labels = axes[0].get_legend_handles_labels()
     handles_2, labels_2 = axes[2].get_legend_handles_labels()
@@ -177,12 +186,15 @@ def plot(name):
     handles += handles_2[-1:]
     labels += labels_2[-1:]
 
-    axes[0].annotate('Reduction', xy=(-0.18, -0.25), xycoords='axes fraction', va='top')
-    axes[0].legend(handles[:n_red], [('$r = %s$' % reduction) if reduction != 1 else 'None' for reduction in reductions],
-                                  bbox_to_anchor=(0.1, -0.15),
-                                  loc='upper left',
-                                  ncol=8,
-                                  frameon=False)
+    axes[0].annotate('Reduction', xy=(-0.18, -0.25), xycoords='axes fraction',
+                     va='top')
+    axes[0].legend(handles[:n_red],
+                   [('$r = %s$' % reduction) if reduction != 1 else 'None' for
+                    reduction in reductions],
+                   bbox_to_anchor=(0.1, -0.15),
+                   loc='upper left',
+                   ncol=8,
+                   frameon=False)
 
     plt.savefig(name + '.pdf')
     plt.show()

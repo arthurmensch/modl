@@ -37,21 +37,22 @@ def config():
     offset = 0
     alpha = 1e-3
     l1_ratio = 1
-    n_epochs = 30
-    verbose = 150
-    n_jobs = 2
+    n_epochs = 3
+    verbose = 15
+    n_jobs = 1
     buffer_size = 1200
     temp_dir = '/tmp'
 
 
 @compare_ex.config
 def config():
-    n_jobs = 7
+    n_jobs = 3
     param_updates_list = [
         # Reduction on BCD only
         # {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # TSP with full parameter update
-        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
+        {'subset_sampling': 'random'},
+        {'subset_sampling': 'fixed_size'},
         # TSP full Gram with full parameter update
         # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # ICML with full parameter update
@@ -60,17 +61,17 @@ def config():
         # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}]
     ]
     config_updates_list = []
-    reductions = [6, 12, 24]
+    reductions = [12]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
-            config_updates_list.append(dict(batch_size=10 * reduction,
-                                            **param))
+            # config_updates_list.append(dict(batch_size=10 * reduction,
+            #                                 **param))
     # Reference
-    config_updates_list.append({'G_agg': 'full',
-                                'Dx_agg': 'full', 'AB_agg': 'async',
-                                'reduction': 1})
+    # config_updates_list.append({'G_agg': 'full',
+    #                             'Dx_agg': 'full', 'AB_agg': 'async',
+    #                             'reduction': 1})
     del param_updates_list, reductions  # , param
 
 

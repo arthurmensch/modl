@@ -4,6 +4,7 @@ pgf.texsystem: pdflatex
 ps.useafm: True
 pdf.use14corefonts: True
 text.usetex: True
+text.latex.unicode: True
 font.family: sans-serif
 font.serif: Times
 font.sans-serif: "Bitstream Vera Sans"
@@ -15,6 +16,6 @@ legend.fontsize: 8
 xtick.labelsize: 8
 ytick.labelsize: 8
 
-pgf.preamble: \usepackage[utf8x]{inputenc},\usepackage[T1]{fontenc},\usepackage{lmodern}\usepackage{amsmath}
+pgf.preamble: \usepackage[utf8x]{inputenc},\usepackage[T1]{fontenc},\usepackage{lmodern},\usepackage{amsmath},\usepackage{unicode-math}
 
 savefig.pad_inches  : 0.

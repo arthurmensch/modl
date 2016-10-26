@@ -51,6 +51,7 @@ def config():
     smoothing_fwhm = 6
     buffer_size = 1200
     temp_dir = '/tmp'
+    subset_sampling = 'random'
 
 
 class SpcaFmriScorer():
@@ -65,16 +66,19 @@ class SpcaFmriScorer():
                          'components',
                          'filename']:
             _run.info[info_key] = []
+        self.call_count = 0
 
     @decompose_ex.capture
     def __call__(self, spca_fmri, _run):
         test_time = time.perf_counter()
+        self.call_count += 1
         filename = 'record_%s.nii.gz' % spca_fmri.n_iter_
 
-        # with TemporaryDirectory() as dir:
-        #     filename = join(dir, filename)
-        #     spca_fmri.components_.to_filename(filename)
-        #     _run.add_artifact(filename)
+        if not self.call_count % 5:
+            with TemporaryDirectory() as dir:
+                filename = join(dir, filename)
+                spca_fmri.components_.to_filename(filename)
+                _run.add_artifact(filename)
 
         score = spca_fmri.score(self.test_data, raw=self.raw)
         self.test_time += time.perf_counter() - test_time
@@ -105,6 +109,7 @@ def decompose_run(smoothing_fwhm,
                   n_epochs,
                   buffer_size,
                   temp_dir,
+                  subset_sampling,
                   _seed,
                   _run
                   ):
@@ -142,7 +147,7 @@ def decompose_run(smoothing_fwhm,
                          reduction=reduction,
                          alpha=alpha,
                          l1_ratio=l1_ratio,
-                         # subset_sampling='cyclic',
+                         subset_sampling=subset_sampling,
                          buffer_size=buffer_size,
                          temp_dir=temp_dir,
                          callback=cb,

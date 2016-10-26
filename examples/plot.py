@@ -71,8 +71,8 @@ def hcp():
     #         '58074ff6fb5c866eb5eb4ecb']
     name = 'compare_hcp'
     ylim_zoom = [1e-3, 0.01]
-    xlim_zoom = [0.5, 15]
-    xlim = [1e-1, 10]
+    xlim_zoom = [0.5, 30]
+    xlim = [1e-1, 30]
     ylim = [97000, 100000]
     first = 0
     last = 1
@@ -165,19 +165,24 @@ def plot_batch_size_hcp():
 
 
 @plot_ex.command
+def plot_profiling_data():
+    db, fs = get_connections
+
+
+@plot_ex.command
 def plot_profiling_data(name):
     db, fs = get_connections()
     # old 400
-    # parent_ids = [ObjectId('580df955fb5c86aaa1407778')]
-    # ref = db.find_one(
-    # {
-    #     '_id': ObjectId('58078fa8fb5c86596f8948f1')
-    # })
-    parent_ids = [ObjectId('580e4176fb5c8618c52641bb')]
+    parent_ids = [ObjectId('580df955fb5c86aaa1407778')]
     ref = db.find_one(
-        {
-            '_id': ObjectId("580e403bfb5c8612b6624b18")
-        })
+    {
+        '_id': ObjectId('58078fa8fb5c86596f8948f1')
+    })
+    # parent_ids = [ObjectId('580e4176fb5c8618c52641bb')]
+    # ref = db.find_one(
+    #     {
+    #         '_id': ObjectId("580e403bfb5c8612b6624b18")
+    #     })
     algorithms = {
         'full async': ['full', 'full', 'async'],
         'full': ['full', 'full', 'full'],
@@ -478,12 +483,12 @@ def plot_method_comparison(xlim, ylim, ylim_zoom, xlim_zoom, name):
                          rect_0[0] * 1.7, rect_0[1] + 1.2 * rect_len[1]),
                      va='center', ha='right')
 
-    first_legend = axes[1].legend(handles_reduction, labels_reduction,
+    axes[1].legend(handles_reduction, labels_reduction,
                                   bbox_to_anchor=(1.45, 1.5),
                                   loc='upper center',
                                   ncol=2, title='Subsampling ratio',
                                   frameon=False)
-    axes[1].add_artist(first_legend)
+    # axes[1].add_artist(first_legend)
 
     l = axes[2].legend(handles_method,
                        labels_method,

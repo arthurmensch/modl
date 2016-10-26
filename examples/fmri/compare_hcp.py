@@ -48,16 +48,16 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 12
+    n_jobs = 10
     param_updates_list = [
         # Reduction on BCD only
-        # {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
+        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'full'},
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
         # TSP
         {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
-        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
         # ICML
-        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
+        # {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'}
     ]
     config_updates_list = []
     reductions = [6, 12, 24]
@@ -65,6 +65,10 @@ def config():
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
+    config_updates_list.append({'G_agg': 'full',
+                                'Dx_agg': 'full',
+                                'AB_agg': 'full',
+                                'reduction': 1})
     del param_updates_list, reductions  # , param
 
 @compare_ex.named_config
@@ -91,6 +95,7 @@ def ref():
 def single_run(our_config_updates, config, parent_id):
     @decompose_ex.capture
     def pre_run_hook(_run):
+        print(parent_id)
         _run.info['parent_id'] = parent_id
         _run.info['updated_params'] = our_config_updates
 
