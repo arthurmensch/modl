@@ -183,7 +183,7 @@ class DictMF(BaseEstimator):
 
         self.counter_ = np.zeros(n_cols + 1, dtype='int')
 
-        self.n_iter_ = np.zeros(1, dtype='long')
+        self.n_iter_ = np.zeros(1, dtype='int64')
 
         self.code_ = np.zeros((self.n_samples_, self.n_components))
 
