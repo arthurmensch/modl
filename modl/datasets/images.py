@@ -6,16 +6,16 @@ from scipy.misc import face
 from skimage.io import imread
 from skimage.transform import rescale
 from sklearn.feature_extraction.image import extract_patches
-from sklearn.utils import check_random_state
+from sklearn.utils import check_random_state, gen_batches
 from spectral import open_image
 
 import numpy as np
 
 
 def load_images(source,
-              scale=1,
-              gray=False,
-              memory=Memory(cachedir=None)):
+                scale=1,
+                gray=False,
+                memory=Memory(cachedir=None)):
     data_dir = get_data_dirs()[0]
     if source == 'face':
         image = face(gray=gray)
@@ -44,47 +44,56 @@ def load_images(source,
     else:
         raise ValueError('Data source is not known')
 
+class Batcher(object):
+    def __init__(self, patch_shape=(8,), batch_size=10, random_state=None,
+                 clean=True,
+                 max_samples=None):
+        self.patch_shape = patch_shape
+        self.batch_size = batch_size
+        self.random_state = random_state
+        self.clean = clean
+        self.max_samples = max_samples
 
-def get_num_patches(image, patch_shape=(8,)):
-    if isinstance(patch_shape, int):
-        patch_shape = (patch_shape, )
-    if len(patch_shape) == 1:
-        patch_shape = (patch_shape, patch_shape)
-    if len(patch_shape) == 2:
-        n_channel = image.shape[2]
-        patch_shape = (patch_shape[0], patch_shape[1], n_channel)
-    patches = extract_patches(image, patch_shape=patch_shape)
+    def prepare(self, image):
+        if len(self.patch_shape) == 1:
+            self.patch_shape_ = (self.patch_shape, self.patch_shape)
+        if len(self.patch_shape) == 2:
+            self.patch_shape_ = (self.patch_shape[0],
+                                 self.patch_shape[1], image.shape[2])
+        self.patches_ = extract_patches(image, patch_shape=self.patch_shape_)
+        self.random_state_ = check_random_state(self.random_state)
+        if self.clean:
+            self.patch_indices_ = np.array(
+                [index for index in np.ndindex(self.patches_.shape[:3])
+                 if np.all(np.array(self.patches_[index]) != -50)])
+        else:
+            self.patch_indices_ = np.array(list(np.ndindex(self.patches_.shape[:3])))
+        self.n_samples_ = self.patch_indices_.shape[0]
 
-    return patches.shape[0] * patches.shape[1] * patches.shape[2]
+        if self.max_samples is not None and self.max_samples < self.n_samples_:
+            indices = self.random_state_.permutation(
+                self.n_samples_)[:self.max_samples]
+            self.patch_indices_ = self.patch_indices_[indices]
+            self.n_samples_ = self.max_samples
 
+        self.sample_indices_ = np.arange(self.n_samples_, dtype='i4')
 
-def gen_patch_batches(image,
-                      patch_shape=(8,),
-                      batch_size=10,
-                      random_state=None):
-    if len(patch_shape) == 1:
-        patch_shape = (patch_shape, patch_shape)
-    if len(patch_shape) == 2:
-        n_channel = image.shape[2]
-        patch_shape = (patch_shape[0], patch_shape[1], n_channel)
-    patches = extract_patches(image, patch_shape=patch_shape)
-    random_state = check_random_state(random_state)
-    n_samples = patches.shape[0] * patches.shape[1] * patches.shape[2]
-    permutation = random_state.permutation(n_samples).astype('i4')
-    patch_indices = list(np.ndindex(patches.shape[:3]))
-    batch = np.zeros((batch_size, *patch_shape))
-    indices = np.zeros(batch_size, dtype='i4')
-    ii = 0
-    for i in permutation:
-        patch = patches[patch_indices[i]]
-        if np.any(patch == -50):
-            continue
-        batch[ii % batch_size] = patch
-        if image.dtype == np.dtype('>i2'):
-            batch[ii % batch_size] /= 65535
-        indices[ii % batch_size] = i
-        ii += 1
-        if not ii % batch_size:
-            if image.dtype == np.dtype('>i2'):
-                batch /= 65535
-            yield np.array(batch), np.array(indices)
+        self.cast_ = image.dtype == np.dtype('>i2')
+
+    def generate(self, n_epochs=1):
+        for _ in range(n_epochs):
+            batches = gen_batches(self.n_samples_, self.batch_size)
+            permutation = self.random_state_.permutation(self.n_samples_)
+            self.sample_indices_ = self.sample_indices_[permutation]
+            self.patch_indices_ = self.patch_indices_[permutation]
+            for batch in batches:
+                if self.cast_:
+                    yield self.patches_[list(self.patch_indices_[batch].T)].\
+                              astype('float64') / 65535, \
+                          self.sample_indices_[batch]
+                else:
+                    yield self.patches_[list(self.patch_indices_[batch].T)], \
+                          self.sample_indices_[batch]
+
+    def generate_one(self):
+        return next(self.generate())

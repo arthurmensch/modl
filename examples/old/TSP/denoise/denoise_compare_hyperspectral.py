@@ -7,7 +7,7 @@ import numpy as np
 import skimage
 from joblib import Parallel, dump, load
 from joblib import delayed
-from modl._utils.hyperspectral import fetch_aviris
+from modl.datasets.images import load_images
 from scipy import misc
 from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn.utils import check_random_state
@@ -97,7 +97,6 @@ class Callback(object):
         plt.savefig(join(self.trace_folder, 'components.pdf'))
         plt.close(fig)
 
-
         fig, axes = plt.subplots(2, 1, sharex=True, figsize=(10, 6))
         fig.subplots_adjust(right=0.8)
 
@@ -166,7 +165,7 @@ class Callback(object):
                            'components': self.components}, f,
                           cls=NumpyAwareJSONEncoder)
         self.iter.append(mf.n_iter_)
-        self.profile.append(mf.timings_)
+        self.profile.append(mf.profiling_)
 
         self.test_time += time.clock() - test_time
         self.time.append(time.clock() - self.start_time - self.test_time)
@@ -194,23 +193,23 @@ def prepare_folder(name, n_exp, offset=0):
     return trace_folder_list
 
 
-def fetch_data(patch_size=(8, 8), random_state=0, gray=True):
-    full_img = fetch_aviris()
+def fetch_data(patch_size=(8, 8), random_state=0, gray=False):
+    full_img = load_images('aviris')
     img = full_img
 
     n_channels = img.shape[2]
     height, width = img.shape[:-1]
 
     train_patches = extract_patches_2d(img[:, :width // 2, :], patch_size,
-                                       max_patches=20000,
+                                       max_patches=5000,
                                        random_state=random_state)
-    train_patches = np.reshape(train_patches, (train_patches.shape[0], -1))
+    train_patches = np.reshape(train_patches, (train_patches.shape[0], -1)).astype('float64') / 65535
     train_patches -= np.mean(train_patches, axis=0)
     train_patches /= np.std(train_patches, axis=0)
     test_patches = extract_patches_2d(img[:, width // 2:, :], patch_size,
                                       max_patches=2000,
                                       random_state=random_state)
-    test_patches = np.reshape(test_patches, (test_patches.shape[0], -1))
+    test_patches = np.reshape(test_patches, (test_patches.shape[0], -1)).astype('float64') / 65535
     test_patches -= np.mean(test_patches, axis=0)
     test_patches /= np.std(test_patches, axis=0)
     return train_patches, test_patches, (patch_size[0], patch_size[1], n_channels)
@@ -314,11 +313,9 @@ def run_single(trace_folder,
                     sample_learning_rate=0.9,
                     reduction=reduction,
                     verbose=50,
-                    verbose_iter=verbose_iter,
                     G_agg=G_agg,
                     Dx_agg=Dx_agg,
                     AB_agg=AB_agg,
-                    proj='partial',
                     subset_sampling='random',
                     dict_reduction='follow',
                     callback=cb,

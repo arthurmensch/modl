@@ -30,8 +30,8 @@ class Callback(object):
         self.obj.append(mf.score(self.X_tr, n_threads=self.n_threads))
         self.test_time += time() - test_time
         self.times.append(time() - self.start_time - self.test_time)
-        self.profile.append(mf.timings_)
-        self.iter.append(mf.total_counter)
+        self.profile.append(mf.profiling_)
+        self.iter.append(mf.total_counter_)
 
 
 def main():
@@ -53,7 +53,7 @@ def main():
     # Extract all reference patches from the left half of the image
     print('Extracting reference patches...')
     t0 = time()
-    redundancy = 36
+    redundancy = 1
     tile = int(sqrt(redundancy))
     patch_size = (8, 8)
     data = extract_patches_2d(distorted[:, :width // 2], patch_size,
@@ -86,11 +86,10 @@ def main():
                     learning_rate=.9,
                     sample_learning_rate=None,
                     reduction=5,
-                    verbose=1,
+                    verbose=15,
                     G_agg='average',
                     Dx_agg='average',
                     AB_agg='full',
-                    proj='partial',
                     subset_sampling='random',
                     dict_reduction='follow',
                     callback=cb,

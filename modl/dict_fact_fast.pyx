@@ -493,11 +493,24 @@ cdef class DictFactImpl(object):
 
         cdef int min_feature_counter = 0
 
-        cdef int verbose_iter = 0
-        if self.verbose_iter is not None and self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
-            verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+        cdef int next_verbose_iter = 0
+        if self.verbose_iter is not None and \
+                        self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
+            next_verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+        else:
+            next_verbose_iter = -1
 
         cdef double w_A, w_batch, one_m_w
+
+        cdef int subset_step, start_corr, stop_corr, size_corr
+
+        cdef int corr_threads = 2 if self.n_threads < 2 else self.n_threads
+
+        if self.n_threads >= 3:
+            subset_step = int(ceil(float(self.n_features) / (self.n_threads - 1)))
+        else:
+            subset_step = self.n_features
+
 
         with nogil:
             # Outer loop for G_agg = 'average'
@@ -524,14 +537,18 @@ cdef class DictFactImpl(object):
 
                 for kk, k in enumerate(range(batch_start, batch_stop)):
                     if self.verbose_iter is not None and\
-                            self.total_counter_ >= verbose_iter:
+                            self.total_counter_ >= next_verbose_iter >= 0:
+                        printf("Iteration %i\n", self.total_counter_)
+                        if self.callback is not None:
+                            with gil:
+                                self.callback()
                         self.verbose_iter_idx_ += 1
                         if self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
-                            verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
-                            printf("Iteration %i\n", self.total_counter_)
-                            if self.callback is not None:
-                                with gil:
-                                    self.callback()
+                            next_verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+                        else:
+                            # Disable verbosity
+                            next_verbose_iter = -1
+
                     clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
                     start = k * self.batch_size
                     stop = start + self.batch_size
@@ -569,28 +586,31 @@ cdef class DictFactImpl(object):
                     if self.AB_agg != 2:
                         self.update_dict(subset)
                     else:
-                        with parallel(num_threads=min(self.n_threads, 2)):
-                            for i in prange(2):
-                                if i == 0:
+                        w_A = get_simple_weights(self.total_counter_, len_batch,
+                                                 self.learning_rate,
+                                                 self.offset)
+                        w_batch = w_A / len_batch
+                        one_m_w = 1 - w_A
+                        clock_gettime(CLOCK_MONOTONIC_RAW, &tv2)
+                        with parallel(num_threads=self.n_threads):
+                            for t in prange(corr_threads):
+                                if t == 0:
                                     self.update_dict(subset)
                                 else:
-                                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv2)
-                                    w_A = get_simple_weights(self.total_counter_, len_batch,
-                                     self.learning_rate,
-                                     self.offset)
-                                    w_batch = w_A / len_batch
-                                    one_m_w = 1 - w_A
-
+                                    start_corr = (t - 1) * subset_step
+                                    stop_corr = min(self.n_features, t * subset_step)
+                                    size_corr = stop_corr - start_corr
+                                    # Hack as X is C-ordered
                                     dgemm(&NTRANS, &TRANS,
-                                          &self.n_components, &self.n_features, &len_batch,
+                                          &self.n_components, &size_corr, &len_batch,
                                           &w_batch,
                                           &self.Dx[0, 0], &self.n_components,
-                                          &self.X_batch[0, 0], &self.n_features,
+                                          &self.X_batch[0, 0] + start_corr, &self.n_features,
                                           &one_m_w,
-                                          &self.B_[0, 0], &self.n_components)
-                                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv3)
-                                    self.profiling_[7] += tv3.tv_sec-tv2.tv_sec
-                                    self.profiling_[7] += (tv3.tv_nsec - tv2.tv_nsec) / 1e9
+                                          &self.B_[0, 0] + start_corr * self.n_components, &self.n_components)
+                        clock_gettime(CLOCK_MONOTONIC_RAW, &tv3)
+                        self.profiling_[7] += tv3.tv_sec-tv2.tv_sec
+                        self.profiling_[7] += (tv3.tv_nsec - tv2.tv_nsec) / 1e9
 
 
                     clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
@@ -875,7 +895,7 @@ cdef class DictFactImpl(object):
                                                this_X_ptr + ii_,
                                                &self.batch_size,
                                                this_X_ptr + ii_,
-                                               &self.batch_size) * (reduction ** 2)
+                                               &self.batch_size) * reduction ** 2
 
                         enet_coordinate_descent_gram(
                             self.code_[i_], self.alpha * self.pen_l1_ratio,

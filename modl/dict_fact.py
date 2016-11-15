@@ -223,11 +223,11 @@ class DictFact(BaseEstimator):
             self.sample_learning_rate_ = self.sample_learning_rate
 
         if self.verbose > 0:
-            verbose_iter = np.unique((np.logspace(0, log(self.n_samples_ *
+            verbose_iter = np.unique(((np.logspace(2, log(self.n_samples_ *
                                                          self.n_epochs // self.batch_size,
                                                          10),
-                                                  self.verbose).astype(
-                'i4') - 1) * self.batch_size)
+                                                  self.verbose)  - 1e2).astype(
+                'i4')) * self.batch_size)
             print("Verbose iter: %s" % verbose_iter)
         else:
             verbose_iter = None
