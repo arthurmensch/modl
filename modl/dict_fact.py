@@ -265,7 +265,7 @@ class DictMF(BaseEstimator):
             self._init_arrays(X)
         if check_input:
             X = check_array(X, dtype='float', order='C',
-                            accept_sparse=self.sparse_)
+                            accept_sparse='csr' if self.sparse_ else None)
         return X
 
     def _refit(self, X):
