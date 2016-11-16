@@ -1,8 +1,12 @@
 # encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 from cython cimport view
 import numpy as np
-from .randomkit.random_fast cimport RandomState
+from .._utils.randomkit.random_fast cimport RandomState
 from libc.stdio cimport printf
+cimport numpy as np
 
 def index_array(double[:, :, :, :, :, :] patches,
                 int max_samples=-1,
@@ -15,7 +19,7 @@ def index_array(double[:, :, :, :, :, :] patches,
     cdef int y = patches.shape[4]
     cdef int z = patches.shape[5]
     cdef int n_samples = 0
-    cdef int i, j, k
+    cdef int i, j, k, u, v, w
     cdef int[:] mask
     cdef long[:, :] results
     cdef int[:, :, :] take
@@ -33,20 +37,21 @@ def index_array(double[:, :, :, :, :, :] patches,
                     for u in range(x):
                         for v in range(y):
                             for w in range(z):
-                                if patches[i, j, k, u, v, w] == -50:
+                                if patches[i, j, k, u, v, w] == -1:
                                     take[i, j, k] = 0
                                     break
-                                n_samples += 1
                             if not take[i, j, k]:
                                 break
                         if not take[i, j, k]:
                                 break
+                    if take[i, j, k]:
+                        n_samples += 1
     else:
         n_samples = p * q * r
+    printf('%i\n', n_samples)
 
     if max_samples <= 0:
         max_samples = n_samples
-    printf("%i\n", max_samples)
 
     mask = view.array((n_samples, ), sizeof(int), format='i',
                                       mode='c')

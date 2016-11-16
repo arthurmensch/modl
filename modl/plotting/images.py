@@ -2,20 +2,20 @@ import numpy as np
 import matplotlib.cm as cm
 
 
-def plot_patches(fig, patches, shape):
+def plot_patches(fig, patches):
+    if patches.ndim == 4:
+        channel_step = patches.shape[3] // 3
+        patches = np.concatenate([np.sum(patches[:, :, :, i * channel_step:
+        (i + 1) * channel_step],
+                                         axis=3)[..., np.newaxis]
+                                  for i in range(3)], axis=3)
+        patches = np.rollaxis(patches, 3, 2).reshape(
+            (patches.shape[0], patches.shape[1], patches.shape[2] * 3))
     for i, patch in enumerate(patches[:100]):
-        patch = patch.reshape(shape)
-        step = shape[2] // 3
         ax = fig.add_subplot(10, 10, i + 1)
-        if patch.ndim == 3:
-            # patch = np.sum(patch, axis=2)
-            # ax.imshow(
-            #     np.rollaxis(patch[:, :, :3], 2, 1).reshape((patch.shape[0], patch.shape[1] * 3)),
-            #     cmap=cm.gray_r,
-            #     interpolation='nearest')
-            ax.imshow(
-                patch[:, :, :3],
-                interpolation='nearest')
+        ax.imshow(
+            patch,
+            interpolation='nearest')
         ax.set_xticks(())
         ax.set_yticks(())
 

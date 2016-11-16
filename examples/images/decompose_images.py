@@ -16,8 +16,6 @@ from modl.dict_fact import DictFact
 from modl.plotting.images import plot_patches
 from sacred import Experiment
 from sacred.observers import MongoObserver
-from sklearn.feature_extraction.image import extract_patches_2d
-from sklearn.utils import check_random_state
 
 decompose_ex = Experiment('decompose_images',
                           ingredients=[data_ing])
@@ -29,29 +27,29 @@ def config():
     batch_size = 100
     learning_rate = 0.9
     offset = 0
-    AB_agg = 'masked'
-    G_agg = 'full'
-    Dx_agg = 'masked'
+    AB_agg = 'async'
+    G_agg = 'average'
+    Dx_agg = 'average'
     reduction = 10
     alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 0.9
-    n_epochs = 2000
-    verbose = 50
+    n_epochs = 10
+    verbose = 20
     n_components = 100
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = None
     buffer_size = 10000
-    test_size = 4000
+    test_size = 2000
     max_patches = 10000
     patch_shape = (8, 8)
 
 
 @data_ing.config
 def config():
-    source = 'lisboa'
+    source = 'aviris'
     gray = False
     scale = 1
 
@@ -183,7 +181,9 @@ def decompose_run(batch_size,
         _run.add_artifact(filename)
 
     fig = plt.figure()
-    plot_patches(fig, dict_fact.components_, _run.info['data_shape'])
+    patches = dict_fact.components_.reshape((dict_fact.components_.shape[0],
+                                             * _run.info['data_shape']))
+    plot_patches(fig, patches)
     with TemporaryDirectory() as dir:
         filename = join(dir, 'components.png')
         plt.savefig(filename)

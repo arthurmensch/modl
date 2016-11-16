@@ -13,11 +13,6 @@ def configuration(parent_package='', top_path=None):
                             sources=['modl/_utils/enet_proj_fast.pyx'],
                             include_dirs=[numpy.get_include()],
                             ),
-                  Extension('modl/_utils/indexing',
-                            sources=['modl/_utils/indexing.pyx'],
-                            include_dirs=[numpy.get_include(),
-                                          'modl/_utils/randomkit'],
-                            ),
                   ]
     config.ext_modules += cythonize(extensions)
 

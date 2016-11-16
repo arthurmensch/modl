@@ -1,5 +1,5 @@
 from joblib import Memory
-from modl._utils.indexing import index_array
+from .images_fast import index_array
 from modl.datasets import get_data_dirs
 from os.path import join
 
@@ -41,7 +41,9 @@ def load_images(source,
                  'aviris',
                  'f100826t01p00r05rdn_b/'
                  'f100826t01p00r05rdn_b_sc01_ort_img.hdr'))
-        image = image.open_memmap()
+        image = np.array(image.open_memmap()).astype('f8')
+        image[image == -50] = -1
+        image [image != -50] /= 65535
         return image
     else:
         raise ValueError('Data source is not known')
@@ -64,16 +66,12 @@ class Batcher(object):
                                  self.patch_shape[1], image.shape[2])
         self.patches_ = extract_patches(image, patch_shape=self.patch_shape_)
         self.random_state_ = check_random_state(self.random_state)
-        if self.clean:
-            self.patch_indices_ = np.array(
-                [index for index in np.ndindex(self.patches_.shape[:3])
-                 if np.all(np.array(self.patches_[index]) != -50)])
-        else:
-            self.patch_indices_ = index_array(self.patches_,
-                                              max_samples=self.max_samples
-                                              if self.max_samples is not None
-                                              else -1,
-                                              random_seed=0)
+        self.patch_indices_ = index_array(self.patches_,
+                                          max_samples=self.max_samples
+                                          if self.max_samples is not None
+                                          else -1,
+                                          clean=self.clean,
+                                          random_seed=0)
         self.n_samples_ = self.patch_indices_.shape[0]
 
         self.sample_indices_ = np.arange(self.n_samples_, dtype='i4')
