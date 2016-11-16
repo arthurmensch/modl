@@ -203,7 +203,8 @@ class DictFact(BaseEstimator):
         AB_agg = {
             'full': 1,
             'async': 2,
-            'noisy': 3
+            'noisy': 3,
+            'masked': 4,
         }
         subset_sampling = {
             'random': 1,
@@ -223,10 +224,10 @@ class DictFact(BaseEstimator):
             self.sample_learning_rate_ = self.sample_learning_rate
 
         if self.verbose > 0:
-            verbose_iter = np.unique(((np.logspace(2, log(self.n_samples_ *
-                                                         self.n_epochs // self.batch_size,
-                                                         10),
-                                                  self.verbose)  - 1e2).astype(
+            verbose_iter = np.unique(((np.logspace(0, log(self.n_samples_ *
+                                                          self.n_epochs // self.batch_size,
+                                                          10),
+                                                   self.verbose) - 1e0).astype(
                 'i4')) * self.batch_size)
             print("Verbose iter: %s" % verbose_iter)
         else:
@@ -311,7 +312,14 @@ class DictFact(BaseEstimator):
         code = self._impl.transform(X, n_threads=n_threads)
         return np.asarray(code)
 
-    def score(self, X, n_threads=None):
+    def score(self, X, n_threads=None, masked=False):
+        X = X.copy()
+        if masked:
+            random_state = check_random_state(self.random_state)
+            mask = random_state.choice([0, 1],
+                                       p=[1 - 1 / self.reduction,
+                                          1 / self.reduction], size=X.shape)
+            X *= mask * self.reduction
         code = self.transform(X, n_threads=n_threads)
         loss = np.sum((X - code.dot(self.D_)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))

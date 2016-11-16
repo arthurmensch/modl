@@ -968,7 +968,7 @@ cdef class DictFactImpl(object):
                   this_X_ptr, &len_batch,
                   &FONE,
                   R_ptr, &n_components)
-        else: # Noisy
+        elif self.AB_agg == 3: # Noisy
             for jj in range(len_subset):
                 j = subset[jj]
                 w_B = fmin(1.,
@@ -991,6 +991,31 @@ cdef class DictFactImpl(object):
                 j = subset[jj]
                 for k in range(n_components):
                     self.B_[k, j] = self.R_[k, jj]
+        else:
+            w_B = w_A
+            one_m_w = 1. - w_B
+            w_batch = w_B / len_batch
+            for j in range(n_features):
+                for k in range(n_components):
+                    self.B_[k, j] *= one_m_w
+            for jj in range(len_subset):
+                j = subset[jj]
+                for k in range(n_components):
+                    self.R_[k, jj] = self.B_[k, j]
+                for ii in range(len_batch):
+                    self.this_X[ii, jj] *= w_batch * reduction
+            dgemm(&NTRANS, &NTRANS,
+                  &n_components, &len_subset, &len_batch,
+                  &FONE,
+                  Dx_ptr, &n_components,
+                  this_X_ptr, &len_batch,
+                  &FONE,
+                  R_ptr, &n_components)
+            for jj in range(len_subset):
+                j = subset[jj]
+                for k in range(n_components):
+                    self.B_[k, j] = self.R_[k, jj]
+
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
         self.profiling_[3] += tv1.tv_sec-tv0.tv_sec

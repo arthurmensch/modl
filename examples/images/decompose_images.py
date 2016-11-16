@@ -4,7 +4,7 @@
 
 # Load ADDH
 import time
-from os.path import join
+from os.path import join, expanduser
 from tempfile import TemporaryDirectory
 
 import itertools
@@ -29,22 +29,22 @@ def config():
     batch_size = 100
     learning_rate = 0.9
     offset = 0
-    AB_agg = 'async'
+    AB_agg = 'masked'
     G_agg = 'full'
-    Dx_agg = 'full'
-    reduction = 6
-    alpha = 1e-3
+    Dx_agg = 'masked'
+    reduction = 10
+    alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 0.9
-    n_epochs = 10
-    verbose = 30
+    n_epochs = 2000
+    verbose = 50
     n_components = 100
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
-    temp_dir = '/tmp'
-    buffer_size = 6000
-    test_size = 2000
+    temp_dir = None
+    buffer_size = 10000
+    test_size = 4000
     max_patches = 10000
     patch_shape = (8, 8)
 
@@ -118,7 +118,6 @@ def decompose_run(batch_size,
                   _seed,
                   _run
                   ):
-    print(_seed)
     image = load_data()
     width, height, n_channel = image.shape
     batcher = Batcher(patch_shape=patch_shape,
@@ -165,7 +164,6 @@ def decompose_run(batch_size,
                          reduction=reduction,
                          alpha=alpha,
                          l1_ratio=l1_ratio,
-                         # purge_tol=1e-1,
                          lasso_tol=1e-2,
                          callback=cb,
                          buffer_size=buffer_size,

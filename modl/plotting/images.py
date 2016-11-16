@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.cm as cm
+
 
 def plot_patches(fig, patches, shape):
     for i, patch in enumerate(patches[:100]):
@@ -6,11 +8,14 @@ def plot_patches(fig, patches, shape):
         step = shape[2] // 3
         ax = fig.add_subplot(10, 10, i + 1)
         if patch.ndim == 3:
-            patch = np.sum(patch, axis=2)
+            # patch = np.sum(patch, axis=2)
+            # ax.imshow(
+            #     np.rollaxis(patch[:, :, :3], 2, 1).reshape((patch.shape[0], patch.shape[1] * 3)),
+            #     cmap=cm.gray_r,
+            #     interpolation='nearest')
             ax.imshow(
-            patch,
-            # cmap=plt.cm.gray_r,
-            interpolation='nearest')
+                patch[:, :, :3],
+                interpolation='nearest')
         ax.set_xticks(())
         ax.set_yticks(())
 

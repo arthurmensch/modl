@@ -1,7 +1,9 @@
 from joblib import Memory
+from modl._utils.indexing import index_array
 from modl.datasets import get_data_dirs
 from os.path import join
 
+from nilearn._utils import CacheMixin
 from scipy.misc import face
 from skimage.io import imread
 from skimage.transform import rescale
@@ -67,14 +69,12 @@ class Batcher(object):
                 [index for index in np.ndindex(self.patches_.shape[:3])
                  if np.all(np.array(self.patches_[index]) != -50)])
         else:
-            self.patch_indices_ = np.array(list(np.ndindex(self.patches_.shape[:3])))
+            self.patch_indices_ = index_array(self.patches_,
+                                              max_samples=self.max_samples
+                                              if self.max_samples is not None
+                                              else -1,
+                                              random_seed=0)
         self.n_samples_ = self.patch_indices_.shape[0]
-
-        if self.max_samples is not None and self.max_samples < self.n_samples_:
-            indices = self.random_state_.permutation(
-                self.n_samples_)[:self.max_samples]
-            self.patch_indices_ = self.patch_indices_[indices]
-            self.n_samples_ = self.max_samples
 
         self.sample_indices_ = np.arange(self.n_samples_, dtype='i4')
 
