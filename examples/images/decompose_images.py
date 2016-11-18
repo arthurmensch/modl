@@ -73,7 +73,7 @@ class ImageScorer():
         test_time = time.clock()
 
         filename = 'record_%s.npy' % dict_fact.n_iter_
-        if not self.call_counter % 0:
+        if not self.call_counter % 10:
             with TemporaryDirectory() as dir:
                 filename = join(dir, filename)
                 np.save(filename, dict_fact.components_)
