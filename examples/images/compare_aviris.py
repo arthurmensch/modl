@@ -1,6 +1,7 @@
 """Does not work with NamedConfig for unknown reason"""
 
 from copy import copy
+from os.path import expanduser
 
 from decompose_images import decompose_ex, decompose_run
 from data import data_ing
@@ -32,7 +33,7 @@ def config():
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
-    temp_dir = '/storage/workspace/amensch/tmp'
+    temp_dir = expanduser('~/tmp')
     buffer_size = 5000
     test_size = 2000
     max_patches = None
