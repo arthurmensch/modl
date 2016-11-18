@@ -146,7 +146,7 @@ def plot_score():
         },
         # Stage 5
         {
-            "$limit": 1
+            "$limit": 2
         },
         # Stage 6: Ungroup experiments
         {

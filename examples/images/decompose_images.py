@@ -66,17 +66,19 @@ class ImageScorer():
                          'components',
                          'filename']:
             _run.info[info_key] = []
+        self.call_counter = 0
 
     @decompose_ex.capture
     def __call__(self, dict_fact, _run):
         test_time = time.clock()
 
         filename = 'record_%s.npy' % dict_fact.n_iter_
-
-        # with TemporaryDirectory() as dir:
-        #     filename = join(dir, filename)
-        #     np.save(filename, dict_fact.components_)
-        #     _run.add_artifact(filename)
+        if not self.call_counter % 0:
+            with TemporaryDirectory() as dir:
+                filename = join(dir, filename)
+                np.save(filename, dict_fact.components_)
+                _run.add_artifact(filename)
+        self.call_counter += 1
 
         score = dict_fact.score(self.test_data)
         self.test_time += time.clock() - test_time
