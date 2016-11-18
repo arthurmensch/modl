@@ -34,7 +34,7 @@ def config():
     alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 0.9
-    n_epochs = 2
+    n_epochs = 4
     verbose = 20
     verbose_offset = 100
     n_components = 100
@@ -44,7 +44,7 @@ def config():
     temp_dir = None
     buffer_size = 5000
     test_size = 2000
-    max_patches = 100000
+    max_patches = 10000
     patch_shape = (16, 16)
 
 
@@ -124,14 +124,14 @@ def decompose_run(batch_size,
                       batch_size=test_size,
                       clean=data['source'] == 'aviris',
                       random_state=_seed)
-    batcher.prepare(image[:height // 2, :])
+    batcher.prepare(image[:width // 5, :, :])
     test_data, _ = batcher.generate_one()
     batcher = Batcher(patch_shape=patch_shape,
                       batch_size=buffer_size,
                       max_samples=max_patches,
                       clean=data['source'] == 'aviris',
                       random_state=_seed)
-    batcher.prepare(image[height // 2:, :])
+    batcher.prepare(image[width // 5:, :, :])
     n_samples = batcher.n_samples_
     _run.info['data_shape'] = (test_data.shape[1],
                                test_data.shape[2],

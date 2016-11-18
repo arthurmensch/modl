@@ -1,5 +1,5 @@
 from joblib import Memory
-from .images_fast import index_array
+from .images_fast import clean_mask
 from modl.datasets import get_data_dirs
 from os.path import join
 
@@ -41,9 +41,14 @@ def load_images(source,
                  'aviris',
                  'f100826t01p00r05rdn_b/'
                  'f100826t01p00r05rdn_b_sc01_ort_img.hdr'))
-        image = np.array(image.open_memmap()).astype('f8')
-        image[image == -50] = -1
-        image [image != -50] /= 65535
+        image = np.array(image.open_memmap(), dtype=float)
+        good_bands = list(range(image.shape[2]))
+        good_bands.remove(110)
+        image = image[:, :, good_bands]
+        indices = image == -50
+        image[indices] = -1
+        image[~indices] -= np.min(image[~indices])
+        image[~indices] /= np.max(image[~indices])
         return image
     else:
         raise ValueError('Data source is not known')
@@ -65,18 +70,17 @@ class Batcher(object):
             self.patch_shape_ = (self.patch_shape[0],
                                  self.patch_shape[1], image.shape[2])
         self.patches_ = extract_patches(image, patch_shape=self.patch_shape_)
+
+        if self.clean:
+            mask = clean_mask(self.patches_, image)
+        else:
+            mask = np.ones((self.patches_[:3]), dtype=bool)
         self.random_state_ = check_random_state(self.random_state)
-        self.patch_indices_ = index_array(self.patches_,
-                                          max_samples=self.max_samples
-                                          if self.max_samples is not None
-                                          else -1,
-                                          clean=self.clean,
-                                          random_seed=0)
+        self.patch_indices_ = np.c_[np.where(mask)]
+        self.random_state_.shuffle(self.patch_indices_)
+        self.patch_indices_ = self.patch_indices_[:self.max_samples]
         self.n_samples_ = self.patch_indices_.shape[0]
-
         self.sample_indices_ = np.arange(self.n_samples_, dtype='i4')
-
-        self.cast_ = image.dtype == np.dtype('>i2')
 
     def generate(self, n_epochs=1):
         for _ in range(n_epochs):
@@ -85,11 +89,6 @@ class Batcher(object):
             self.sample_indices_ = self.sample_indices_[permutation]
             self.patch_indices_ = self.patch_indices_[permutation]
             for batch in batches:
-                if self.cast_:
-                    yield self.patches_[list(self.patch_indices_[batch].T)].\
-                              astype('float64') / 65535, \
-                          self.sample_indices_[batch]
-                else:
                     yield self.patches_[list(self.patch_indices_[batch].T)], \
                           self.sample_indices_[batch]
 

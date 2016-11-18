@@ -9,7 +9,7 @@ from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Parallel, delayed
 
 compare_ex = Experiment('compare_aviris', ingredients=[decompose_ex])
-observer = MongoObserver.create()
+observer = MongoObserver.create(url='172.18.0.16')
 compare_ex.observers.append(observer)
 
 
@@ -26,10 +26,10 @@ def config():
     l1_ratio = 0
     pen_l1_ratio = 1
     n_epochs = 10
-    verbose = 100
+    verbose = 50
     verbose_offset = 100
     n_components = 100
-    n_threads = 2
+    n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = '/storage/workspace/amensch/tmp'
@@ -47,16 +47,13 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 13
+    n_jobs = 2
     param_updates_list = [
-        # Reduction on BCD only
-        {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
-        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
-        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'},
         {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
     ]
     config_updates_list = []
-    reductions = [6, 12, 24]
+    reductions = [12, 24]
+    reductions = [6]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,

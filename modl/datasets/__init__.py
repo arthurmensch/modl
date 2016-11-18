@@ -20,4 +20,3 @@ def get_data_dirs(data_dir=None):
 
 
 import os
-from .hcp import get_hcp_data

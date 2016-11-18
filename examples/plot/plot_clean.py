@@ -102,8 +102,8 @@ def plot_score():
                     },
                     {
                         'config.AB_agg': 'async',
-                        'config.G_agg': {"$in": ['full']},
-                        'config.Dx_agg': 'full'
+                        'config.G_agg': {"$in": ['average']},
+                        'config.Dx_agg': 'average'
                     }
                 ]
             }
@@ -204,7 +204,7 @@ def plot_score():
         score = np.array(exp['score'])
         time = np.array(exp['profiling'])[:, 5] + 0.001
         # time = np.array(exp['time']) + 0.001
-        time = iter
+        # time = iter
         ax.plot(iter, time, label=exp['reduction'])
         ax2.plot(time, score, label=exp['reduction'])
     ax2.set_xscale('log')

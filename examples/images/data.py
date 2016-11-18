@@ -1,10 +1,4 @@
-from tempfile import NamedTemporaryFile, TemporaryFile
-
-import atexit
 from joblib import Memory
-from modl.datasets import get_data_dirs
-import os
-from os.path import join, expanduser
 
 from modl.datasets.images import load_images
 from sacred.ingredient import Ingredient
