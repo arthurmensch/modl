@@ -34,7 +34,7 @@ def config():
     alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 0.9
-    n_epochs = 10
+    n_epochs = 2
     verbose = 20
     verbose_offset = 100
     n_components = 100
@@ -42,15 +42,15 @@ def config():
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = None
-    buffer_size = 2000
+    buffer_size = 5000
     test_size = 2000
-    max_patches = 10000
+    max_patches = 100000
     patch_shape = (16, 16)
 
 
 @data_ing.config
 def config():
-    source = 'face'
+    source = 'aviris'
     gray = False
     scale = 1
 

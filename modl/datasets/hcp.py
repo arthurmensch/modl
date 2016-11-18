@@ -6,7 +6,6 @@ from os.path import join
 from ..datasets import get_data_dirs
 
 import numpy as np
-import pandas as pd
 from nilearn.input_data import NiftiMasker
 from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
@@ -14,6 +13,7 @@ from sklearn.externals.joblib import delayed
 
 
 def _fetch_hcp_behavioral_data(resource_dir):
+    import pandas as pd
     exc_vars_file = os.path.join(resource_dir, 'excluded_scores.txt')
     vars_file = os.path.join(resource_dir, 'hcp_scores.txt')
     csv = os.path.join(resource_dir, 'unrestricted_hcp_s500.csv')
