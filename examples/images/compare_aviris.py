@@ -72,7 +72,7 @@ def single_run(our_config_updates, config, parent_id):
         _run.info['parent_id'] = parent_id
         _run.info['updated_params'] = our_config_updates
 
-    single_observer = MongoObserver.create()
+    single_observer = MongoObserver.create(url='172.18.0.16')
     decompose_ex.pre_run_hooks = [pre_run_hook]
     decompose_ex.observers = [single_observer]
 
