@@ -37,9 +37,6 @@ def get_connections(sub_db):
 
 
 datasets = {
-    # 'hcp': {'sub_db': 'sacred',
-    #         'parent_ids': [ObjectId('57f22495fb5c86780390bca7'),
-    #                        ObjectId('57f22489fb5c8677ec4a8414')]},
     'hcp': {'sub_db': 'sacred',
             'parent_ids': [ObjectId('580e4a3cfb5c865d3c831640'),
                            ObjectId('580e4a30fb5c865d262d391a')]},
@@ -48,7 +45,7 @@ datasets = {
                             ObjectId("5804f404fb5c861a5f45a222")
                             ]},
     'aviris': {'sub_db': 'sacred',
-               'parent_ids': [ObjectId("57f665e9fb5c86aff0ab4036")]}
+               'parent_ids': [ObjectId("582d876ffb5c869561bf336f")]}
 }
 
 
@@ -61,8 +58,8 @@ def table():
         exps = list(db.find({"$or":
             [{
                 'info.parent_id': {"$in": parent_ids},
-                "config.AB_agg": 'full' if dataset == 'hcp' else 'full',
-                "config.G_agg": 'average' if dataset == 'hcp' else 'average',
+                "config.AB_agg": 'full' if dataset == 'adhd' else 'async',
+                "config.G_agg": 'average',
                 "config.Dx_agg": 'average',
                 "config.reduction": {"$ne": [1, 2]},
             },
@@ -93,10 +90,8 @@ def table():
             else:
                 time = ref_time
             rel_time = ref_time / time
-            rel_times.append(
-                [ref_time, time, ref_time / 3600, time / 3600, rel_time,
-                 exp['config']
-                 ['reduction']])
+            rel_times.append("OMF: %.0f s - %.2f min, SOMF: %.0f s - %.2f min, Speed-up: %.2f ($r = %i$)" %
+                             (ref_time, ref_time / 60, time, time / 60, rel_time, exp['config']['reduction']))
         for rel_time in rel_times:
             print("%s" % rel_time)
 
@@ -110,7 +105,7 @@ def plot(name):
         dataset_exps[dataset] = list(db.find({"$or":
             [{
                 'info.parent_id': {"$in": parent_ids},
-                "config.AB_agg": 'async' if dataset == 'hcp' else 'full',
+                "config.AB_agg": 'full' if dataset == 'adhd' else 'async',
                 "config.G_agg": 'average',
                 "config.Dx_agg": 'average',
                 "config.reduction": {"$ne": [1, 2]},
@@ -158,8 +153,8 @@ def plot(name):
 
     axes[0].set_xlim([1e-3, 2e-1])
     axes[0].set_ylim([21800, 26200])
-    axes[1].set_xlim([11e1 / 3600, 1e4 / 3600])
-    axes[1].set_ylim([15700, 17500])
+    axes[1].set_xlim([60 / 3600, 35841 / 3600])
+    axes[1].set_ylim([0, 15])
     axes[2].set_xlim([5e1 / 3600, 2e5 / 3600])
     axes[2].set_ylim([96800, 104200])
 
@@ -175,7 +170,7 @@ def plot(name):
 
     axes[0].annotate('\\textbf{2 GB}', xy=(0.9, 0.6), xycoords='axes fraction',
                      ha='center')
-    axes[1].annotate('\\textbf{69 GB}', xy=(0.9, 0.6),
+    axes[1].annotate('\\textbf{103 GB}', xy=(0.9, 0.6),
                      xycoords='axes fraction', ha='center')
     axes[2].annotate('\\textbf{2 TB}', xy=(0.9, 0.6), xycoords='axes fraction',
                      ha='center')

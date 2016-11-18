@@ -36,20 +36,21 @@ def config():
     pen_l1_ratio = 0.9
     n_epochs = 10
     verbose = 20
+    verbose_offset = 100
     n_components = 100
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = None
-    buffer_size = 10000
+    buffer_size = 2000
     test_size = 2000
     max_patches = 10000
-    patch_shape = (8, 8)
+    patch_shape = (16, 16)
 
 
 @data_ing.config
 def config():
-    source = 'aviris'
+    source = 'face'
     gray = False
     scale = 1
 
@@ -72,10 +73,10 @@ class ImageScorer():
 
         filename = 'record_%s.npy' % dict_fact.n_iter_
 
-        with TemporaryDirectory() as dir:
-            filename = join(dir, filename)
-            np.save(filename, dict_fact.components_)
-            _run.add_artifact(filename)
+        # with TemporaryDirectory() as dir:
+        #     filename = join(dir, filename)
+        #     np.save(filename, dict_fact.components_)
+        #     _run.add_artifact(filename)
 
         score = dict_fact.score(self.test_data)
         self.test_time += time.clock() - test_time
@@ -97,6 +98,7 @@ def decompose_run(batch_size,
                   learning_rate,
                   offset,
                   verbose,
+                  verbose_offset,
                   AB_agg, G_agg, Dx_agg,
                   reduction,
                   alpha,
@@ -145,6 +147,7 @@ def decompose_run(batch_size,
     else:
         cb = None
     dict_fact = DictFact(verbose=verbose,
+                         verbose_offset=verbose_offset,
                          n_epochs=n_epochs,
                          random_state=_seed,
                          n_components=n_components,

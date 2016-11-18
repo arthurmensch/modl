@@ -42,6 +42,7 @@ class DictFact(BaseEstimator):
                  n_epochs=1,
                  random_state=None,
                  verbose=0,
+                 verbose_offset=1,
                  n_threads=1,
                  temp_dir=None,
                  callback=None,
@@ -76,6 +77,7 @@ class DictFact(BaseEstimator):
 
         self.random_state = random_state
         self.verbose = verbose
+        self.verbose_offset = verbose_offset
 
         self.n_threads = n_threads
 
@@ -224,10 +226,10 @@ class DictFact(BaseEstimator):
             self.sample_learning_rate_ = self.sample_learning_rate
 
         if self.verbose > 0:
-            verbose_iter = np.unique(((np.logspace(0, log(self.n_samples_ *
+            verbose_iter = np.unique(((np.logspace(log(self.verbose_offset, 10), log(self.n_samples_ *
                                                           self.n_epochs // self.batch_size,
                                                           10),
-                                                   self.verbose) - 1e0).astype(
+                                                   self.verbose) - self.verbose_offset).astype(
                 'i4')) * self.batch_size)
             print("Verbose iter: %s" % verbose_iter)
         else:

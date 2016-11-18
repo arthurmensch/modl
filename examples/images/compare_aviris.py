@@ -15,7 +15,7 @@ compare_ex.observers.append(observer)
 
 @decompose_ex.config
 def config():
-    batch_size = 100
+    batch_size = 200
     learning_rate = 0.9
     offset = 0
     AB_agg = 'async'
@@ -25,17 +25,18 @@ def config():
     alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 1
-    n_epochs = 100
-    verbose = 300
+    n_epochs = 10
+    verbose = 100
+    verbose_offset = 100
     n_components = 100
-    n_threads = 3
+    n_threads = 2
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = '/storage/workspace/amensch/tmp'
-    buffer_size = 6000
+    buffer_size = 5000
     test_size = 2000
-    # max_patches = 100000
-    patch_shape = (8, 8)
+    max_patches = None
+    patch_shape = (16, 16)
 
 
 @data_ing.config
@@ -46,11 +47,12 @@ def config():
 
 @compare_ex.config
 def config():
-    n_jobs = 10
+    n_jobs = 13
     param_updates_list = [
         # Reduction on BCD only
         {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
         {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'},
         {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
     ]
     config_updates_list = []

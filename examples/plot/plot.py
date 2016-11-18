@@ -69,13 +69,14 @@ def hcp():
     #        '57f22489fb5c8677ec4a8414']
     # oid = ['58075073fb5c866f3e7a89e9',
     #         '58074ff6fb5c866eb5eb4ecb']
+    oid = ['580e4a3cfb5c865d3c831640']
     name = 'compare_hcp'
     ylim_zoom = [1e-3, 0.01]
-    xlim_zoom = [0.5, 30]
-    xlim = [1e-1, 30]
+    xlim_zoom = [0.5, 15]
+    xlim = [1e-1, 15]
     ylim = [97000, 100000]
-    first = 0
-    last = 1
+    first = 2
+    last = 3
 
 
 @plot_ex.capture
