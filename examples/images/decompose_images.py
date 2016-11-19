@@ -27,9 +27,9 @@ def config():
     batch_size = 200
     learning_rate = 0.9
     offset = 0
-    AB_agg = 'async'
-    G_agg = 'average'
-    Dx_agg = 'average'
+    AB_agg = 'full'
+    G_agg = 'full'
+    Dx_agg = 'full'
     reduction = 1
     alpha = 1e-1
     l1_ratio = 0

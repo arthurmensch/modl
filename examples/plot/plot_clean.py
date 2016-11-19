@@ -93,6 +93,7 @@ def plot_score():
                 'config.batch_size': 200,
                 'config.data.source': 'aviris',
                 'info.time.1': {"$exists": True},
+                # 'status': 'RUNNING',
                 "$or": [
                     {
                         'config.reduction': 1,
@@ -102,7 +103,7 @@ def plot_score():
                     },
                     {
                         'config.AB_agg': 'async',
-                        'config.G_agg': {"$in": ['average']},
+                        'config.G_agg': {"$in": ['full']},
                         'config.Dx_agg': 'average'
                     }
                 ]
@@ -134,7 +135,7 @@ def plot_score():
                 "heartbeat": {"$max": '$heartbeat'}
             }
         },
-        # Stage 4: Sort by last exp
+        # # Stage 4: Sort by last exp
         {
             "$sort": {
                 "heartbeat": -1
@@ -146,7 +147,7 @@ def plot_score():
         },
         # Stage 5
         {
-            "$limit": 5
+            "$limit": 1
         },
         # Stage 6: Ungroup experiments
         {
