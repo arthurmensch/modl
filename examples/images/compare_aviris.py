@@ -53,8 +53,7 @@ def config():
         {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
     ]
     config_updates_list = []
-    reductions = [12, 24]
-    reductions = [6]
+    reductions = [6, 12, 24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
