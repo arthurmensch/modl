@@ -10,7 +10,7 @@ from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Parallel, delayed
 
 compare_ex = Experiment('compare_aviris', ingredients=[decompose_ex])
-observer = MongoObserver.create(url='172.18.0.16')
+observer = MongoObserver.create()
 compare_ex.observers.append(observer)
 
 
@@ -72,7 +72,7 @@ def single_run(our_config_updates, config, parent_id):
         _run.info['parent_id'] = parent_id
         _run.info['updated_params'] = our_config_updates
 
-    single_observer = MongoObserver.create(url='172.18.0.16')
+    single_observer = MongoObserver.create()
     decompose_ex.pre_run_hooks = [pre_run_hook]
     decompose_ex.observers = [single_observer]
 
