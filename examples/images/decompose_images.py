@@ -19,7 +19,7 @@ from sacred.observers import MongoObserver
 
 decompose_ex = Experiment('decompose_images',
                           ingredients=[data_ing])
-decompose_ex.observers.append(MongoObserver.create(url='172.18.0.16'))
+decompose_ex.observers.append(MongoObserver.create())
 
 
 @decompose_ex.config
