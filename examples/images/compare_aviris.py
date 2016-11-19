@@ -21,7 +21,7 @@ def config():
     offset = 0
     AB_agg = 'async'
     G_agg = 'full'
-    Dx_agg = 'full'
+    Dx_agg = 'average'
     reduction = 1
     alpha = 1e-1
     l1_ratio = 0
@@ -59,9 +59,9 @@ def config():
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
     # Reference
-    config_updates_list.append({'G_agg': 'full',
-                               'Dx_agg': 'full', 'AB_agg': 'full',
-                               'reduction': 1})
+    # config_updates_list.append({'G_agg': 'full',
+    #                            'Dx_agg': 'full', 'AB_agg': 'full',
+    #                            'reduction': 1})
     del param_updates_list, reductions, param
 
 # Cannot capture in joblib
