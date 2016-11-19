@@ -24,27 +24,27 @@ decompose_ex.observers.append(MongoObserver.create())
 
 @decompose_ex.config
 def config():
-    batch_size = 100
+    batch_size = 200
     learning_rate = 0.9
     offset = 0
     AB_agg = 'async'
     G_agg = 'average'
     Dx_agg = 'average'
-    reduction = 10
+    reduction = 1
     alpha = 1e-1
     l1_ratio = 0
-    pen_l1_ratio = 0.9
-    n_epochs = 4
-    verbose = 20
+    pen_l1_ratio = 1
+    n_epochs = 10
+    verbose = 50
     verbose_offset = 100
     n_components = 100
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
-    temp_dir = None
+    temp_dir = expanduser('~/tmp')
     buffer_size = 5000
     test_size = 2000
-    max_patches = 10000
+    max_patches = None
     patch_shape = (16, 16)
 
 

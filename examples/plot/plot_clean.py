@@ -146,7 +146,7 @@ def plot_score():
         },
         # Stage 5
         {
-            "$limit": 2
+            "$limit": 5
         },
         # Stage 6: Ungroup experiments
         {
@@ -209,21 +209,21 @@ def plot_score():
         ax2.plot(time, score, label=exp['reduction'])
     ax2.set_xscale('log')
 
-    for i, exp in enumerate(exps):
-        # shape = exp['shape']
-        # with NamedTemporaryFile(suffix='.npy',
-        #                         dir='/run/shm') as f:
-        #     f.write(fs.get(exp['artifacts'][-1]).read())
-        #     components = np.load(f.name)
-        #     components = components.reshape((components.shape[0], *shape))
-        #     fig = plt.figure(figsize=(4.2, 4))
-        #     fig = plot_patches(fig, components)
-        #     fig.suptitle(exp['reduction'])
-        try:
-            with open('image_%i.png' % i, 'wb') as f:
-                f.write(fs.get(exp['artifacts'][-1]).read())
-        except IndexError:
-            print('skip %i' % i)
+    # for i, exp in enumerate(exps):
+    #     # shape = exp['shape']
+    #     # with NamedTemporaryFile(suffix='.npy',
+    #     #                         dir='/run/shm') as f:
+    #     #     f.write(fs.get(exp['artifacts'][-1]).read())
+    #     #     components = np.load(f.name)
+    #     #     components = components.reshape((components.shape[0], *shape))
+    #     #     fig = plt.figure(figsize=(4.2, 4))
+    #     #     fig = plot_patches(fig, components)
+    #     #     fig.suptitle(exp['reduction'])
+    #     try:
+    #         with open('image_%i.png' % i, 'wb') as f:
+    #             f.write(fs.get(exp['artifacts'][-1]).read())
+    #     except IndexError:
+    #         print('skip %i' % i)
     ax.legend()
     ax2.legend()
     plt.show()
