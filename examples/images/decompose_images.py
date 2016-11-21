@@ -29,23 +29,23 @@ def config():
     offset = 0
     AB_agg = 'full'
     G_agg = 'full'
-    Dx_agg = 'full'
+    Dx_agg = 'average'
     reduction = 1
-    alpha = 1e-1
+    alpha = 1
     l1_ratio = 0
     pen_l1_ratio = 1
     n_epochs = 10
     verbose = 50
     verbose_offset = 100
-    n_components = 100
+    n_components = 200
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = expanduser('~/tmp')
     buffer_size = 5000
     test_size = 2000
-    max_patches = None
-    patch_shape = (16, 16)
+    max_patches = 100000
+    patch_shape = (8, 8)
 
 
 @data_ing.config
@@ -126,15 +126,8 @@ def decompose_run(batch_size,
                       batch_size=test_size,
                       clean=data['source'] == 'aviris',
                       random_state=_seed)
-    batcher.prepare(image[:width // 5, :, :])
+    batcher.prepare(image[:width // 2, :, :])
     test_data, _ = batcher.generate_one()
-    batcher = Batcher(patch_shape=patch_shape,
-                      batch_size=buffer_size,
-                      max_samples=max_patches,
-                      clean=data['source'] == 'aviris',
-                      random_state=_seed)
-    batcher.prepare(image[width // 5:, :, :])
-    n_samples = batcher.n_samples_
     _run.info['data_shape'] = (test_data.shape[1],
                                test_data.shape[2],
                                test_data.shape[3])
@@ -143,6 +136,14 @@ def decompose_run(batch_size,
     std = np.sqrt(np.sum(test_data ** 2, axis=1))
     std[std == 0] = 1
     test_data /= std[:, np.newaxis]
+
+    batcher = Batcher(patch_shape=patch_shape,
+                      batch_size=buffer_size,
+                      max_samples=max_patches,
+                      clean=data['source'] == 'aviris',
+                      random_state=_seed)
+    batcher.prepare(image[width // 2:, :, :])
+    n_samples = batcher.n_samples_
 
     if _run.observers:
         cb = ImageScorer(test_data)

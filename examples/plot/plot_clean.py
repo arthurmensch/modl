@@ -99,12 +99,14 @@ def plot_score():
                         'config.reduction': 1,
                         'config.AB_agg': 'full',
                         'config.G_agg': 'full',
-                        'config.Dx_agg': 'full'
+                        'config.Dx_agg': 'full',
+                        # 'info.data_shape.1': 8
                     },
                     {
                         'config.AB_agg': 'async',
                         'config.G_agg': {"$in": ['full']},
-                        'config.Dx_agg': 'average'
+                        'config.Dx_agg': 'average',
+                        # 'info.data_shape.1': 8
                     }
                 ]
             }
@@ -128,13 +130,13 @@ def plot_score():
             }
         },
         # Stage 3: Group by compare_exp (if any)
-        {
-            "$group": {
-                "_id": "$parent_id",
-                "experiments": {"$push": "$$ROOT"},
-                "heartbeat": {"$max": '$heartbeat'}
-            }
-        },
+        # {
+        #     "$group": {
+        #         "_id": "$parent_id",
+        #         "experiments": {"$push": "$$ROOT"},
+        #         "heartbeat": {"$max": '$heartbeat'}
+        #     }
+        # },
         # # Stage 4: Sort by last exp
         {
             "$sort": {
@@ -146,38 +148,39 @@ def plot_score():
             "$skip": 0
         },
         # Stage 5
-        {
-            "$limit": 1
-        },
+        # {
+        #     "$limit": 20
+        # },
         # Stage 6: Ungroup experiments
-        {
-            "$unwind": "$experiments"
-        },
-        # Stage 7
-        {
-            "$project": {
-                '_id': "$experiments._id",
-                'heartbeat': "$experiments.heartbeat",
-                'parent_id': "$_id",
-                'AB_agg': "$experiments.AB_agg",
-                'G_agg': "$experiments.G_agg",
-                'Dx_agg': "$experiments.Dx_agg",
-                'reduction': "$experiments.reduction",
-                'iter': "$experiments.iter",
-                'profiling': "$experiments.profiling",
-                'score': "$experiments.score",
-                'time': "$experiments.time",
-                'artifacts': "$experiments.artifacts",
-                'shape': "$experiments.shape"
-    }
-        },
+    #     {
+    #         "$unwind": "$experiments"
+    #     },
+    #     # Stage 7
+    #     {
+    #         "$project": {
+    #             '_id': "$experiments._id",
+    #             'heartbeat': "$experiments.heartbeat",
+    #             'parent_id': "$_id",
+    #             'AB_agg': "$experiments.AB_agg",
+    #             'G_agg': "$experiments.G_agg",
+    #             'Dx_agg': "$experiments.Dx_agg",
+    #             'reduction': "$experiments.reduction",
+    #             'iter': "$experiments.iter",
+    #             'profiling': "$experiments.profiling",
+    #             'score': "$experiments.score",
+    #             'time': "$experiments.time",
+    #             'artifacts': "$experiments.artifacts",
+    #             'shape': "$experiments.shape"
+    # }
+    #     },
         {
             "$sort": {'reduction': 1}
         }
     ]
 
     exps = list(db.aggregate(query))
-    print(exps)
+    for exp in exps:
+        print(exp)
 
     profiling_indices = [0, 2, 3, 1, 4, 6, 7]
     n_indices = len(profiling_indices)
@@ -200,14 +203,15 @@ def plot_score():
 
     fig, ax = plt.subplots(1, 1)
     fig, ax2 = plt.subplots(1, 1)
+    c = sns.cubehelix_palette(len(exps))
     for i, exp in enumerate(exps):
+        print('%i %s' % (i, exp['shape']))
         iter = np.array(exp['iter'])
         score = np.array(exp['score'])
         time = np.array(exp['profiling'])[:, 5] + 0.001
         # time = np.array(exp['time']) + 0.001
-        # time = iter
-        ax.plot(iter, time, label=exp['reduction'])
-        ax2.plot(time, score, label=exp['reduction'])
+        ax.plot(iter, score, label="%s %s" % (exp['reduction'], exp['G_agg']), color=c[i])
+        ax2.plot(iter, score, label="%s %s" % (exp['reduction'], exp['G_agg']), color=c[i])
     ax2.set_xscale('log')
 
     # for i, exp in enumerate(exps):

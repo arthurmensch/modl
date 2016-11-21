@@ -74,7 +74,7 @@ class Batcher(object):
         if self.clean:
             mask = clean_mask(self.patches_, image)
         else:
-            mask = np.ones((self.patches_[:3]), dtype=bool)
+            mask = np.ones(self.patches_.shape[:3], dtype=bool)
         self.random_state_ = check_random_state(self.random_state)
         self.patch_indices_ = np.c_[np.where(mask)]
         self.random_state_.shuffle(self.patch_indices_)
