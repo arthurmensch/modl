@@ -16,4 +16,5 @@ def config():
 @data_ing.capture
 def load_data(source, scale, gray):
     return load_images(source, scale=scale,
+
                        gray=gray, memory=Memory(cachedir='None'))

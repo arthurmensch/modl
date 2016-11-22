@@ -13,56 +13,69 @@ compare_ex = Experiment('compare_aviris', ingredients=[decompose_ex])
 observer = MongoObserver.create()
 compare_ex.observers.append(observer)
 
+#
+# @decompose_ex.config
+# def config():
+#     batch_size = 200
+#     learning_rate = 0.9
+#     offset = 0
+#     AB_agg = 'async'
+#     G_agg = 'full'
+#     Dx_agg = 'average'
+#     reduction = 1
+#     alpha = 1e-1
+#     l1_ratio = 0
+#     pen_l1_ratio = 0.95
+#     n_epochs = 30
+#     verbose = 100
+#     verbose_offset = 100
+#     n_components = 100
+#     n_threads = 2
+#     subset_sampling = 'random'
+#     dict_reduction = 'follow'
+#     temp_dir = expanduser('~/tmp')
+#     buffer_size = 5000
+#     test_size = 4000
+#     max_patches = None
+#     patch_shape = (16, 16)
 
-@decompose_ex.config
-def config():
-    batch_size = 200
-    learning_rate = 0.9
-    offset = 0
-    AB_agg = 'async'
-    G_agg = 'full'
-    Dx_agg = 'average'
-    reduction = 1
-    alpha = 1e-1
-    l1_ratio = 0
-    pen_l1_ratio = 1
-    n_epochs = 10
-    verbose = 50
-    verbose_offset = 100
-    n_components = 100
-    n_threads = 3
-    subset_sampling = 'random'
-    dict_reduction = 'follow'
-    temp_dir = expanduser('~/tmp')
-    buffer_size = 5000
-    test_size = 2000
-    max_patches = None
-    patch_shape = (16, 16)
+#
+# @data_ing.config
+# def config():
+#     source = 'aviris'
+#     gray = False
+#     scale = 1
 
-
-@data_ing.config
-def config():
-    source = 'aviris'
-    gray = False
-    scale = 1
 
 @compare_ex.config
 def config():
     n_jobs = 2
     param_updates_list = [
-        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
+        {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'},
+        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        # {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
     ]
     config_updates_list = []
-    reductions = [6, 12, 24]
+    reductions = [24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
                                             **param))
     # Reference
-    # config_updates_list.append({'G_agg': 'full',
-    #                            'Dx_agg': 'full', 'AB_agg': 'full',
-    #                            'reduction': 1})
+    config_updates_list.append({'G_agg': 'full',
+                                'Dx_agg': 'full', 'AB_agg': 'full',
+                                'reduction': 1})
     del param_updates_list, reductions, param
+
+
+@compare_ex.named_config
+def ref():
+    n_jobs = 1
+    config_updates_list = [{'G_agg': 'full',
+                            'Dx_agg': 'full', 'AB_agg': 'full',
+                            'reduction': 1}]
+
 
 # Cannot capture in joblib
 def single_run(our_config_updates, config, parent_id):

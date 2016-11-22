@@ -5,12 +5,16 @@ import matplotlib.cm as cm
 def plot_patches(fig, patches):
     if patches.ndim == 4:
         channel_step = patches.shape[3] // 3
-        patches = np.concatenate([np.sum(patches[:, :, :, i * channel_step:
-        (i + 1) * channel_step],
-                                         axis=3)[..., np.newaxis]
-                                  for i in range(3)], axis=3)
-        patches = np.rollaxis(patches, 3, 2).reshape(
-            (patches.shape[0], patches.shape[1], patches.shape[2] * 3))
+        # patches = np.concatenate([np.sum(patches[:, :, :, i * channel_step:
+        # (i + 1) * channel_step],
+        #                                  axis=3)[..., np.newaxis]
+        #                           for i in range(3)], axis=3)
+        if patches.shape[3] == 1:
+            patches = patches[:, :, :, 0]
+        elif patches.shape[3] >= 3:
+                patches = patches[:, :, :, :3]
+                patches = np.rollaxis(patches, 3, 2).reshape(
+                    (patches.shape[0], patches.shape[1], patches.shape[2] * 3))
     for i, patch in enumerate(patches[:100]):
         ax = fig.add_subplot(10, 10, i + 1)
         ax.imshow(

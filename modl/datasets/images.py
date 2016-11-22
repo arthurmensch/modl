@@ -17,6 +17,8 @@ import numpy as np
 def load_images(source,
                 scale=1,
                 gray=False,
+                normalize=False,
+                center=False,
                 memory=Memory(cachedir=None)):
     data_dir = get_data_dirs()[0]
     if source == 'face':
@@ -26,6 +28,12 @@ def load_images(source,
             image = image[..., np.newaxis]
         if scale != 1:
             image = memory.cache(rescale)(image, scale=scale)
+        if center:
+            image -= image.mean(axis=(0, 1))[np.newaxis, np.newaxis, :]
+        if normalize:
+            std = image.std(axis=(0, 1))
+            std[std == 0] = 1
+            image /= std[np.newaxis, np.newaxis, :]
         return image
     elif source == 'lisboa':
         image = imread(join(data_dir, 'images', 'lisboa.jpg'), as_grey=gray)
@@ -34,6 +42,12 @@ def load_images(source,
             image = image[..., np.newaxis]
         if scale != 1:
             image = memory.cache(rescale)(image, scale=scale)
+        if center:
+            image -= image.mean(axis=(0, 1))[np.newaxis, np.newaxis, :]
+        if normalize:
+            std = image.std(axis=(0, 1))
+            std[std == 0] = 1
+            image /= std[np.newaxis, np.newaxis, :]
         return image
     elif source == 'aviris':
         image = open_image(
@@ -49,6 +63,12 @@ def load_images(source,
         image[indices] = -1
         image[~indices] -= np.min(image[~indices])
         image[~indices] /= np.max(image[~indices])
+        if center:
+            image -= image.mean(axis=(0, 1))[np.newaxis, np.newaxis, :]
+        if normalize:
+            std = image.std(axis=(0, 1))
+            std[std == 0] = 1
+            image /= std[np.newaxis, np.newaxis, :]
         return image
     else:
         raise ValueError('Data source is not known')

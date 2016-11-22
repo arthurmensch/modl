@@ -97,6 +97,9 @@ cdef class DictFactImpl(object):
     cdef readonly int Dx_agg
     cdef readonly int AB_agg
 
+    cdef readonly bint non_negative_A
+    cdef readonly bint non_negative_D
+
     cdef readonly double purge_tol
 
     cdef readonly int subset_sampling
@@ -175,6 +178,8 @@ cdef class DictFactImpl(object):
                  int G_agg=1,
                  int Dx_agg=1,
                  int AB_agg=1,
+                 bint non_negative_A=0,
+                 bint non_negative_D=0,
                  int subset_sampling=1,
                  int dict_reduction=0,
                  # Dict parameter
@@ -201,6 +206,9 @@ cdef class DictFactImpl(object):
         self.learning_rate = learning_rate
         self.offset = offset
         self.sample_learning_rate = sample_learning_rate
+
+        self.non_negative_A = non_negative_A
+        self.non_negative_D = non_negative_D
 
         self.alpha = alpha
         self.l1_ratio = l1_ratio
@@ -382,6 +390,8 @@ cdef class DictFactImpl(object):
                                int Dx_agg=1,
                                int AB_agg=1,
                                int subset_sampling=1,
+                               bint non_negative_A=False,
+                               bint non_negative_D=False,
                                int dict_reduction=0,
                                int[:] verbose_iter=None,
                                # Dict parameter
@@ -398,6 +408,8 @@ cdef class DictFactImpl(object):
         old_G_agg = self.G_agg
         self.G_agg = G_agg
         self.Dx_agg = Dx_agg
+        self.non_negative_A = non_negative_A
+        self.non_negative_D = non_negative_D
 
         if self.G_agg == 2 and old_G_agg != 2:
             D_ptr = &self.D_[0, 0]
@@ -908,7 +920,7 @@ cdef class DictFactImpl(object):
                             self.H[t],
                             self.XtA[t],
                             100,
-                            self.lasso_tol, self.random_state_, 0, 0)
+                            self.lasso_tol, self.random_state_, 0, self.non_negative_A)
                         for p_ in range(n_components):
                             self.Dx[p_, ii_] = self.code_[i_, p_]
 
@@ -1086,7 +1098,10 @@ cdef class DictFactImpl(object):
             for jj in range(len_subset):
                 if self.A_[k, k] > 1e-20:
                     self.D_subset[k, jj] = self.R_[k, jj] / self.A_[k, k]
-
+            if self.non_negative_D:
+                for jj in range(len_subset):
+                    if self.D_subset[k, jj] < 0:
+                        self.D_subset[k, jj] = 0
             enet_projection_fast(self.D_subset[k, :len_subset],
                                     self.proj_temp[:len_subset],
                                     self.norm_temp[k], self.l1_ratio)
@@ -1234,7 +1249,7 @@ cdef class DictFactImpl(object):
                                     H[t],
                                     XtA[t],
                                     self.n_components,
-                                    self.lasso_tol, self.random_state_, 0, 0)
+                                    self.lasso_tol, self.random_state_, 0, self.non_negative_A)
         else:
             with nogil, parallel(num_threads=this_n_threads):
                 for t in prange(n_thread_batches, schedule='static'):

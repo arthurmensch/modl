@@ -7,18 +7,21 @@ import time
 from os.path import join, expanduser
 from tempfile import TemporaryDirectory
 
-import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 from data import load_data, data_ing
 from modl.datasets.images import Batcher
+from modl.datasets.images import load_images
 from modl.dict_fact import DictFact
 from modl.plotting.images import plot_patches
 from sacred import Experiment
+from sacred.ingredient import Ingredient
 from sacred.observers import MongoObserver
 
+data_ing = Ingredient('data')
 decompose_ex = Experiment('decompose_images',
                           ingredients=[data_ing])
+
 decompose_ex.observers.append(MongoObserver.create())
 
 
@@ -29,22 +32,26 @@ def config():
     offset = 0
     AB_agg = 'full'
     G_agg = 'full'
-    Dx_agg = 'average'
-    reduction = 1
-    alpha = 1
+    Dx_agg = 'full'
+    reduction = 10
+    alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 1
-    n_epochs = 10
-    verbose = 50
+    n_epochs = 3
+    verbose = 10
     verbose_offset = 100
-    n_components = 200
+    n_components = 100
+    non_negative_A = True
+    non_negative_D = True
+    normalize = True
+    center = False
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = expanduser('~/tmp')
     buffer_size = 5000
     test_size = 2000
-    max_patches = 100000
+    max_patches = 10000
     patch_shape = (8, 8)
 
 
@@ -53,6 +60,16 @@ def config():
     source = 'aviris'
     gray = False
     scale = 1
+    center = True
+    normalize = True
+
+
+@data_ing.capture
+def load_data(source, scale, gray, center, normalize):
+    return load_images(source, scale=scale,
+                       gray=gray,
+                       center=center,
+                       normalize=normalize)
 
 
 class ImageScorer():
@@ -73,8 +90,8 @@ class ImageScorer():
         test_time = time.clock()
 
         filename = 'record_%s.npy' % dict_fact.n_iter_
-        if not self.call_counter % 10:
-            with TemporaryDirectory() as dir:
+        if not self.call_counter % 1:
+            with TemporaryDirectory(dir=expanduser('~/tmp')) as dir:
                 filename = join(dir, filename)
                 np.save(filename, dict_fact.components_)
                 _run.add_artifact(filename)
@@ -102,6 +119,10 @@ def decompose_run(batch_size,
                   verbose,
                   verbose_offset,
                   AB_agg, G_agg, Dx_agg,
+                  non_negative_A,
+                  non_negative_D,
+                  center,
+                  normalize,
                   reduction,
                   alpha,
                   l1_ratio,
@@ -126,23 +147,25 @@ def decompose_run(batch_size,
                       batch_size=test_size,
                       clean=data['source'] == 'aviris',
                       random_state=_seed)
-    batcher.prepare(image[:width // 2, :, :])
+    batcher.prepare(image[:, :height // 2, :])
     test_data, _ = batcher.generate_one()
     _run.info['data_shape'] = (test_data.shape[1],
                                test_data.shape[2],
                                test_data.shape[3])
     test_data = test_data.reshape((test_data.shape[0], -1))
-    test_data -= np.mean(test_data, axis=1)[:, np.newaxis]
-    std = np.sqrt(np.sum(test_data ** 2, axis=1))
-    std[std == 0] = 1
-    test_data /= std[:, np.newaxis]
+    if center:
+        test_data -= np.mean(test_data, axis=1)[:, np.newaxis]
+    if normalize:
+        std = np.sqrt(np.sum(test_data ** 2, axis=1))
+        std[std == 0] = 1
+        test_data /= std[:, np.newaxis]
 
     batcher = Batcher(patch_shape=patch_shape,
                       batch_size=buffer_size,
                       max_samples=max_patches,
                       clean=data['source'] == 'aviris',
                       random_state=_seed)
-    batcher.prepare(image[width // 2:, :, :])
+    batcher.prepare(image[:, height // 2:, :])
     n_samples = batcher.n_samples_
 
     if _run.observers:
@@ -157,6 +180,8 @@ def decompose_run(batch_size,
                          n_threads=n_threads,
                          pen_l1_ratio=pen_l1_ratio,
                          learning_rate=learning_rate,
+                         non_negative_D=non_negative_D,
+                         non_negative_A=non_negative_A,
                          offset=offset,
                          batch_size=batch_size,
                          subset_sampling=subset_sampling,
@@ -175,10 +200,12 @@ def decompose_run(batch_size,
                          )
     for batch, indices in batcher.generate(n_epochs=n_epochs):
         batch = batch.reshape((batch.shape[0], -1))
-        batch -= np.mean(batch, axis=1)[:, np.newaxis]
-        std = np.sqrt(np.sum(batch ** 2, axis=1))
-        std[std == 0] = 1
-        batch /= std[:, np.newaxis]
+        if center:
+            batch -= np.mean(batch, axis=1)[:, np.newaxis]
+        if normalize:
+            std = np.sqrt(np.sum(batch ** 2, axis=1))
+            std[std == 0] = 1
+            batch /= std[:, np.newaxis]
         dict_fact.partial_fit(batch, indices, check_input=False)
 
     with TemporaryDirectory() as dir:

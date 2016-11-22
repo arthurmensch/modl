@@ -47,6 +47,8 @@ class DictFact(BaseEstimator):
                  temp_dir=None,
                  callback=None,
                  buffer_size=None,
+                 non_negative_D=False,
+                 non_negative_A=False,
                  ):
         self.temp_dir = temp_dir
         self.batch_size = batch_size
@@ -82,6 +84,9 @@ class DictFact(BaseEstimator):
         self.n_threads = n_threads
 
         self.callback = callback
+
+        self.non_negative_D = non_negative_D
+        self.non_negative_A = non_negative_A
 
         self.buffer_size = buffer_size
 
@@ -166,7 +171,8 @@ class DictFact(BaseEstimator):
                 random_idx = random_state.permutation(n_samples)[
                              :self.n_components]
                 D[:] = data_for_init[random_idx]
-
+        if self.non_negative_D:
+            D[D <= 0] = - D[D <= 0]
         D = enet_scale(D, l1_ratio=self.l1_ratio, radius=1)
 
         params = self._get_impl_params()
@@ -251,6 +257,8 @@ class DictFact(BaseEstimator):
                'dict_reduction': dict_reduction,
                'reduction': self.reduction,
                'verbose_iter': verbose_iter,
+               'non_negative_A': self.non_negative_A,
+               'non_negative_D': self.non_negative_D,
                'callback': None if self.callback is None else lambda:
                self.callback(self)}
         return res

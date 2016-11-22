@@ -81,7 +81,6 @@ def run():
     ax.set_xscale('log')
     plt.show()
 
-
 def plot_score():
     db, fs = get_connections()
 
@@ -100,13 +99,16 @@ def plot_score():
                         'config.AB_agg': 'full',
                         'config.G_agg': 'full',
                         'config.Dx_agg': 'full',
-                        # 'info.data_shape.1': 8
+                        'info.data_shape.1': 16,
+                        # 'info.data_shape.2': 3
                     },
                     {
-                        'config.AB_agg': 'async',
-                        'config.G_agg': {"$in": ['full']},
-                        'config.Dx_agg': 'average',
-                        # 'info.data_shape.1': 8
+                        'config.AB_agg': "async",
+                        'config.G_agg': {"$in": ['masked']},
+                        'config.Dx_agg': {"$in": ['masked']},
+                        'info.data_shape.1': 16,
+                        'config.reduction': {"$in": [24]}
+                        # 'info.data_shape.2': 3
                     }
                 ]
             }
@@ -148,9 +150,9 @@ def plot_score():
             "$skip": 0
         },
         # Stage 5
-        # {
-        #     "$limit": 20
-        # },
+        {
+            "$limit": 2
+        },
         # Stage 6: Ungroup experiments
     #     {
     #         "$unwind": "$experiments"
@@ -208,27 +210,24 @@ def plot_score():
         print('%i %s' % (i, exp['shape']))
         iter = np.array(exp['iter'])
         score = np.array(exp['score'])
-        time = np.array(exp['profiling'])[:, 5] + 0.001
+        time = np.array(exp['profiling'])[:, 5] + 10
         # time = np.array(exp['time']) + 0.001
-        ax.plot(iter, score, label="%s %s" % (exp['reduction'], exp['G_agg']), color=c[i])
-        ax2.plot(iter, score, label="%s %s" % (exp['reduction'], exp['G_agg']), color=c[i])
+        ax.plot(iter, score, label="%s %s %s" % (exp['reduction'], exp['G_agg'], exp['Dx_agg']), color=c[i], linestyle='--' if exp['G_agg'] == 'masked' else '-', marker='o')
+        ax2.plot(time, score, label="%s %s %s" % (exp['reduction'], exp['G_agg'], exp['Dx_agg']), color=c[i], linestyle='--' if exp['G_agg'] == 'masked' else '-', marker='o')
     ax2.set_xscale('log')
 
     # for i, exp in enumerate(exps):
-    #     # shape = exp['shape']
-    #     # with NamedTemporaryFile(suffix='.npy',
-    #     #                         dir='/run/shm') as f:
-    #     #     f.write(fs.get(exp['artifacts'][-1]).read())
-    #     #     components = np.load(f.name)
-    #     #     components = components.reshape((components.shape[0], *shape))
-    #     #     fig = plt.figure(figsize=(4.2, 4))
-    #     #     fig = plot_patches(fig, components)
-    #     #     fig.suptitle(exp['reduction'])
-    #     try:
-    #         with open('image_%i.png' % i, 'wb') as f:
-    #             f.write(fs.get(exp['artifacts'][-1]).read())
-    #     except IndexError:
-    #         print('skip %i' % i)
+    #     shape = exp['shape']
+    #     components = np.load(fs.get(exp['artifacts'][-1]))
+    #     np.save('components_%i' % i, components)
+    #
+    #     components = components.reshape((components.shape[0], *shape))
+    #     fig = plt.figure(figsize=(4.2, 4))
+    #     fig = plot_patches(fig, components)
+    #     fig.suptitle(exp['reduction'])
+    #     plt.savefig('image_%i.png' % i)
+    #     # plt.close(fig)
+    plt.show()
     ax.legend()
     ax2.legend()
     plt.show()
