@@ -621,7 +621,7 @@ cdef class DictFactImpl(object):
                                           &one_m_w,
                                           &self.B_[0, 0] + start_corr * self.n_components, &self.n_components)
                         clock_gettime(CLOCK_MONOTONIC_RAW, &tv3)
-                        self.profiling_[7] += tv3.tv_sec-tv2.tv_sec
+                        self.profiling_[7] += tv3.tv_sec - tv2.tv_sec
                         self.profiling_[7] += (tv3.tv_nsec - tv2.tv_nsec) / 1e9
 
 

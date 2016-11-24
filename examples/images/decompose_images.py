@@ -37,22 +37,22 @@ def config():
     alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 1
-    n_epochs = 3
-    verbose = 10
-    verbose_offset = 100
-    n_components = 100
+    n_epochs = 30
+    verbose = 200
+    verbose_offset = 50
+    n_components = 256
     non_negative_A = True
     non_negative_D = True
-    normalize = True
+    normalize = False
     center = False
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = expanduser('~/tmp')
     buffer_size = 5000
-    test_size = 2000
-    max_patches = 10000
-    patch_shape = (8, 8)
+    test_size = 4000
+    max_patches = None
+    patch_shape = (16, 16)
 
 
 @data_ing.config
@@ -60,8 +60,8 @@ def config():
     source = 'aviris'
     gray = False
     scale = 1
-    center = True
-    normalize = True
+    center = False
+    normalize = False
 
 
 @data_ing.capture

@@ -92,7 +92,9 @@ def plot_score():
                 'config.batch_size': 200,
                 'config.data.source': 'aviris',
                 'info.time.1': {"$exists": True},
+                # '_id': {"$not": {"$eq": ObjectId("58340abdfb5c868dc3f3afb1")}},
                 # 'status': 'RUNNING',
+                'config.non_negative_A': False,
                 "$or": [
                     {
                         'config.reduction': 1,
@@ -107,7 +109,7 @@ def plot_score():
                         'config.G_agg': {"$in": ['masked']},
                         'config.Dx_agg': {"$in": ['masked']},
                         'info.data_shape.1': 16,
-                        'config.reduction': {"$in": [24]}
+                        'config.reduction': {"$in": [6, 12, 24]}
                         # 'info.data_shape.2': 3
                     }
                 ]
@@ -118,6 +120,7 @@ def plot_score():
             "$project": {
                 '_id': 1,
                 'heartbeat': 1,
+                'start_time': 1,
                 'parent_id': "$info.parent_id",
                 'AB_agg': "$config.AB_agg",
                 'G_agg': "$config.G_agg",
@@ -131,18 +134,10 @@ def plot_score():
                 'shape': "$info.data_shape"
             }
         },
-        # Stage 3: Group by compare_exp (if any)
-        # {
-        #     "$group": {
-        #         "_id": "$parent_id",
-        #         "experiments": {"$push": "$$ROOT"},
-        #         "heartbeat": {"$max": '$heartbeat'}
-        #     }
-        # },
         # # Stage 4: Sort by last exp
         {
             "$sort": {
-                "heartbeat": -1
+                "start_time": -1
             }
         },
         # Stage 5
@@ -151,32 +146,11 @@ def plot_score():
         },
         # Stage 5
         {
-            "$limit": 2
+            "$limit": 4
         },
         # Stage 6: Ungroup experiments
-    #     {
-    #         "$unwind": "$experiments"
-    #     },
-    #     # Stage 7
-    #     {
-    #         "$project": {
-    #             '_id': "$experiments._id",
-    #             'heartbeat': "$experiments.heartbeat",
-    #             'parent_id': "$_id",
-    #             'AB_agg': "$experiments.AB_agg",
-    #             'G_agg': "$experiments.G_agg",
-    #             'Dx_agg': "$experiments.Dx_agg",
-    #             'reduction': "$experiments.reduction",
-    #             'iter': "$experiments.iter",
-    #             'profiling': "$experiments.profiling",
-    #             'score': "$experiments.score",
-    #             'time': "$experiments.time",
-    #             'artifacts': "$experiments.artifacts",
-    #             'shape': "$experiments.shape"
-    # }
-    #     },
         {
-            "$sort": {'reduction': 1}
+            "$sort": {"reduction": 1}
         }
     ]
 
@@ -194,7 +168,12 @@ def plot_score():
     fig, ax = plt.subplots(len(exps), 1, sharey=True, sharex=True)
     for i, exp in enumerate(exps):
         iter = np.array(exp['iter'])
-        time = np.cumsum(np.array(exp['profiling'])[:, profiling_indices], axis=1)
+        profiling = np.array(exp['profiling'])[:, profiling_indices]
+        profiling[:, -1] -= profiling[:, -3]
+        profiling[:, -1] = np.maximum(profiling[:, -1], 0)
+        time = np.cumsum(profiling, axis=1)
+        # print(np.sum(np.array(exp['profiling'])[:, (0, 2, 3, 1)], axis=1) + np.max(np.array(exp['profiling'])[:, (4, 7)], axis=1))
+        # print(np.array(exp['profiling'])[:, 5])
         time = (time[1:] - time[:-1]) / (iter[1:] - iter[:-1])[:, np.newaxis]
         for j in reversed(range(n_indices)):
             ax[i].fill_between(iter[1:], time[:, j], time[:, j - 1] if j > 0 else 0,
@@ -212,22 +191,28 @@ def plot_score():
         score = np.array(exp['score'])
         time = np.array(exp['profiling'])[:, 5] + 10
         # time = np.array(exp['time']) + 0.001
-        ax.plot(iter, score, label="%s %s %s" % (exp['reduction'], exp['G_agg'], exp['Dx_agg']), color=c[i], linestyle='--' if exp['G_agg'] == 'masked' else '-', marker='o')
-        ax2.plot(time, score, label="%s %s %s" % (exp['reduction'], exp['G_agg'], exp['Dx_agg']), color=c[i], linestyle='--' if exp['G_agg'] == 'masked' else '-', marker='o')
+        ax.plot(iter, score, label="%s %s %s" % (exp['reduction'], exp['G_agg'], exp['Dx_agg']), color=c[i], linestyle='--' if exp['G_agg'] == 'masked' else '-')
+        ax2.plot(time, score, label="%s %s %s" % (exp['reduction'], exp['G_agg'], exp['Dx_agg']), color=c[i], linestyle='--' if exp['G_agg'] == 'masked' else '-')
     ax2.set_xscale('log')
 
+    profilings = np.array(exps[0]['profiling'])[:, 5]
+    profilings_red = np.array(exps[1]['profiling'])[:, 5]
+    min_len = min(profilings.shape[0], profilings_red.shape[0])
+    diff = profilings[1:min_len] / profilings_red[1:min_len]
+    print(diff)
+
     # for i, exp in enumerate(exps):
+    #     print(exp['reduction'])
     #     shape = exp['shape']
-    #     components = np.load(fs.get(exp['artifacts'][-1]))
-    #     np.save('components_%i' % i, components)
-    #
-    #     components = components.reshape((components.shape[0], *shape))
-    #     fig = plt.figure(figsize=(4.2, 4))
-    #     fig = plot_patches(fig, components)
-    #     fig.suptitle(exp['reduction'])
-    #     plt.savefig('image_%i.png' % i)
-    #     # plt.close(fig)
-    plt.show()
+    #     idx = [10, -2] if exp['reduction'] == 1 else [29, -2]
+    #     for this_idx in idx:
+    #         print('Time : %s' % np.array(exp['profiling'])[this_idx, 5])
+    #         print('Iter: %s' % exp['iter'][this_idx])
+    #         components = np.load(fs.get(exp['artifacts'][this_idx]))
+    #         np.save('components_negative_%i_%is_%ip' % (exp['reduction'],
+    #                                            np.array(exp['profiling'])[this_idx, 5],
+    #                                            exp['iter'][this_idx]),
+    #                 components)
     ax.legend()
     ax2.legend()
     plt.show()
@@ -361,8 +346,8 @@ def plot_profiling():
     colormap = sns.cubehelix_palette(n_indices, start=0,
                                      rot=1, reverse=True)
 
-    fig = plt.figure(figsize=(252 / 72, 90 / 72))
-    fig.subplots_adjust(left=0.14, right=0.68, bottom=0.2)
+    fig = plt.figure(figsize=(252 / 72.25, 80 / 72.25))
+    fig.subplots_adjust(left=0.14, right=0.68, bottom=0.18, top=0.87)
 
     axes = [plt.subplot(gs[0, 0])]
     axes.append(plt.subplot(gs[1, 0], sharex=axes[0]))
@@ -377,49 +362,49 @@ def plot_profiling():
                    color=colormap[j]
                    # cmap=plt.cm.Set3
                    )
-
+    offset_text = 4
     axes[0].annotate('No subsampling', xy=(1.2, 41.5),
                      xytext=(0, 9), ha='center', va='center',
                      xycoords='data',
                      textcoords='offset points')
 
     axes[1].annotate('Dictionary', xy=(2.05, 15), ha='left', va='top',
-                     xytext=(0, 6),
+                     xytext=(0, 6 + offset_text),
                      rotation=15,
                      xycoords='data',
                      textcoords='offset points')
 
-    axes[1].annotate('+ Parameters', xy=(3.05, 15),
+    axes[1].annotate('+ Surrogate', xy=(3.05, 15),
                      rotation=15,
-                     xytext=(0, 4), ha='left', va='top',
+                     xytext=(0, 4 + offset_text), ha='left', va='top',
                      xycoords='data',
                      textcoords='offset points')
 
     axes[1].annotate('+ Code', xy=(4.05, 15),
                      rotation=15,
-                     xytext=(0, -6), ha='left', va='top',
+                     xytext=(0, -6 + offset_text), ha='left', va='top',
                      xycoords='data',
                      textcoords='offset points')
 
-    axes[1].annotate('Subsampling for:', xy=(6, 15),
-                     xytext=(0, 15), ha='center', va='top',
+    axes[0].annotate('Subsampling for:', xy=(6, 41.5),
+                     xytext=(0, 9), ha='center', va='center',
                      xycoords='data',
                      textcoords='offset points')
 
-    axes[1].annotate('Dictionary', xy=(5.55, 15), xytext=(0, -6),
+    axes[1].annotate('Dictionary', xy=(5.55, 15), xytext=(0, -6 + offset_text),
                      ha='left', va='top',
                      rotation=15,
                      xycoords='data',
                      textcoords='offset points')
 
-    axes[1].annotate('+ Parameters', xy=(6.55, 15),
-                     xytext=(0, -8), ha='left', va='top',
+    axes[1].annotate('+ Surrogate', xy=(6.55, 15),
+                     xytext=(0, -8 + offset_text), ha='left', va='top',
                      rotation=15,
                      xycoords='data',
                      textcoords='offset points')
 
     axes[1].annotate('+ Code', xy=(7.55, 15),
-                     xytext=(0, -18), ha='left', va='top',
+                     xytext=(0, -18 + offset_text), ha='left', va='top',
                      rotation=15,
                      xycoords='data',
                      textcoords='offset points')
@@ -427,7 +412,7 @@ def plot_profiling():
     # axes[0].set_axisbelow(False)
     legend = axes[0].legend(title='Time to compute:', ncol=1,
                             loc='upper left',
-                            bbox_to_anchor=(1.06, 1.75),
+                            bbox_to_anchor=(1.06, 2.4),
                             markerscale=0.6,
                             handlelength=1,
                             frameon=False,
@@ -445,7 +430,7 @@ def plot_profiling():
     axes[1].yaxis.set_label_coords(-0.13, 0.73)
     axes[1].set_ylim(main_ylim)
     axes[0].set_ylim(offset, offset + (main_ylim[1] - main_ylim[0]) / ratio)
-    axes[0].set_yticks([40, 42])
+    axes[0].set_yticks([39, 42])
     axes[0].spines['bottom'].set_visible(False)
     axes[0].spines['right'].set_visible(False)
     axes[0].spines['top'].set_visible(False)

@@ -13,51 +13,61 @@ compare_ex = Experiment('compare_aviris', ingredients=[decompose_ex])
 observer = MongoObserver.create()
 compare_ex.observers.append(observer)
 
-#
-# @decompose_ex.config
-# def config():
-#     batch_size = 200
-#     learning_rate = 0.9
-#     offset = 0
-#     AB_agg = 'async'
-#     G_agg = 'full'
-#     Dx_agg = 'average'
-#     reduction = 1
-#     alpha = 1e-1
-#     l1_ratio = 0
-#     pen_l1_ratio = 0.95
-#     n_epochs = 30
-#     verbose = 100
-#     verbose_offset = 100
-#     n_components = 100
-#     n_threads = 2
-#     subset_sampling = 'random'
-#     dict_reduction = 'follow'
-#     temp_dir = expanduser('~/tmp')
-#     buffer_size = 5000
-#     test_size = 4000
-#     max_patches = None
-#     patch_shape = (16, 16)
 
-#
-# @data_ing.config
-# def config():
-#     source = 'aviris'
-#     gray = False
-#     scale = 1
+@decompose_ex.config
+def config():
+    batch_size = 200
+    learning_rate = 0.9
+    offset = 0
+    AB_agg = 'full'
+    G_agg = 'full'
+    Dx_agg = 'full'
+    reduction = 10
+    alpha = 1e-1
+    l1_ratio = 0
+    pen_l1_ratio = 1
+    n_epochs = 30
+    verbose = 200
+    verbose_offset = 50
+    n_components = 256
+    non_negative_A = False
+    non_negative_D = False
+    normalize = True
+    center = True
+    n_threads = 3
+    subset_sampling = 'random'
+    dict_reduction = 'follow'
+    temp_dir = expanduser('~/tmp')
+    buffer_size = 5000
+    test_size = 4000
+    max_patches = None
+    patch_shape = (16, 16)
 
+
+@data_ing.config
+def config():
+    source = 'aviris'
+    gray = False
+    scale = 1
+    center = False
+    normalize = False
+
+
+@decompose_ex.named_config
+def non_negative():
+    non_negative_A = True
+    non_negative_D = True
+    normalize = False
+    center = False
 
 @compare_ex.config
 def config():
-    n_jobs = 2
+    n_jobs = 4
     param_updates_list = [
-        # {'G_agg': 'full', 'Dx_agg': 'full', 'AB_agg': 'async'},
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'},
-        # {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
-        # {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
     ]
     config_updates_list = []
-    reductions = [24]
+    reductions = [6, 12, 24]
     for param in param_updates_list:
         for reduction in reductions:
             config_updates_list.append(dict(reduction=reduction,
@@ -67,6 +77,10 @@ def config():
                                 'Dx_agg': 'full', 'AB_agg': 'full',
                                 'reduction': 1})
     del param_updates_list, reductions, param
+
+@compare_ex.named_config
+def non_negative():
+    pass
 
 
 @compare_ex.named_config

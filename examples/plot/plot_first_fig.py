@@ -1,5 +1,5 @@
-from os.path import expanduser
-from tempfile import NamedTemporaryFile
+import matplotlib as mpl
+mpl.use('Qt5Agg')
 
 import gridfs
 import matplotlib.pyplot as plt
@@ -8,15 +8,11 @@ import seaborn.apionly as sns
 from bson import ObjectId
 
 import matplotlib as mpl
+
 mpl.rcParams['ytick.labelsize'] = 7
 
-from matplotlib.lines import Line2D
-from modl.plotting.fmri import display_maps
-from modl.plotting.images import plot_patches
 from pymongo import MongoClient
 from sacred.experiment import Experiment
-
-import matplotlib.patches as patches
 
 plot_ex = Experiment('plot')
 
@@ -45,7 +41,7 @@ datasets = {
                             ObjectId("5804f404fb5c861a5f45a222")
                             ]},
     'aviris': {'sub_db': 'sacred',
-               'parent_ids': [ObjectId("582d876ffb5c869561bf336f")]}
+               'parent_ids': [ObjectId("58337e42fb5c867671262f89")]}
 }
 
 
@@ -59,8 +55,8 @@ def table():
             [{
                 'info.parent_id': {"$in": parent_ids},
                 "config.AB_agg": 'full' if dataset == 'adhd' else 'async',
-                "config.G_agg": 'average',
-                "config.Dx_agg": 'average',
+                "config.G_agg": 'average' if dataset != 'aviris' else 'masked',
+                "config.Dx_agg": 'average' if dataset != 'aviris' else 'masked',
                 "config.reduction": {"$ne": [1, 2]},
             },
                 # {
@@ -68,10 +64,13 @@ def table():
                 #     {"$in": parent_ids},
                 # "config.reduction": 1}
             ]}))
-        ref = db.find_one({
-            'info.parent_id':
-                {"$in": parent_ids},
-            "config.reduction": 1})
+        if dataset == 'aviris':
+            ref = db.find_one({'_id': ObjectId('58337b4dfb5c8669e75e32a1')})
+        else:
+            ref = db.find_one({
+                'info.parent_id':
+                    {"$in": parent_ids},
+                "config.reduction": 1})
 
         time = np.array(ref['info']['profiling'])[:, 5]
         tol = 1e-2
@@ -81,7 +80,7 @@ def table():
         ref_time = time[it_tol]
         rel_times = []
         for exp in exps:
-            # ref_loss = exp['info']['score'][-1]
+            ref_loss = exp['info']['score'][-1]
             time = np.array(exp['info']['profiling'])[:, 5]
             rel_score = np.array(exp['info']['score']) / ref_loss
             it_tol = np.where(rel_score < 1 + tol)[0]
@@ -102,18 +101,28 @@ def plot(name):
     for dataset in ['adhd', 'aviris', 'hcp']:
         parent_ids = datasets[dataset]['parent_ids']
         db, fs = get_connections(datasets[dataset]['sub_db'])
-        dataset_exps[dataset] = list(db.find({"$or":
+        exps = list(db.find({"$or":
             [{
                 'info.parent_id': {"$in": parent_ids},
                 "config.AB_agg": 'full' if dataset == 'adhd' else 'async',
-                "config.G_agg": 'average',
-                "config.Dx_agg": 'average',
+                "config.G_agg": 'average' if dataset != 'aviris' else 'masked',
+                "config.Dx_agg": 'average' if dataset != 'aviris' else 'masked',
                 "config.reduction": {"$ne": [1, 2]},
-            }, {
+            },
+                # {
+                # 'info.parent_id':
+                #     {"$in": parent_ids},
+                # "config.reduction": 1}
+            ]}))
+        if dataset == 'aviris':
+            ref = db.find_one({'_id': ObjectId('58337b4dfb5c8669e75e32a1')})
+        else:
+            ref = db.find_one({
                 'info.parent_id':
                     {"$in": parent_ids},
-                "config.reduction": 1}
-            ]}))
+                "config.reduction": 1})
+        exps.append(ref)
+        dataset_exps[dataset] = exps
 
     reductions = [1, 4, 6, 8, 12, 24]
     n_red = len(reductions)
@@ -134,8 +143,9 @@ def plot(name):
         for exp in sorted(exps,
                           key=lambda exp: int(exp['config']['reduction'])):
             score = np.array(exp['info']['score'])
-            # time = np.array(exp['info']['profiling'])[:, 5] / 3600 + 1e-3
-            time = np.array(exp['info']['time']) / 3600 + 1e-3
+            time = np.array(exp['info']['profiling'])[:, 5] / 3600
+            time += 0.001 if algorithm == 'adhd' else 0.01
+            # time = np.array(exp['info']['time']) / 3600 + 1e-3
             reduction = exp['config']['reduction']
             color = color_dict[reduction]
             axes[i].plot(time, score,
@@ -151,12 +161,12 @@ def plot(name):
     axes[2].set_xlabel('Time (h)')
     axes[2].xaxis.set_label_coords(1.1, -.105)
 
-    axes[0].set_xlim([1e-3, 2e-1])
-    axes[0].set_ylim([21800, 26200])
-    axes[1].set_xlim([60 / 3600, 35841 / 3600])
-    axes[1].set_ylim([0, 15])
-    axes[2].set_xlim([5e1 / 3600, 2e5 / 3600])
-    axes[2].set_ylim([96800, 104200])
+    axes[0].set_xlim([1.5e-3, 2e-1])
+    axes[0].set_ylim([21800, 27000])
+    axes[1].set_xlim([0.015, 10])
+    axes[1].set_ylim([3.2, 4])
+    axes[2].set_xlim([0.02, 30])
+    axes[2].set_ylim([96800, 104500])
 
     axes[0].annotate('ADHD',
                      # '$p = 6\\cdot 10^4\\ \\: n = 6000$',
