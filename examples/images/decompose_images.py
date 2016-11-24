@@ -152,13 +152,13 @@ def decompose_run(batch_size,
     _run.info['data_shape'] = (test_data.shape[1],
                                test_data.shape[2],
                                test_data.shape[3])
-    test_data = test_data.reshape((test_data.shape[0], -1))
     if center:
-        test_data -= np.mean(test_data, axis=1)[:, np.newaxis]
+        test_data -= np.mean(test_data, axis=(1, 2))[:, np.newaxis, np.newaxis, :]
     if normalize:
-        std = np.sqrt(np.sum(test_data ** 2, axis=1))
+        std = np.sqrt(np.sum(test_data ** 2, axis=(1, 2)))
         std[std == 0] = 1
-        test_data /= std[:, np.newaxis]
+        test_data /= std[:, np.newaxis, np.newaxis, :]
+    test_data = test_data.reshape((test_data.shape[0], -1))
 
     batcher = Batcher(patch_shape=patch_shape,
                       batch_size=buffer_size,
@@ -199,13 +199,13 @@ def decompose_run(batch_size,
                          n_samples=n_samples
                          )
     for batch, indices in batcher.generate(n_epochs=n_epochs):
-        batch = batch.reshape((batch.shape[0], -1))
         if center:
-            batch -= np.mean(batch, axis=1)[:, np.newaxis]
+            batch -= np.mean(batch, axis=(1, 2))[:, np.newaxis, np.newaxis, :]
         if normalize:
-            std = np.sqrt(np.sum(batch ** 2, axis=1))
+            std = np.sqrt(np.sum(batch ** 2, axis=(1, 2)))
             std[std == 0] = 1
-            batch /= std[:, np.newaxis]
+            batch /= std[:, np.newaxis, np.newaxis, :]
+        batch = batch.reshape((batch.shape[0], -1))
         dict_fact.partial_fit(batch, indices, check_input=False)
 
     with TemporaryDirectory() as dir:
