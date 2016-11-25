@@ -27,7 +27,7 @@ def config():
     l1_ratio = 0
     pen_l1_ratio = 1
     n_epochs = 30
-    verbose = 200
+    verbose = 100
     verbose_offset = 50
     n_components = 256
     non_negative_A = False
@@ -62,9 +62,11 @@ def non_negative():
 
 @compare_ex.config
 def config():
-    n_jobs = 4
+    n_jobs = 10
     param_updates_list = [
         {'G_agg': 'masked', 'Dx_agg': 'masked', 'AB_agg': 'async'},
+        {'G_agg': 'average', 'Dx_agg': 'average', 'AB_agg': 'async'},
+        {'G_agg': 'full', 'Dx_agg': 'average', 'AB_agg': 'async'},
     ]
     config_updates_list = []
     reductions = [6, 12, 24]
@@ -77,19 +79,6 @@ def config():
                                 'Dx_agg': 'full', 'AB_agg': 'full',
                                 'reduction': 1})
     del param_updates_list, reductions, param
-
-@compare_ex.named_config
-def non_negative():
-    pass
-
-
-@compare_ex.named_config
-def ref():
-    n_jobs = 1
-    config_updates_list = [{'G_agg': 'full',
-                            'Dx_agg': 'full', 'AB_agg': 'full',
-                            'reduction': 1}]
-
 
 # Cannot capture in joblib
 def single_run(our_config_updates, config, parent_id):

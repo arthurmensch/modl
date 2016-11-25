@@ -37,21 +37,21 @@ def config():
     alpha = 1e-1
     l1_ratio = 0
     pen_l1_ratio = 1
-    n_epochs = 30
-    verbose = 200
+    n_epochs = 3
+    verbose = 12
     verbose_offset = 50
     n_components = 256
-    non_negative_A = True
-    non_negative_D = True
-    normalize = False
-    center = False
+    non_negative_A = False
+    non_negative_D = False
+    normalize = True
+    center = True
     n_threads = 3
     subset_sampling = 'random'
     dict_reduction = 'follow'
     temp_dir = expanduser('~/tmp')
     buffer_size = 5000
     test_size = 4000
-    max_patches = None
+    max_patches = 100000
     patch_shape = (16, 16)
 
 
@@ -90,7 +90,7 @@ class ImageScorer():
         test_time = time.clock()
 
         filename = 'record_%s.npy' % dict_fact.n_iter_
-        if not self.call_counter % 1:
+        if not self.call_counter % 4:
             with TemporaryDirectory(dir=expanduser('~/tmp')) as dir:
                 filename = join(dir, filename)
                 np.save(filename, dict_fact.components_)

@@ -28,21 +28,21 @@ def plot_patches(fig, patches):
     return fig
 
 
-def plot_single_patch(ax, patch, x=3, y=3):
-    # patch -= patch.mean(axis=(0, 1))[np.newaxis, np.newaxis, :]
+def plot_single_patch(ax, patch, x=3, y=3, positive=True, average=False):
+    if not positive:
+        patch -= patch.mean(axis=(0, 1))[np.newaxis, np.newaxis, :]
     n_channel = x * y
     patch = patch.copy()
     std = np.sqrt((patch ** 2).sum(axis=(0, 1)))
     std[std == 0] = 0
     patch /= std[np.newaxis, np.newaxis, :]
     channel_step = patch.shape[2] // n_channel
-    # patch = np.concatenate([np.sum(patch[:, :, i * channel_step:
-    # (i + 1) * channel_step],
-    #                                axis=2)[..., np.newaxis]
-    #                         for i in range(n_channel)], axis=2)
+    if average:
+        patch = np.concatenate([np.sum(patch[:, :, i * channel_step:
+        (i + 1) * channel_step],
+                                       axis=2)[..., np.newaxis]
+                                for i in range(n_channel)], axis=2)
     patch = patch[:, :, np.linspace(0, patch.shape[2] - 1, n_channel).astype('int')]
-    # patch = np.rollaxis(patch, 2, 1).reshape(
-    #     (patch.shape[0], patch.shape[1] * n_channel))
     squares_patch = np.zeros(
         (x * patch.shape[0], y * patch.shape[1]))
     idx = 0
