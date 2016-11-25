@@ -28,11 +28,11 @@ def get_connections():
     return db.default.runs, fs
 
 def plot_qualitative():
-    ref = np.load('components_1_92689s_646800p.npy')
+    ref = np.load('components_1_49316s_841000p.npy')
 
-    reduced = np.load('components_24_105s_32400p.npy')
+    reduced = np.load('components_1_49316s_841000p.npy')
 
-    full = np.load('components_1_103s_1200p.npy')
+    full = np.load('components_1_177s_3000p.npy')
 
     ref = ref.reshape((-1, 16, 16, 223))
     reduced = reduced.reshape((-1, 16, 16, 223))
@@ -72,8 +72,8 @@ def plot_qualitative():
     axes[2, 0].annotate("""$r = 24$""", xycoords='axes fraction',
                         xy=(-0.5, 0.0), va='bottom', ha='left')
     trans = blended_transform_factory(fig.transFigure, axes[1, 0].transAxes)
-    line = Line2D([0, 1], [-0.18, -0.18], color='black', linestyle='--',
-                  linewidth=1, transform=trans)
+    line = Line2D([0, 1], [-0.11, -0.11], color='black', linestyle=':',
+                  linewidth=0.8, transform=trans)
     fig.lines.append(line)
     plt.savefig('patches.pdf')
     plt.show()
@@ -790,8 +790,8 @@ def plot_compare_reduction():
     plt.show()
 
 if __name__ == '__main__':
-    prepare_qualitative()
-    # plot_qualitative()
+    # prepare_qualitative()
+    plot_qualitative()
     # plot_method_comparison()
     # plot_compare_reduction()
     # plot_profiling()
