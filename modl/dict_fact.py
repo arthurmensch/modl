@@ -183,7 +183,7 @@ class DictMF(BaseEstimator):
 
         self.counter_ = np.zeros(n_cols + 1, dtype='int')
 
-        self.n_iter_ = np.zeros(1, dtype='long')
+        self.n_iter_ = np.zeros(1, dtype='int64')
 
         self.code_ = np.zeros((self.n_samples_, self.n_components))
 
@@ -265,7 +265,7 @@ class DictMF(BaseEstimator):
             self._init_arrays(X)
         if check_input:
             X = check_array(X, dtype='float', order='C',
-                            accept_sparse=self.sparse_)
+                            accept_sparse='csr' if self.sparse_ else None)
         return X
 
     def _refit(self, X):
