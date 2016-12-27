@@ -1,8 +1,11 @@
+"""Run with ssh -Nf drago-mongo and mongoDB running,
+or simply load the associated json files"""
+
 import gridfs
 import matplotlib as mpl
 import numpy as np
 from bson import ObjectId
-from bson.json_util import dumps
+from bson.json_util import dumps, loads
 from matplotlib import gridspec
 from matplotlib import patches
 from matplotlib.lines import Line2D
@@ -626,7 +629,129 @@ def plot_method_comparison():
     plt.show()
 
 
-def plot_compare_reduction():
+def plot_compare_reductions_poster():
+    with open('compare_reductions.json', 'r') as f:
+        s = f.read()
+    dataset_exps = loads(s)
+    # Plotting
+    reductions = [1, 4, 6, 8, 12, 24]
+    n_red = len(reductions)
+
+    # fig, axes = plt.subplots(1, 4, figsize=(7.141, 1.4))
+    fig, axes = plt.subplots(2, 2, figsize=(4, 2.1))
+    axes = axes.ravel()
+    fig.subplots_adjust(hspace=0.4)
+    fig.subplots_adjust(right=0.98, left=0.07, bottom=0.1, top=0.96,
+                        wspace=0.25)
+
+    colormap = sns.cubehelix_palette(n_red, rot=0.3, light=0.85,
+                                     reverse=False)
+    ref_colormap = sns.cubehelix_palette(n_red, start=2, rot=0.2,
+                                         light=0.7,
+                                         reverse=False)
+    color_dict = {reduction: color for reduction, color in
+                  zip(reductions, colormap)}
+    color_dict[1] = ref_colormap[0]
+    for i, algorithm in enumerate(['adhd', 'aviris', 'aviris_dl', 'hcp']):
+        exps = dataset_exps[algorithm]
+        for exp in sorted(exps,
+                          key=lambda exp: int(exp['config']['reduction'])):
+            score = np.array(exp['info']['score'])
+            if algorithm == 'hcp':
+                score -= 1e5
+            elif algorithm == 'adhd':
+                score /= 1e3
+            time = np.array(exp['info']['profiling'])[:, 5] / 3600
+            time += 0.001 if algorithm == 'adhd' else 0.01
+            # time = np.array(exp['info']['time']) / 3600 + 1e-3
+            reduction = exp['config']['reduction']
+            color = color_dict[reduction]
+            axes[i].plot(time, score,
+                         label="$r = %i$" % reduction if reduction != 1 else "None",
+                         zorder=reduction if reduction != 1 else 1,
+                         color=color,
+                         markersize=2)
+        axes[i].set_xscale('log')
+        sns.despine(fig, axes)
+
+    axes[0].set_ylabel('Test objective function')
+    axes[0].yaxis.set_label_coords(-0.3, 0.4)
+
+    for i in [0, 2]:
+        axes[i].set_xlabel('Time (h)')
+        ticklab = axes[i].xaxis.get_ticklabels()[0]
+        trans = ticklab.get_transform()
+        axes[i].xaxis.set_label_coords(axes[i].get_xlim()[0] * 1.5, 0,
+                                       transform=trans)
+
+    axes[0].set_xlim([1.5e-3, 2e-1])
+    axes[0].set_ylim([21.8, 27])
+    axes[1].set_xlim([0.015, 10])
+    axes[1].set_ylim([3.2, 4])
+    axes[2].set_xlim([0.015, 10])
+    axes[2].set_ylim([34, 45])
+    axes[3].set_xlim([0.02, 30])
+    axes[3].set_ylim([-3200, 4500])
+    axes[3].annotate('$+ 10^5$', xy=(0.04, 1.1), xycoords='axes fraction', va='top',
+                     ha='left', fontsize=6)
+    axes[0].annotate('$\\times 10^3$', xy=(0.04, 1.1), xycoords='axes fraction',
+                     va='top',
+                     ha='left', fontsize=6)
+    axes[0].annotate('ADHD\nSparse dictionary',
+                     # '$p = 6\\cdot 10^4\\ \\: n = 6000$',
+                        xy=(0.6, 1), xycoords='axes fraction', va='top', ha='center')
+    axes[1].annotate('Aviris\nNMF',
+                     # '$p = 6\\cdot 10^4\\ \\: n = 1\\cdot 10^5$',
+                     xy=(0.6, 1), xycoords='axes fraction', va='top', ha='center')
+    axes[2].annotate('Aviris\nDictionary learning',
+                     # '$p = 6\\cdot 10^4\\ \\: n = 1\\cdot 10^5$',
+                     xy=(0.6, 1), xycoords='axes fraction', va='top', ha='center')
+    axes[3].annotate('HCP\nSparse dictionary',
+                     # 'p = 2\\cdot 10^5\\ \\: n = 2\\cdot 10^6$',
+                     xy=(0.6, 1), xycoords='axes fraction', va='top', ha='center')
+
+    axes[0].annotate('\\textbf{2 GB}', xy=(0.8, 0.5),
+                     xycoords='axes fraction',
+                     ha='center')
+    axes[1].annotate('\\textbf{103 GB}', xy=(0.8, 0.5),
+                     xycoords='axes fraction', ha='center')
+    axes[2].annotate('\\textbf{103 GB}', xy=(0.8, 0.5),
+                     xycoords='axes fraction', ha='center')
+    axes[3].annotate('\\textbf{2 TB}', xy=(0.8, 0.5),
+                     xycoords='axes fraction',
+                     ha='center')
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    handles_2, labels_2 = axes[3].get_legend_handles_labels()
+
+    handles += handles_2[-1:]
+    labels += labels_2[-1:]
+
+    # axes[0].annotate('Reduction', xy=(-0.24, -0.25),
+    # axes[2].annotate('Reduction', xy=(-0.15, -0.35),
+    #                  xycoords='axes fraction',
+    #                  va='top')
+    # axes[0].legend(handles[:n_red],
+    plt.savefig('compare_reductions_poster.pdf')
+    legend_fig = plt.figure()
+    legend = plt.figlegend(handles[:n_red],
+                   [('$r = %s$' % reduction) if reduction != 1 else 'None'
+                    for
+                    reduction in reductions],
+                   loc='center',
+                   title='Reduction',
+                   handlelength=1,
+
+                   ncol=1,
+                   frameon=False)
+    legend_fig.canvas.draw()
+    legend_fig.savefig('legend_cropped.pdf',
+                       bbox_inches=legend.get_window_extent().transformed(
+                           legend_fig.dpi_scale_trans.inverted()))
+    plt.show()
+
+
+def plot_compare_reductions():
     datasets = {
         'hcp': {
                 'parent_ids': [ObjectId('580e4a3cfb5c865d3c831640'),
@@ -789,9 +914,11 @@ def plot_compare_reduction():
     plt.savefig('compare_reduction.pdf')
     plt.show()
 
+
 if __name__ == '__main__':
     # prepare_qualitative()
-    plot_qualitative()
+    # plot_qualitative()
     # plot_method_comparison()
-    # plot_compare_reduction()
+    # plot_compare_reductions()
+    plot_compare_reductions_poster()
     # plot_profiling()
