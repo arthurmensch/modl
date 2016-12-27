@@ -8,15 +8,6 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('datasets', parent_package, top_path)
 
-    extensions = [
-                  Extension('modl/datasets/images_fast',
-                            sources=['modl/datasets/images_fast.pyx'],
-                            include_dirs=[numpy.get_include(),
-                                          'modl/_utils/randomkit'],
-                            ),
-                  ]
-    config.ext_modules += cythonize(extensions)
-
     config.add_subpackage('tests')
 
     return config

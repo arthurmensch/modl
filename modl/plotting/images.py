@@ -16,8 +16,10 @@ def plot_patches(fig, patches):
             patches = patches[:, :, :, :3]
             patches = np.rollaxis(patches, 3, 2).reshape(
                 (patches.shape[0], patches.shape[1], patches.shape[2] * 3))
-    for i, patch in enumerate(patches[:256]):
-        ax = fig.add_subplot(16, 16, i + 1)
+    patches = patches[:256]
+    side_size =ceil(sqrt(patches.shape[0]))
+    for i, patch in enumerate(patches):
+        ax = fig.add_subplot(side_size, side_size, i + 1)
         ax.imshow(
             patch,
             interpolation='nearest')

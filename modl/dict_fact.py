@@ -24,7 +24,7 @@ class DictFact(BaseEstimator):
                  learning_rate=1.,
                  batch_size=1,
                  offset=0,
-                 sample_learning_rate=None,
+                 sample_learning_rate=0.76,
                  # Reduction parameter
                  reduction=1,
                  G_agg='full',
@@ -46,7 +46,6 @@ class DictFact(BaseEstimator):
                  n_threads=1,
                  temp_dir=None,
                  callback=None,
-                 buffer_size=None,
                  non_negative_D=False,
                  non_negative_A=False,
                  ):
@@ -88,7 +87,7 @@ class DictFact(BaseEstimator):
         self.non_negative_D = non_negative_D
         self.non_negative_A = non_negative_A
 
-        self.buffer_size = buffer_size
+    # Binding with Cython extension type
 
     @property
     def initialized(self):
@@ -96,31 +95,35 @@ class DictFact(BaseEstimator):
 
     @property
     def A_(self):
-        return np.array(self._impl.A_)
+        return np.asarray(self._impl.A_)
 
     @property
     def B_(self):
-        return np.array(self._impl.B_)
+        return np.asarray(self._impl.B_)
 
     @property
     def G_(self):
-        return np.array(self._impl.G_)
+        return np.asarray(self._impl.G_)
 
     @property
     def G_average_(self):
-        return np.array(self._impl.G_average_)
+        return np.asanyarray(self._impl.G_average_)
 
     @property
     def Dx_average_(self):
-        return np.array(self._impl.Dx_average_)
+        return np.asanyarray(self._impl.Dx_average_)
 
     @property
     def D_(self):
-        return np.array(self._impl.D_)
+        return np.asarray(self._impl.D_)
 
     @property
     def code_(self):
-        return np.array(self._impl.code_)
+        return np.asarray(self._impl.code_)
+
+    @property
+    def norm_(self):
+        return np.asarray(self._impl.norm_)
 
     @property
     def total_counter_(self):
@@ -128,19 +131,23 @@ class DictFact(BaseEstimator):
 
     @property
     def sample_counter_(self):
-        return np.array(self._impl.sample_counter_)
+        return np.asarray(self._impl.sample_counter_)
 
     @property
     def feature_counter_(self):
-        return np.array(self._impl.feature_counter_)
+        return np.asarray(self._impl.feature_counter_)
 
     @property
     def profiling_(self):
-        return np.array(self._impl.profiling_, copy='True')
+        return np.asarray(self._impl.profiling_, copy='True')
 
     @property
     def n_iter_(self):
         return self._impl.total_counter_
+
+    @property
+    def components_(self):
+        return np.array(self.D_, copy=True)
 
     def _initialize(self, X_shape, data_for_init=None):
         """Initialize statistic and dictionary"""
@@ -178,24 +185,11 @@ class DictFact(BaseEstimator):
         params = self._get_impl_params()
         random_seed = random_state.randint(max_int)
 
-        if self.buffer_size is None:
-            buffer_size = self.n_samples_ // 10
-            temp_dir = self.temp_dir
-        elif self.buffer_size >= self.n_samples_:
-            temp_dir = None
-            buffer_size = self.n_samples_
-        else:
-            buffer_size = self.buffer_size
-            temp_dir = self.temp_dir
         self._impl = DictFactImpl(D, self.n_samples_,
                                   n_threads=self.n_threads,
                                   random_seed=random_seed,
-                                  temp_dir=temp_dir,
-                                  buffer_size=buffer_size,
+                                  temp_dir=self.temp_dir,
                                   **params)
-
-    def _update_impl_params(self):
-        self._impl.set_impl_params(**self._get_impl_params())
 
     def _get_impl_params(self):
         G_agg = {
@@ -226,16 +220,12 @@ class DictFact(BaseEstimator):
         else:
             dict_reduction = self.dict_reduction
 
-        if self.sample_learning_rate is None:
-            self.sample_learning_rate_ = 2.5 - 2 * self.learning_rate
-        else:
-            self.sample_learning_rate_ = self.sample_learning_rate
-
         if self.verbose > 0:
-            verbose_iter = np.unique(((np.logspace(log(self.verbose_offset, 10), log(self.n_samples_ *
+            verbose_iter = np.unique(((
+            np.logspace(log(self.verbose_offset, 10), log(self.n_samples_ *
                                                           self.n_epochs // self.batch_size,
                                                           10),
-                                                   self.verbose) - self.verbose_offset).astype(
+                        self.verbose) - self.verbose_offset).astype(
                 'i4')) * self.batch_size)
             print("Verbose iter: %s" % verbose_iter)
         else:
@@ -247,7 +237,7 @@ class DictFact(BaseEstimator):
                'lasso_tol': self.lasso_tol,
                'purge_tol': self.purge_tol,
                'learning_rate': self.learning_rate,
-               'sample_learning_rate': self.sample_learning_rate_,
+               'sample_learning_rate': self.sample_learning_rate,
                'offset': self.offset,
                'batch_size': self.batch_size,
                'G_agg': G_agg[self.G_agg],
@@ -265,14 +255,8 @@ class DictFact(BaseEstimator):
 
     def set_params(self, **params):
         if self.initialized:
-            if 'n_samples' in params:
-                raise ValueError('Cannot reset attribute n_samples after'
-                                 'initialization')
-            if 'n_threads' in params:
-                raise ValueError('Cannot reset attribute n_threads after'
-                                 'initialization')
-            BaseEstimator.set_params(self, **params)
-            self._update_impl_params()
+            return ValueError('Cannot change estimator parameter once'
+                              'initialized')
         else:
             BaseEstimator.set_params(self, **params)
 
@@ -301,8 +285,6 @@ class DictFact(BaseEstimator):
             Dataset to learn the dictionary from
         """
         X = check_array(X, dtype='float', order='C')
-        # if not X.flags['WRITEABLE']:
-        #     X = np.array(X, copy=True)
         self._initialize(X.shape, data_for_init=X)
         sample_indices = np.arange(X.shape[0], dtype='i4')
         if self.max_n_iter > 0:
@@ -337,7 +319,3 @@ class DictFact(BaseEstimator):
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
                               + (1 - self.pen_l1_ratio) * norm2_code / 2)
         return (loss + regul) / X.shape[0]
-
-    @property
-    def components_(self):
-        return np.array(self.D_, copy=True)

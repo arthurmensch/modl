@@ -12,7 +12,6 @@ from cython cimport view
 from libc.stdio cimport printf
 # noinspection PyUnresolvedReferences
 from libc.math cimport pow, ceil, floor, fmin, fmax, fabs
-from posix.time cimport clock_gettime, CLOCK_MONOTONIC_RAW, timespec, time_t
 
 from libc.math cimport sqrt
 from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
@@ -26,7 +25,6 @@ from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, \
 
 from tempfile import NamedTemporaryFile
 import numpy as np
-import os
 
 # import
 from cython.parallel import parallel, prange
@@ -131,7 +129,6 @@ cdef class DictFactImpl(object):
     cdef readonly int total_counter_
 
     cdef readonly double[:] norm_
-    cdef readonly double[:] profiling_
 
     cdef double[::1, :] this_X
     cdef double[:, ::1] X_batch
@@ -147,7 +144,6 @@ cdef class DictFactImpl(object):
     cdef double[:, ::1] H
     cdef double[:, ::1] XtA
 
-
     cdef Sampler feature_sampler_1
     cdef Sampler feature_sampler_2
     cdef int[:] D_range
@@ -158,7 +154,6 @@ cdef class DictFactImpl(object):
     cdef readonly unicode G_average_filename
     cdef readonly unicode temp_dir
 
-    cdef readonly int buffer_size
 
     def __init__(self,
                  double[::1, :] D,
@@ -170,7 +165,7 @@ cdef class DictFactImpl(object):
                  double purge_tol=0,
                  # Hyper-parameters
                  double learning_rate=1.,
-                 double sample_learning_rate=0.5,
+                 double sample_learning_rate=0.76,
                  int batch_size=1,
                  double offset=0,
                  # Reduction parameter
@@ -187,7 +182,6 @@ cdef class DictFactImpl(object):
                  unsigned long random_seed=0,
                  int[:] verbose_iter=None,
                  int n_threads=1,
-                 int buffer_size=1000,
                  unicode temp_dir=None,
                  object callback=None):
         cdef int i
@@ -260,8 +254,6 @@ cdef class DictFactImpl(object):
         self.G_ = view.array((self.n_components, self.n_components),
                                           sizeof(double),
                                           format='d', mode='fortran')
-        self.buffer_size = buffer_size
-
 
         if self.G_agg == 2:
             D_ptr = &self.D_[0, 0]
@@ -289,9 +281,6 @@ cdef class DictFactImpl(object):
                                         order='F',
                                         shape=(self.n_components, self.n_components,
                                                self.n_samples))
-                self.G_average_temp = view.array((self.n_components, self.n_components,
-                            self.buffer_size), sizeof(double),
-                                            format='d', mode='fortran')
         if self.Dx_agg == 3:
             self.Dx_average_ = view.array((self.n_components, self.n_samples),
                                               sizeof(double),
@@ -362,148 +351,28 @@ cdef class DictFactImpl(object):
             random_seed = self.random_state_.randint()
             self.feature_sampler_2 = Sampler(self.n_features,
                                              self.dict_reduction,
-                                        self.subset_sampling, random_seed)
+                                             self.subset_sampling, random_seed)
 
         self.callback = callback
-
-        self.profiling_ = view.array((8, ), sizeof(double),
-                               format='d')
-        self.profiling_[:] = 0
 
         self.verbose_iter = verbose_iter
         self.verbose_iter_idx_ = 0
 
-    cpdef void set_impl_params(self,
-                               double alpha=1.0,
-                               double l1_ratio=0.,
-                               double pen_l1_ratio=0.,
-                               double lasso_tol=1e-3,
-                               double purge_tol=0,
-                               # Hyper-parameters
-                               double learning_rate=1.,
-                               double sample_learning_rate=0.5,
-                               int batch_size=1,
-                               double offset=0,
-                               # Reduction parameter
-                               int reduction=1,
-                               int G_agg=1,
-                               int Dx_agg=1,
-                               int AB_agg=1,
-                               int subset_sampling=1,
-                               bint non_negative_A=False,
-                               bint non_negative_D=False,
-                               int dict_reduction=0,
-                               int[:] verbose_iter=None,
-                               # Dict parameter
-                               # Generic parameters
-                               object callback=None):
-        cdef int old_len_subset
-        cdef int old_G_agg
-        cdef double* G_ptr
-        cdef double* D_ptr
-
-        self.AB_agg = AB_agg
-        self.subset_sampling = subset_sampling
-        self.dict_reduction = dict_reduction
-        old_G_agg = self.G_agg
-        self.G_agg = G_agg
-        self.Dx_agg = Dx_agg
-        self.non_negative_A = non_negative_A
-        self.non_negative_D = non_negative_D
-
-        if self.G_agg == 2 and old_G_agg != 2:
-            D_ptr = &self.D_[0, 0]
-            G_ptr = &self.G_[0, 0]
-            dgemm(&NTRANS, &TRANS,
-                  &self.n_components, &self.n_components, &self.n_features,
-                  &FONE,
-                  D_ptr, &self.n_components,
-                  D_ptr, &self.n_components,
-                  &FZERO,
-                  G_ptr, &self.n_components
-                  )
-
-        if self.G_agg != 3:
-            self.G_average_ = None
-        elif self.Dx_agg == 3 and self.G_average_ is None:
-            self.G_average_ = view.array((self.n_components, self.n_components,
-                        self.n_samples), sizeof(double),
-                                        format='d', mode='fortran')
-
-        if self.Dx_agg != 3:
-            self.Dx_average_ = None
-        elif self.Dx_agg == 3 and self.Dx_average_ is None:
-            self.Dx_average_ = view.array((self.n_components, self.n_samples),
-                                              sizeof(double),
-                                              format='d', mode='fortran')
-        if self.pen_l1_ratio != 0:
-            self.G_temp = None
-        elif self.pen_l1_ratio == 0 and self.G_temp is None:
-            self.G_temp = view.array((self.n_components, self.n_components),
-                                              sizeof(double),
-                                              format='d', mode='fortran')
-        if self.pen_l1_ratio == 0:
-            self.H = None
-            self.XtA = None
-        elif self.pen_l1_ratio != 0 and self.H is None:
-            self.H = view.array((self.n_thread_batches, self.n_components),
-                  sizeof(double),
-                  format='d', mode='c')
-            self.XtA = view.array((self.n_thread_batches, self.n_components),
-                  sizeof(double),
-                  format='d', mode='c')
-
-        self.alpha = alpha
-        self.l1_ratio = l1_ratio
-        self.pen_l1_ratio = pen_l1_ratio
-        self.lasso_tol = lasso_tol
-        self.purge_tol = purge_tol
-
-        self.reduction = reduction
-        self.feature_sampler_1.reduction = self.reduction
-
-        if self.dict_reduction != 0:
-            if self.feature_sampler_2 is None:
-                random_seed = self.random_state_.randint()
-                self.feature_sampler_2 = Sampler(self.n_features,
-                                 self.dict_reduction,
-                            self.subset_sampling, random_seed)
-            else:
-                self.feature_sampler_2.reduction = self.dict_reduction
-        else:
-            self.feature_sampler_2 = None
-        self.learning_rate = learning_rate
-        self.sample_learning_rate = sample_learning_rate
-        self.offset = offset
-
-        self.verbose_iter = verbose_iter
-        if not hasattr(self, 'verbose_iter_idx_'):
-            self.verbose_iter_idx_ = 0
-        self.callback = callback
-
-    cpdef void partial_fit(self, np.ndarray[double, ndim=2,
-                                            mode='c'] X, int[:] sample_indices,
-                           ) except *:
+    cpdef void partial_fit(self, np.ndarray[double, ndim=2, mode='c'] X,
+                           int[:] sample_indices) except *:
         cdef int this_n_samples = X.shape[0]
         cdef int n_batches = int(ceil(float(this_n_samples) / self.batch_size))
-        cdef int n_big_batches = int(ceil(float(this_n_samples) / self.buffer_size))
-        cdef int big_step = n_batches / n_big_batches
         cdef int start = 0
         cdef int stop = 0
         cdef int len_batch = 0
 
-        cdef int i, ii, jj, bb, j, k, t, p, iii, kk, h
-        cdef int batch_start, sample_start, batch_stop, sample_stop
+        cdef int i, ii, jj, bb, j, k, t, p, h
 
         cdef int[:] subset
 
         cdef int[:] random_order = self.random_state_.permutation(this_n_samples)
 
-        cdef timespec tv0, tv1, tv2, tv3
-
         cdef int reduction_int = int(self.reduction)
-
-        cdef int min_feature_counter = 0
 
         cdef int next_verbose_iter = 0
         if self.verbose_iter is not None and \
@@ -512,9 +381,61 @@ cdef class DictFactImpl(object):
         else:
             next_verbose_iter = -1
 
+        for k in range(n_batches):
+            if self.verbose_iter is not None and\
+                    self.total_counter_ >= next_verbose_iter >= 0:
+                printf("Iteration %i\n", self.total_counter_)
+                if self.callback is not None:
+                    self.callback()
+                self.verbose_iter_idx_ += 1
+                if self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
+                    next_verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
+                else:
+                    # Disable verbosity
+                    next_verbose_iter = -1
+
+            start = k * self.batch_size
+            stop = start + self.batch_size
+            if stop > this_n_samples:
+                stop = this_n_samples
+            len_batch = stop - start
+            self.total_counter_ += len_batch
+
+            subset = self.feature_sampler_1.yield_subset()
+            for jj in range(subset.shape[0]):
+                j = subset[jj]
+                self.feature_counter_[j] += len_batch
+
+            # X is a numpy array: we need gil
+            for bb, ii in enumerate(range(start, stop)):
+                self.sample_indices_batch[bb] = \
+                    sample_indices[random_order[ii]]
+                for j in range(self.n_features):
+                    self.X_batch[bb, j] = X[random_order[ii], j]
+                self.sample_counter_[self.sample_indices_batch[bb]] += 1
+            with nogil:
+                self.update_code(subset, self.X_batch[:len_batch],
+                                 self.sample_indices_batch[:len_batch]
+                                 )
+                self.random_state_.shuffle(self.D_range)
+
+                if self.dict_reduction != 0:
+                    subset = self.feature_sampler_2.yield_subset()
+
+                if self.purge_tol > 0 and not self.total_counter_ % reduction_int:
+                    self.clean_dict()
+
+                if self.AB_agg != 2:
+                    self.update_dict(subset)
+                else:
+                    self.update_dict_and_B(subset, len_batch)
+
+
+    cdef void update_dict_and_B(self, int[:] subset, int len_batch) nogil:
+        """Parallel dictionary update and B update"""
         cdef double w_A, w_batch, one_m_w
 
-        cdef int subset_step, start_corr, stop_corr, size_corr
+        cdef int subset_step, start_corr, stop_corr, size_corr, t
 
         cdef int corr_threads = 2 if self.n_threads < 2 else self.n_threads
 
@@ -523,122 +444,30 @@ cdef class DictFactImpl(object):
         else:
             subset_step = self.n_features
 
-
-        with nogil:
-            # Outer loop for G_agg = 'average'
-            for h in range(n_big_batches):
-                batch_start = h * big_step
-                sample_start = batch_start * self.batch_size
-                batch_stop = batch_start + big_step
-                if batch_stop > n_batches:
-                    batch_stop = n_batches
-                sample_stop = batch_stop * self.batch_size
-                if sample_stop > this_n_samples:
-                    sample_stop = this_n_samples
-                # Read on disk
-                clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
-                if self.temp_dir is not None and self.G_agg == 3:
-                    for iii, ii in enumerate(range(sample_start, sample_stop)):
-                        i = sample_indices[random_order[ii]]
-                        for p in range(self.n_components):
-                            for q in range(self.n_components):
-                                self.G_average_temp[p, q, iii] = self.G_average_[p, q, i]
-                clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-                self.profiling_[6] += tv1.tv_sec-tv0.tv_sec
-                self.profiling_[6] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
-
-                for kk, k in enumerate(range(batch_start, batch_stop)):
-                    if self.verbose_iter is not None and\
-                            self.total_counter_ >= next_verbose_iter >= 0:
-                        printf("Iteration %i\n", self.total_counter_)
-                        if self.callback is not None:
-                            with gil:
-                                self.callback()
-                        self.verbose_iter_idx_ += 1
-                        if self.verbose_iter_idx_ < self.verbose_iter.shape[0]:
-                            next_verbose_iter = self.verbose_iter[self.verbose_iter_idx_]
-                        else:
-                            # Disable verbosity
-                            next_verbose_iter = -1
-
-                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
-                    start = k * self.batch_size
-                    stop = start + self.batch_size
-                    if stop > this_n_samples:
-                        stop = this_n_samples
-                    len_batch = stop - start
-                    self.total_counter_ += len_batch
-
-                    subset = self.feature_sampler_1.yield_subset()
-                    for jj in range(subset.shape[0]):
-                        j = subset[jj]
-                        self.feature_counter_[j] += len_batch
-
-                    # X is a numpy array
-                    with gil:
-                        for bb, ii in enumerate(range(start, stop)):
-                            self.sample_indices_batch[bb] = \
-                                sample_indices[random_order[ii]]
-                            for j in range(self.n_features):
-                                self.X_batch[bb, j] = X[random_order[ii], j]
-                            self.sample_counter_[self.sample_indices_batch[bb]] += 1
-                    self.update_code(subset, self.X_batch[:len_batch],
-                                     self.sample_indices_batch[:len_batch],
-                                     kk * self.batch_size if self.G_agg == 3
-                                                             and self.temp_dir is not None else 0
-                                     )
-                    self.random_state_.shuffle(self.D_range)
-
-                    if self.dict_reduction != 0:
-                        subset = self.feature_sampler_2.yield_subset()
-
-                    if self.purge_tol > 0 and not self.total_counter_ % reduction_int:
-                        self.clean_dict()
-
-                    if self.AB_agg != 2:
-                        self.update_dict(subset)
-                    else:
-                        w_A = get_simple_weights(self.total_counter_, len_batch,
-                                                 self.learning_rate,
-                                                 self.offset)
-                        w_batch = w_A / len_batch
-                        one_m_w = 1 - w_A
-                        clock_gettime(CLOCK_MONOTONIC_RAW, &tv2)
-                        with parallel(num_threads=self.n_threads):
-                            for t in prange(corr_threads):
-                                if t == 0:
-                                    self.update_dict(subset)
-                                else:
-                                    start_corr = (t - 1) * subset_step
-                                    stop_corr = min(self.n_features, t * subset_step)
-                                    size_corr = stop_corr - start_corr
-                                    # Hack as X is C-ordered
-                                    dgemm(&NTRANS, &TRANS,
-                                          &self.n_components, &size_corr, &len_batch,
-                                          &w_batch,
-                                          &self.Dx[0, 0], &self.n_components,
-                                          &self.X_batch[0, 0] + start_corr, &self.n_features,
-                                          &one_m_w,
-                                          &self.B_[0, 0] + start_corr * self.n_components, &self.n_components)
-                        clock_gettime(CLOCK_MONOTONIC_RAW, &tv3)
-                        self.profiling_[7] += tv3.tv_sec - tv2.tv_sec
-                        self.profiling_[7] += (tv3.tv_nsec - tv2.tv_nsec) / 1e9
-
-
-                    clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-                    self.profiling_[5] += tv1.tv_sec-tv0.tv_sec
-                    self.profiling_[5] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
-                # Write on disk
-                clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
-                if self.temp_dir is not None and self.G_agg == 3:
-                    for iii, ii in enumerate(range(sample_start, sample_stop)):
-                        i = sample_indices[random_order[ii]]
-                        for p in range(self.n_components):
-                            for q in range(self.n_components):
-                                self.G_average_[p, q, i] = self.G_average_temp[p, q, iii]
-                clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-                self.profiling_[6] += tv1.tv_sec-tv0.tv_sec
-                self.profiling_[6] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+        w_A = get_simple_weights(self.total_counter_, len_batch,
+                                 self.learning_rate,
+                                 self.offset)
+        w_batch = w_A / len_batch
+        one_m_w = 1 - w_A
+        with parallel(num_threads=self.n_threads):
+            for t in prange(corr_threads):
+                if t == 0:
+                    self.update_dict(subset)
+                else:
+                    start_corr = (t - 1) * subset_step
+                    stop_corr = t * subset_step
+                    if stop_corr > self.n_features:
+                        stop_corr = self.n_features
+                    size_corr = stop_corr - start_corr
+                    # Hack as X is C-ordered
+                    dgemm(&NTRANS, &TRANS,
+                          &self.n_components, &size_corr, &len_batch,
+                          &w_batch,
+                          &self.Dx[0, 0], &self.n_components,
+                          &self.X_batch[0, 0] + start_corr, &self.n_features,
+                          &one_m_w,
+                          &self.B_[0, 0] + start_corr * self.n_components,
+                          &self.n_components)
 
     cdef void clean_dict(self) nogil:
         cdef int k, p
@@ -671,27 +500,8 @@ cdef class DictFactImpl(object):
                     self.B_[p, jj] /= 2
                 self.B_[k, :] = self.B_[p, :]
 
-                # for jj in range(self.n_features):
-                #     # self.D_[k, jj] = self.D_[max_k, jj]
-                #     self.D_[k, jj] = self.random_state_.randn()
-                # enet_scale_fast(self.D_[k, :], self.l1_ratio)
-                # if self.G_agg == 2:
-                #     dgemv(&NTRANS,
-                #           &self.n_components, &self.n_features,
-                #           &FONE,
-                #           D_ptr, &self.n_components,
-                #           D_ptr + k, &self.n_components,
-                #           &FZERO,
-                #           G_ptr + k * self.n_components, &ONE
-                #           )
-                #     # Only the k-th column aof G_ as been changed
-                #     for p in range(self.n_components):
-                #         self.G_[k, p] = self.G_[p, k]
-                # self.norm_[k] = 1
-
     cdef int update_code(self, int[:] subset, double[:, ::1] X,
-                         int[:] sample_indices,
-                         int G_average_offset) nogil except *:
+                         int[:] sample_indices) nogil except *:
         """
         Compute code_ for A_ mini-batch and update algorithm statistics accordingly
 
@@ -736,8 +546,6 @@ cdef class DictFactImpl(object):
                                         / self.n_thread_batches))
         cdef int subset_step = int(ceil(float(n_features) / self.n_threads))
 
-        cdef timespec tv0, tv1
-
         cdef double* R_ptr = &self.R_[0, 0]
 
         if self.G_agg == 3:
@@ -755,7 +563,6 @@ cdef class DictFactImpl(object):
                 j = subset[jj]
                 self.D_subset[k, jj] = self.D_[k, j]
         # Dx computation
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         # Dx = np.dot(D_subset, this_X.T)
         if self.Dx_agg == 2:
             # X is C-ordered
@@ -796,12 +603,8 @@ cdef class DictFactImpl(object):
                         self.Dx_average_[p, i] *= 1 - w_sample
                         self.Dx_average_[p, i] += self.Dx[p, ii] * w_sample
                         self.Dx[p, ii] = self.Dx_average_[p, i]
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-        self.profiling_[0] += tv1.tv_sec-tv0.tv_sec
-        self.profiling_[0] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
         # G_ computation
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         if self.G_agg != 2:
             dgemm(&NTRANS, &TRANS,
                   &n_components, &n_components, &len_subset,
@@ -824,22 +627,10 @@ cdef class DictFactImpl(object):
                                        -self.sample_learning_rate)
                         for p_ in range(n_components):
                             for q_ in range(n_components):
-                                if self.temp_dir is not None:
-                                    self.G_average_temp[p_, q_, G_average_offset + ii_] *= 1 - w_sample_
-                                    self.G_average_temp[p_, q_, G_average_offset + ii_] += self.G_[p_, q_] * w_sample_
-
-                                else:
-                                    self.G_average_[p_, q_, i_] *= 1 - w_sample_
-                                    self.G_average_[p_, q_, i_] += self.G_[p_, q_] * w_sample_
-
-
-
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-        self.profiling_[1] += tv1.tv_sec-tv0.tv_sec
-        self.profiling_[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
+                                self.G_average_[p_, q_, i_] *= (1 - w_sample_)
+                                self.G_average_[p_, q_, i_] += self.G_[p_, q_] * w_sample_
 
         # code_ computation
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         if self.pen_l1_ratio == 0:
             if self.G_agg == 3:
                 with parallel(num_threads=self.n_threads):
@@ -848,14 +639,11 @@ cdef class DictFactImpl(object):
                         stop = min(len_batch, (t + 1) * sample_step)
                         for ii_ in range(start, stop):
                             i_ = sample_indices[ii_]
-                            if self.temp_dir is not None:
-                                for p_ in range(n_components):
-                                    for q_ in range(n_components):
-                                        self.G_temp[p_, q_, t] = self.G_average_temp[p_, q_, G_average_offset + ii_]
-                            else:
-                                for p_ in range(n_components):
-                                    for q_ in range(n_components):
-                                        self.G_temp[p_, q_, t] = self.G_average_[p_, q_, i_]
+                            w_sample_ = pow(self.sample_counter_[i_],
+                                            -self.sample_learning_rate)
+                            for p_ in range(n_components):
+                                for q_ in range(n_components):
+                                    self.G_temp[p_, q_, t] = self.G_average_[p_, q_, i_]
                             for p_ in range(n_components):
                                 self.G_temp[p_, p_, t] += self.alpha
                             dposv(&UP, &n_components, &ONE, G_temp_ptr
@@ -913,8 +701,7 @@ cdef class DictFactImpl(object):
                             self.code_[i_], self.alpha * self.pen_l1_ratio,
                                           self.alpha * (1 - self.pen_l1_ratio),
                             self.G_ if self.G_agg != 3 else
-                            (self.G_average_[:, :, i_] if self.temp_dir is None
-                            else self.G_average_temp[:, :, G_average_offset + ii_]),
+                            self.G_average_[:, :, i_],
                             self.Dx[:, ii_],
                             this_X_norm,
                             self.H[t],
@@ -924,12 +711,7 @@ cdef class DictFactImpl(object):
                         for p_ in range(n_components):
                             self.Dx[p_, ii_] = self.code_[i_, p_]
 
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-        self.profiling_[2] += tv1.tv_sec-tv0.tv_sec
-        self.profiling_[2] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
-
         # Aggregation
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         w_A = get_simple_weights(self.total_counter_, len_batch,
                                  self.learning_rate,
                                  self.offset)
@@ -1028,10 +810,6 @@ cdef class DictFactImpl(object):
                 for k in range(n_components):
                     self.B_[k, j] = self.R_[k, jj]
 
-
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-        self.profiling_[3] += tv1.tv_sec-tv0.tv_sec
-        self.profiling_[3] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
         return 0
 
     cdef void update_dict(self,
@@ -1048,8 +826,6 @@ cdef class DictFactImpl(object):
         cdef unsigned long k, kk, j, jj
         cdef double norm_temp = 0
 
-        cdef timespec tv0, tv1
-
         if self.G_agg == 2:
              G_ptr = &self.G_[0, 0]
 
@@ -1059,7 +835,6 @@ cdef class DictFactImpl(object):
                 # self.R_[k, jj] = self.B_[k, j] done in code update
                 self.D_subset[k, jj] = self.D_[k, j]
 
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         for kk in range(self.n_components):
             k = self.D_range[kk]
             norm_temp = enet_norm_fast(self.D_subset[k, :len_subset],
@@ -1075,11 +850,6 @@ cdef class DictFactImpl(object):
                   &FONE,
                   G_ptr, &n_components
                   )
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-        self.profiling_[1] += tv1.tv_sec-tv0.tv_sec
-        self.profiling_[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
-
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         # R = B_ - AQ
         dgemm(&NTRANS, &NTRANS,
               &n_components, &len_subset, &n_components,
@@ -1119,11 +889,6 @@ cdef class DictFactImpl(object):
             for k in range(n_components):
                 self.D_[k, j] = self.D_subset[k, jj]
 
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-        self.profiling_[4] += tv1.tv_sec-tv0.tv_sec
-        self.profiling_[4] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
-
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv0)
         if self.G_agg == 2:
             if len_subset < self.n_features / 2.:
                 dgemm(&NTRANS, &TRANS,
@@ -1143,9 +908,6 @@ cdef class DictFactImpl(object):
                       &FZERO,
                       G_ptr, &n_components
                       )
-        clock_gettime(CLOCK_MONOTONIC_RAW, &tv1)
-        self.profiling_[1] += tv1.tv_sec-tv0.tv_sec
-        self.profiling_[1] += (tv1.tv_nsec - tv0.tv_nsec) / 1e9
 
     def transform(self, double[:, ::1] X, n_threads=None):
         cdef int n_samples = X.shape[0]

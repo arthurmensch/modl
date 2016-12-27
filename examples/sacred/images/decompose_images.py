@@ -9,7 +9,6 @@ from tempfile import TemporaryDirectory
 
 import matplotlib.pyplot as plt
 import numpy as np
-from data import load_data, data_ing
 from modl.datasets.images import Batcher
 from modl.datasets.images import load_images
 from modl.dict_fact import DictFact
