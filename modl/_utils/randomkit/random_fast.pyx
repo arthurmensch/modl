@@ -128,15 +128,17 @@ cdef class Sampler(object):
         cdef int remainder
         cdef int len_subset
         if self.subset_sampling in [1, 3]:
+            # Bernouilli
             if self.subset_sampling == 1:
                 len_subset = self.random_state.binomial(self.n_features,
                                                              1. / self.reduction)
             else:
+                # Fixed size
                 len_subset = int(self.n_features / self.reduction)
             self.random_state.shuffle(self.feature_range)
             self.lim_inf = 0
             self.lim_sup = len_subset
-        else:
+        else: # Without replacement
             len_subset = int(self.n_features / self.reduction)
             if self.n_features != len_subset:
                 self.lim_inf = self.lim_sup
