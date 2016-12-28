@@ -19,7 +19,7 @@ cdef class RandomState:
 cdef class Sampler(object):
     cdef int n_features
     cdef double reduction
-    cdef int subset_sampling
+    cdef int sampling
 
     cdef int[:] feature_range
     cdef int[:] temp_subset

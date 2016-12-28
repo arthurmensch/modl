@@ -196,7 +196,7 @@ cpdef void enet_scale_fast(double[:] X,
     for j in range(n_features):
         X[j] *= S
 
-cpdef void enet_scale_matrix_fast(double[::1, :] X,
+cpdef void enet_scale_matrix_fast(double[:, :] X,
                            double l1_ratio, double radius=1) nogil:
     cdef int n_vectors = X.shape[0]
     cdef int i

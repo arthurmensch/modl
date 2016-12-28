@@ -108,11 +108,27 @@ cdef class RandomState:
 
 @cython.final
 cdef class Sampler(object):
-    def __cinit__(self, int n_features, double reduction, int subset_sampling,
+    def __cinit__(self, int n_features, double reduction, int sampling,
                  unsigned long random_seed):
+        """
+
+        Parameters
+        ----------
+        n_features
+        reduction
+        sampling: int in {1, 2, 3}.
+            1: Bernouilli sampling
+            2: Fixed-size sampling without replacement
+            3: Fixed-size sampling
+        random_seed
+
+        Returns
+        -------
+
+        """
         self.n_features = n_features
         self.reduction = reduction
-        self.subset_sampling = subset_sampling
+        self.sampling = sampling
         self.random_state = RandomState(seed=random_seed)
 
         self.feature_range = self.random_state.permutation(self.n_features)
@@ -127,9 +143,9 @@ cdef class Sampler(object):
     cpdef int[:] yield_subset(self) nogil:
         cdef int remainder
         cdef int len_subset
-        if self.subset_sampling in [1, 3]:
+        if self.sampling in [1, 3]:
             # Bernouilli
-            if self.subset_sampling == 1:
+            if self.sampling == 1:
                 len_subset = self.random_state.binomial(self.n_features,
                                                              1. / self.reduction)
             else:

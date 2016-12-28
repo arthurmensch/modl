@@ -40,7 +40,6 @@ def enet_norm(v, l1_ratio=1):
 
 def enet_scale(v, radius=1, l1_ratio=1):
     v = check_array(v, dtype=np.float64,
-                    order='F',
                     ensure_2d=False,
                     copy=True)
     if v.ndim == 1:

@@ -12,6 +12,7 @@ import numpy as np
 
 from modl.datasets.images import load_images
 from modl.dict_fact import DictFact
+from modl.dict_fact_slow import DictFactSlow
 from modl.plotting.images import plot_patches
 from sacred import Experiment
 from sacred.ingredient import Ingredient
@@ -27,28 +28,22 @@ decompose_ex = Experiment('decompose_images',
 def config():
     batch_size = 200
     learning_rate = 0.9
-    offset = 0
-    AB_agg = 'full'
+    BC_agg = 'full'
     G_agg = 'average'
     Dx_agg = 'average'
     reduction = 10
-    alpha = 1e-1
-    l1_ratio = 0
-    pen_l1_ratio = 1
-    n_epochs = 2
-    verbose = 12
-    verbose_offset = 50
+    code_alpha = 1e-1
+    code_l1_ratio = 1
+    comp_l1_ratio = 0
+    n_epochs = 3
     n_components = 50
-    non_negative_A = False
-    non_negative_D = False
+    code_pos = False
+    comp_pos = False
     normalize = True
     center = True
-    n_threads = 3
-    subset_sampling = 'random'
-    dict_reduction = 'follow'
-    temp_dir = expanduser('~/tmp')
-    buffer_size = 5000
+    mask_sampling = 'cycle'
     test_size = 4000
+    buffer_size = 5000
     max_patches = 100000
     patch_shape = (16, 16)
 
@@ -90,7 +85,7 @@ class ImageScorer():
 
         self.time.append(this_time)
         self.score.append(score)
-        self.iter.append(dict_fact.n_iter_)
+        self.iter.append(dict_fact.counter_)
 
         self.test_time += time.clock() - test_time
 
@@ -98,24 +93,18 @@ class ImageScorer():
 @decompose_ex.automain
 def decompose_run(batch_size,
                   learning_rate,
-                  offset,
-                  verbose,
-                  verbose_offset,
-                  AB_agg, G_agg, Dx_agg,
-                  non_negative_A,
-                  non_negative_D,
+                  BC_agg, G_agg, Dx_agg,
+                  code_pos,
+                  comp_pos,
                   center,
                   normalize,
                   reduction,
-                  alpha,
-                  l1_ratio,
-                  pen_l1_ratio,
+                  code_alpha,
+                  code_l1_ratio,
+                  comp_l1_ratio,
                   n_components,
-                  n_threads,
-                  subset_sampling,
-                  dict_reduction,
+                  mask_sampling,
                   n_epochs,
-                  temp_dir,
                   patch_shape,
                   test_size,
                   buffer_size,
@@ -134,13 +123,13 @@ def decompose_run(batch_size,
     batcher.prepare(image[:, :height // 2, :])
     test_data, _ = batcher.generate_single()
     if center:
-        test_data -= np.mean(test_data, axis=(1, 2))[:, np.newaxis, np.newaxis,
-                     :]
+        test_data -= np.mean(test_data, axis=(1, 2))[:, np.newaxis, np.newaxis, :]
     if normalize:
         std = np.sqrt(np.sum(test_data ** 2, axis=(1, 2)))
         std[std == 0] = 1
         test_data /= std[:, np.newaxis, np.newaxis, :]
     test_data = test_data.reshape((test_data.shape[0], -1))
+    n_features = test_data.shape[1]
 
     batcher = ImageBatcher(patch_shape=patch_shape,
                            batch_size=buffer_size,
@@ -151,31 +140,26 @@ def decompose_run(batch_size,
     n_samples = batcher.n_samples_
 
     cb = ImageScorer(test_data)
-    dict_fact = DictFact(verbose=verbose,
-                         verbose_offset=verbose_offset,
+    dict_fact = DictFactSlow(
                          n_epochs=n_epochs,
                          random_state=_seed,
                          n_components=n_components,
-                         n_threads=n_threads,
-                         pen_l1_ratio=pen_l1_ratio,
+                         comp_l1_ratio=comp_l1_ratio,
                          learning_rate=learning_rate,
-                         non_negative_D=non_negative_D,
-                         non_negative_A=non_negative_A,
-                         offset=offset,
+                         comp_pos=comp_pos,
+                         code_pos=code_pos,
                          batch_size=batch_size,
-                         subset_sampling=subset_sampling,
-                         dict_reduction=dict_reduction,
-                         temp_dir=temp_dir,
-                         AB_agg=AB_agg,
+                         mask_sampling=mask_sampling,
+                         BC_agg=BC_agg,
                          G_agg=G_agg,
                          Dx_agg=Dx_agg,
                          reduction=reduction,
-                         alpha=alpha,
-                         l1_ratio=l1_ratio,
-                         lasso_tol=1e-2,
+                         code_alpha=code_alpha,
+                         code_l1_ratio=code_l1_ratio,
                          callback=cb,
-                         n_samples=n_samples
+                         verbose=1,
                          )
+    dict_fact.prepare(n_samples=n_samples, n_features=n_features)
     for _ in range(n_epochs):
         for batch, indices in batcher.generate_once():
             if center:
@@ -185,7 +169,7 @@ def decompose_run(batch_size,
                 std[std == 0] = 1
                 batch /= std[:, np.newaxis, np.newaxis, :]
             batch = batch.reshape((batch.shape[0], -1))
-            dict_fact.partial_fit(batch, indices, check_input=False)
+            dict_fact.partial_fit(batch, indices)
 
     fig = plt.figure()
     patches = dict_fact.components_.reshape((dict_fact.components_.shape[0],
