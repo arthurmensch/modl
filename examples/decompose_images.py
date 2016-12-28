@@ -28,14 +28,13 @@ decompose_ex = Experiment('decompose_images',
 def config():
     batch_size = 200
     learning_rate = 0.92
-    BC_agg = 'async'
     G_agg = 'average'
     Dx_agg = 'average'
     reduction = 10
     code_alpha = 1e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
-    n_epochs = 1
+    n_epochs = 3
     n_components = 50
     code_pos = False
     comp_pos = False
@@ -46,6 +45,7 @@ def config():
     buffer_size = 5000
     max_patches = 100000
     patch_shape = (16, 16)
+    n_threads = 2
 
 
 @data_ing.config
@@ -75,7 +75,7 @@ class ImageScorer():
         self.iter = []
 
     def __call__(self, dict_fact):
-        test_time = time.clock()
+        test_time   = time.clock()
 
         score = dict_fact.score(self.test_data)
         self.test_time += time.clock() - test_time
@@ -93,7 +93,7 @@ class ImageScorer():
 @decompose_ex.automain
 def decompose_run(batch_size,
                   learning_rate,
-                  BC_agg, G_agg, Dx_agg,
+                  G_agg, Dx_agg,
                   code_pos,
                   comp_pos,
                   center,
@@ -110,6 +110,7 @@ def decompose_run(batch_size,
                   buffer_size,
                   max_patches,
                   data,
+                  n_threads,
                   _seed,
                   ):
     clean = data['source'] == 'aviris'
@@ -140,7 +141,6 @@ def decompose_run(batch_size,
     n_samples = batcher.n_samples_
 
     cb = ImageScorer(test_data)
-    cb = None
     dict_fact = DictFactSlow(
                          n_epochs=n_epochs,
                          random_state=_seed,
@@ -158,7 +158,7 @@ def decompose_run(batch_size,
                          code_l1_ratio=code_l1_ratio,
                          callback=cb,
                          verbose=1,
-                         n_threads=1,
+                         n_threads=n_threads,
                          )
     first_batch = True
     for _ in range(n_epochs):
@@ -175,14 +175,14 @@ def decompose_run(batch_size,
                 first_batch = False
             dict_fact.partial_fit(batch, indices)
 
-    # fig = plt.figure()
-    # patches = dict_fact.components_.reshape((dict_fact.components_.shape[0],
-    #                                          data_shape[0],
-    #                                          data_shape[1], data_shape[2]))
-    # plot_patches(fig, patches)
-    # fig.suptitle('Dictionary components')
-    # fig, ax = plt.subplots(1, 1)
-    # ax.plot(cb.iter, cb.score)
-    # ax.set_xlabel('Time (s)')
-    # ax.set_ylabel('Test objective value')
-    # plt.show()
+    fig = plt.figure()
+    patches = dict_fact.components_.reshape((dict_fact.components_.shape[0],
+                                             data_shape[0],
+                                             data_shape[1], data_shape[2]))
+    plot_patches(fig, patches)
+    fig.suptitle('Dictionary components')
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(cb.iter, cb.score)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Test objective value')
+    plt.show()

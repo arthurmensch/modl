@@ -39,7 +39,7 @@ class DictFactSlow:
                  comp_l1_ratio=0,
                  verbose=0,
                  callback=None,
-                 n_threads=2):
+                 n_threads=1):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.sample_learning_rate = sample_learning_rate
@@ -348,7 +348,7 @@ class DictFactSlow:
                 self.code_alpha * self.code_l1_ratio,
                 self.code_alpha * (
                 1 - self.code_l1_ratio),
-                G, Dx, this_X, 100, 1e-3,
+                G, Dx, this_X, 100, 1e-2,
                 self.random_state_,
                 False, self.code_pos)
         return 0
