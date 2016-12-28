@@ -27,21 +27,21 @@ decompose_ex = Experiment('decompose_images',
 @decompose_ex.config
 def config():
     batch_size = 200
-    learning_rate = 0.9
-    BC_agg = 'full'
+    learning_rate = 0.92
+    BC_agg = 'async'
     G_agg = 'average'
     Dx_agg = 'average'
     reduction = 10
     code_alpha = 1e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
-    n_epochs = 3
+    n_epochs = 1
     n_components = 50
     code_pos = False
     comp_pos = False
     normalize = True
     center = True
-    mask_sampling = 'cycle'
+    mask_sampling = 'random'
     test_size = 4000
     buffer_size = 5000
     max_patches = 100000
@@ -85,7 +85,7 @@ class ImageScorer():
 
         self.time.append(this_time)
         self.score.append(score)
-        self.iter.append(dict_fact.counter_)
+        self.iter.append(dict_fact.n_iter_)
 
         self.test_time += time.clock() - test_time
 
@@ -140,6 +140,7 @@ def decompose_run(batch_size,
     n_samples = batcher.n_samples_
 
     cb = ImageScorer(test_data)
+    cb = None
     dict_fact = DictFactSlow(
                          n_epochs=n_epochs,
                          random_state=_seed,
@@ -150,7 +151,6 @@ def decompose_run(batch_size,
                          code_pos=code_pos,
                          batch_size=batch_size,
                          mask_sampling=mask_sampling,
-                         BC_agg=BC_agg,
                          G_agg=G_agg,
                          Dx_agg=Dx_agg,
                          reduction=reduction,
@@ -158,8 +158,9 @@ def decompose_run(batch_size,
                          code_l1_ratio=code_l1_ratio,
                          callback=cb,
                          verbose=1,
+                         n_threads=1,
                          )
-    dict_fact.prepare(n_samples=n_samples, n_features=n_features)
+    first_batch = True
     for _ in range(n_epochs):
         for batch, indices in batcher.generate_once():
             if center:
@@ -169,16 +170,19 @@ def decompose_run(batch_size,
                 std[std == 0] = 1
                 batch /= std[:, np.newaxis, np.newaxis, :]
             batch = batch.reshape((batch.shape[0], -1))
+            if first_batch:
+                dict_fact.prepare(n_samples=n_samples, n_features=n_features, X=batch)
+                first_batch = False
             dict_fact.partial_fit(batch, indices)
 
-    fig = plt.figure()
-    patches = dict_fact.components_.reshape((dict_fact.components_.shape[0],
-                                             data_shape[0],
-                                             data_shape[1], data_shape[2]))
-    plot_patches(fig, patches)
-    fig.suptitle('Dictionary components')
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.time, cb.score)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Test objective value')
-    plt.show()
+    # fig = plt.figure()
+    # patches = dict_fact.components_.reshape((dict_fact.components_.shape[0],
+    #                                          data_shape[0],
+    #                                          data_shape[1], data_shape[2]))
+    # plot_patches(fig, patches)
+    # fig.suptitle('Dictionary components')
+    # fig, ax = plt.subplots(1, 1)
+    # ax.plot(cb.iter, cb.score)
+    # ax.set_xlabel('Time (s)')
+    # ax.set_ylabel('Test objective value')
+    # plt.show()

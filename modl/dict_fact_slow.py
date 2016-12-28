@@ -1,5 +1,6 @@
 import numpy as np
 import scipy
+from modl.dict_fact_fast import get_simple_weights
 from numpy import linalg
 from sklearn.utils import check_array
 from sklearn.utils import check_random_state, gen_batches
@@ -12,17 +13,18 @@ from modl._utils.randomkit.random_fast import Sampler
 
 from modl._utils.enet_proj import enet_scale
 
+from concurrent.futures import ThreadPoolExecutor
+
 
 class DictFactSlow:
-    mask_sampling_c = {'bernouilli': 1,
-                     'cycle': 2,
-                     'fixed': 3}
+    mask_sampling_c = {'random': 1,
+                       'cycle': 2,
+                       'fixed': 3}
 
     def __init__(self,
                  reduction=1,
                  learning_rate=1,
                  sample_learning_rate=0.76,
-                 BC_agg='async',
                  Dx_agg='masked',
                  G_agg='masked',
                  code_alpha=1,
@@ -36,11 +38,11 @@ class DictFactSlow:
                  random_state=None,
                  comp_l1_ratio=0,
                  verbose=0,
-                 callback=None):
+                 callback=None,
+                 n_threads=2):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.sample_learning_rate = sample_learning_rate
-        self.BC_agg = BC_agg
         self.Dx_agg = Dx_agg
         self.G_agg = G_agg
         self.code_l1_ratio = code_l1_ratio
@@ -61,6 +63,8 @@ class DictFactSlow:
         self.verbose = verbose
         self.callback = callback
 
+        self.n_threads = n_threads
+
     def fit(self, X):
         """
         Compute the matrix factorisation X ~ components_ x code_,solving for
@@ -75,6 +79,7 @@ class DictFactSlow:
 
         """
         X = check_array(X, order='C', dtype='float')
+        self.prepare(X=X)
         # Main loop
         n_features, n_samples = X.shape
         for _ in range(self.n_epochs):
@@ -85,30 +90,67 @@ class DictFactSlow:
             if self.Dx_agg == 'average':
                 self.Dx_average = self.Dx_average[permutation]
                 self.code_ = self.code_[permutation]
-            self.col_counter_ = self.col_counter_[permutation]
+            self.sample_n_iter_ = self.sample_n_iter_[permutation]
 
-            batches = gen_batches(self.batch_size, n_samples)
-            for batch in batches:
-                len_batch = batch.stop - batch.start
-                self.counter_ += len_batch
-                self.col_counter_[batch] += 1
-                this_X = X[batch]
-                this_G_average = self.G_average_[batch]\
-                    if self.G_agg == 'average' else None
-                this_Dx_average = self.Dx_average_[
-                    batch] if self.Dx_agg == 'average' else None
-                this_code = self.code_[batch]
-                this_col_counter = self.col_counter_[batch]
+            self.partial_fit(X)
+        return self
 
-                self.batch_fit(this_Dx_average, this_G_average,
-                                 this_X, this_code, this_col_counter)
+    def partial_fit(self, X, sample_indices=None):
+        """
+        Update the factorization using rows from X
+        Parameters
+        ----------
+        X: ndarray, shape (n_samples, n_features)
+            Input data
+        sample_indices:
+            Indices for each row of X. If None, consider that row i index is i
+            (useful when providing the whole data to the function)
+        Returns
+        -------
+
+        """
+        X = check_array(X, dtype='float', order='C')
+
+        if self.verbose:
+            print('Iteration %i' % self.n_iter_)
+            if self.callback is not None:
+                self.callback(self)
+
+        n_samples, n_features = X.shape
+        batches = gen_batches(n_samples, self.batch_size)
+        for batch in batches:
+            this_X = X[batch]
+            batch_size = batch.stop - batch.start
+            self.n_iter_ += batch_size
+            if sample_indices is None:
+                these_sample_indices = batch
+            else:
+                these_sample_indices = sample_indices[batch]
+            self.sample_n_iter_[these_sample_indices] += 1
+            this_G_average = self.G_average_[these_sample_indices] \
+                if self.G_agg == 'average' else None
+            this_Dx_average = self.Dx_average_[these_sample_indices] \
+                if self.Dx_agg == 'average' else None
+            this_code = self.code_[these_sample_indices]
+            this_sample_n_iter = self.sample_n_iter_[these_sample_indices]
+
+            self._single_batch_fit(this_Dx_average, this_G_average,
+                                   this_X, this_code, this_sample_n_iter,
+                                   self.n_iter_)
         return self
 
     def prepare(self, n_samples=None, n_features=None, X=None):
         if X is not None:
             X = check_array(X, order='C', dtype='float')
             # Transpose to fit usual column streaming
-            n_samples, n_features = X.shape
+            this_n_samples = X.shape[0]
+            if n_samples is None:
+                n_samples = this_n_samples
+            if n_features is None:
+                n_features = X.shape[1]
+            else:
+                if n_features != X.shape[1]:
+                    raise ValueError('n_features and X does not match')
         else:
             if n_features is None or n_samples is None:
                 raise ValueError('Either provide'
@@ -130,7 +172,7 @@ class DictFactSlow:
             self.components_ = self.random_state_.randn(self.n_components,
                                                         n_features)
         else:
-            random_idx = self.random_state_.permutation(n_samples)[
+            random_idx = self.random_state_.permutation(this_n_samples)[
                          :self.n_components]
             self.components_ = X[random_idx].copy()
         self.components_ = enet_scale(self.components_,
@@ -143,73 +185,54 @@ class DictFactSlow:
         self.comp_norm_ = np.zeros(self.n_components)
 
         if self.G_agg == 'full':
-            self.G_ = self.components_.T.dot(self.components_).T
-        else:
-            self.G_ = np.zeros((self.n_components, self.n_components),
-                               order='F')
-        # self.G_ is Fortran-continuous
+            self.G_ = self.components_.dot(self.components_.T)
 
-        self.counter_ = 0
-        self.col_counter_ = np.zeros(n_samples, dtype='int')
+        self.n_iter_ = 0
+        self.sample_n_iter_ = np.zeros(n_samples, dtype='int')
         self.random_state_ = check_random_state(self.random_state)
         random_seed = self.random_state_.randint(np.iinfo(np.uint32).max)
-        self.row_sampler_ = Sampler(n_features, self.reduction,
-                                    DictFactSlow.mask_sampling_c[
-                                        self.mask_sampling],
-                                    random_seed)
+        self.feature_sampler_ = Sampler(n_features, self.reduction,
+                                        DictFactSlow.mask_sampling_c[
+                                            self.mask_sampling],
+                                        random_seed)
+        if self.n_threads > 1:
+            self.pool_ = ThreadPoolExecutor(self.n_threads)
 
-    def batch_fit(self, this_Dx_average, this_G_average, this_X,
-                    this_code, this_col_counter):
-        subset = self.row_sampler_.yield_subset()
-        w_sample = np.power(this_col_counter, -self.sample_learning_rate)
-        w = pow(self.counter_, -self.learning_rate)
-        self.compute_code(this_X, self.components_, self.G_,
-                          this_G_average, this_Dx_average, this_code,
-                          w_sample,
-                          subset)
-        if self.BC_agg == 'full':
-            self.update_BC(this_X, this_code, self.C_, self.B_,
-                           self.gradient_, w, subset)
-            self.update_dict(self.components_, self.gradient_, self.C_,
-                             self.comp_norm_,
-                             self.G_,
-                             subset)
+    def _single_batch_fit(self, this_Dx_average, this_G_average, this_X,
+                          this_code, this_sample_n_iter, counter):
+        subset = self.feature_sampler_.yield_subset()
+        batch_size = this_X.shape[0]
+        w_sample = np.power(this_sample_n_iter, -self.sample_learning_rate)
+        w = get_simple_weights(counter, batch_size,
+                               self.learning_rate,
+                               0)
+        self._compute_code(this_X, self.components_,
+                           self.G_ if self.G_agg == 'full' else None,
+                           this_G_average, this_Dx_average, this_code,
+                           w_sample,
+                           subset)
+        if self.n_threads == 1:
+            self._update_BC_and_dict(subset, this_X, this_code, w)
         else:
-            self.update_BC(this_X, this_code, self.C_, self.B_,
-                           self.gradient_, w, subset)
-            self.update_dict(self.components_, self.gradient_, self.C_,
-                             self.comp_norm_,
-                             self.G_,
-                             subset)
-            self.update_B_full(this_X, this_code, self.B_, w)
+            p1 = self.pool_.submit(self._update_BC_and_dict, subset,
+                                   this_X, this_code, w)
+            p2 = self.pool_.submit(self._update_B_full, this_X,
+                                   this_code, self.B_, w)
+            p2.result()
+            p1.result()
 
-    def partial_fit(self, X, sample_indices=None):
-        """Compatibility with DictMF"""
-        X = check_array(X, dtype='float', order='C')
-        n_samples, n_features = X.shape
-        batches = gen_batches(n_samples, self.batch_size)
-        for batch in batches:
-            len_batch = batch.stop - batch.start
-            self.counter_ += len_batch
-            self.col_counter_[sample_indices[batch]] += 1
-            this_X = X[batch]
-            this_G_average = self.G_average_[sample_indices[batch]]\
-                if self.G_agg == 'average' else None
-            this_Dx_average = self.Dx_average_[sample_indices[batch]]\
-                if self.Dx_agg == 'average' else None
-            this_code = self.code_[sample_indices[batch]]
-            this_col_counter = self.col_counter_[sample_indices[batch]]
+    def _update_BC_and_dict(self, subset, this_X, this_code, w):
+        self._update_BC(this_X, this_code, self.C_, self.B_,
+                        self.gradient_, w, subset)
+        self._update_dict(self.components_, self.gradient_, self.C_,
+                          self.comp_norm_,
+                          self.G_ if self.G_agg == 'full' else None,
+                          subset)
+        return 0
 
-            self.batch_fit(this_Dx_average, this_G_average,
-                           this_X, this_code, this_col_counter)
-        if self.verbose:
-            print('Sample %i' % self.counter_)
-            if self.callback is not None:
-                self.callback(self)
-
-    def compute_code(self, this_X, components, G, G_average,
-                     Dx_average, code,
-                     w_sample, subset):
+    def _compute_code(self, this_X, components, G, G_average,
+                      Dx_average, code,
+                      w_sample, subset):
         batch_size, n_features = this_X.shape
         reduction = n_features / subset.shape[0]
 
@@ -217,7 +240,7 @@ class DictFactSlow:
             components_subset = components[:, subset]
 
         if self.Dx_agg == 'full':
-            Dx = components.dot(this_X.T)
+            Dx = this_X.dot(components.T)
         else:
             X_subset = this_X[:, subset]
             Dx = X_subset.dot(components_subset.T) * reduction
@@ -234,34 +257,42 @@ class DictFactSlow:
                 # the product along the 2nd dimension of right side factor
                 G_average += w_sample[:, np.newaxis].dot(G[:, np.newaxis, :])
 
-        for i in range(batch_size):
-            if self.G_agg == 'average':
-                self.linear_regression(G_average[i], Dx[i],
-                                       this_X[i], code[i])
-            else:
-                self.linear_regression(G, Dx[i], this_X[i], code[i])
+        if self.G_agg == 'average':
+            func = lambda i: self._linear_regression(G_average[i], Dx[i],
+                                    this_X[i], code[i])
+        else:
+            func = lambda i: self._linear_regression(G, Dx[i],
+                                                     this_X[i], code[i])
+        if self.n_threads > 1:
+            res = self.pool_.map(func, range(batch_size))
+            _ = list(res)
+        else:
+            for i in range(batch_size):
+                func(i)
 
-    def update_BC(self, this_X, this_code, C, B, gradient, w, subset):
+    def _update_BC(self, this_X, this_code, C, B, gradient, w, subset):
         batch_size, n_features = this_X.shape
-        C *= (1 - w / batch_size)
+        C *= 1 - w / batch_size
         C += w * this_code.T.dot(this_code)
 
-        if self.BC_agg == 'full':
-            self.update_B_full(this_X, this_code, B, w)
+        if self.n_threads == 1:
+            self._update_B_full(this_X, this_code, B, w)
             gradient[:, :] = B
         else:
+            # Update the gradient only
             X_subset = this_X[:, subset]
             B_subset = B[:, subset]
             B_subset *= (1 - w / batch_size)
             B_subset += w * this_code.T.dot(X_subset)
             gradient[:, subset] = B_subset
 
-    def update_B_full(self, this_X, this_code, B, w):
+    def _update_B_full(self, this_X, this_code, B, w):
         batch_size, n_features = this_X.shape
-        B *= (1 - w / batch_size)
+        B *= 1 - w / batch_size
         B += w * this_code.T.dot(this_X)
+        return 0
 
-    def update_dict(self, components, gradient, C, norm, G, subset):
+    def _update_dict(self, components, gradient, C, norm, G, subset):
         len_subset = subset.shape[0]
         n_components, n_features = components.shape
         components_subset = components[:, subset]
@@ -294,7 +325,7 @@ class DictFactSlow:
             subset_norm = enet_norm_fast(components_subset[k],
                                          self.comp_l1_ratio)
             norm[k] -= subset_norm
-            gradient_subset = ger(-1.0,  C[k], components_subset[k],
+            gradient_subset = ger(-1.0, C[k], components_subset[k],
                                   a=gradient_subset, overwrite_a=True)
 
         components[:, subset] = components_subset
@@ -305,35 +336,44 @@ class DictFactSlow:
             else:
                 G[:] = components.dot(components.T)
 
-    def linear_regression(self, G, Dx, this_X, code):
+    def _linear_regression(self, G, Dx, this_X, code):
         n_components = G.shape[0]
         if self.code_l1_ratio == 0:
             G.flat[::n_components + 1] += self.code_alpha
             code[:] = linalg.solve(G, Dx)
             G.flat[::n_components + 1] -= self.code_alpha
         else:
-            # this_X is only used to scale tolerance
             cd_fast.enet_coordinate_descent_gram(
                 code,
                 self.code_alpha * self.code_l1_ratio,
-                self.code_alpha * (1 - self.code_l1_ratio),
-                G, Dx, this_X, 100, 1e-2, self.random_state_,
+                self.code_alpha * (
+                1 - self.code_l1_ratio),
+                G, Dx, this_X, 100, 1e-3,
+                self.random_state_,
                 False, self.code_pos)
+        return 0
 
     def transform(self, X):
         X = check_array(X, order='C', dtype='float')
         n_samples, n_features = X.shape
         if self.G_agg != 'full':
             G = self.components_.dot(self.components_.T)
+        else:
+            G = self.G_
         Dx = X.dot(self.components_.T)
-        code = np.empty((n_samples, self.n_components))
-        for i in range(n_samples):
-            self.linear_regression(G, Dx[i], X[i], code[i])
-        return code.T
+        code = np.ones((n_samples, self.n_components))
+        func = lambda i: self._linear_regression(G, Dx[i], X[i], code[i])
+        if self.n_threads > 1:
+            res = self.pool_.map(func, range(n_samples))
+            _ = list(res)
+        else:
+            for i in range(n_samples):
+                func(i)
+        return code
 
     def score(self, X):
         code = self.transform(X)
-        loss = np.sum((X - code.T.dot(self.components_)) ** 2) / 2
+        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.code_alpha * (norm1_code * self.code_l1_ratio
