@@ -179,10 +179,9 @@ class DictFactSlow:
                                       l1_ratio=self.comp_l1_ratio,
                                       radius=1)
 
-        self.code_ = np.empty((n_samples, self.n_components))
-        self.code_[:] = 1. / self.n_components
+        self.code_ = np.ones((n_samples, self.n_components))
 
-        self.comp_norm_ = np.zeros(self.n_components)
+        self.comp_norm_ = np.ones(self.n_components)
 
         if self.G_agg == 'full':
             self.G_ = self.components_.dot(self.components_.T)
@@ -306,25 +305,25 @@ class DictFactSlow:
         gradient_subset -= C.dot(components_subset)
 
         order = self.random_state_.permutation(n_components)
-
         for k in order:
             subset_norm = enet_norm_fast(components_subset[k],
                                          self.comp_l1_ratio)
-            norm[k] += subset_norm
+            norm_temp = subset_norm + 1 - norm[k]
+            norm[k] -= subset_norm
             gradient_subset = ger(1.0, C[k], components_subset[k],
                                   a=gradient_subset, overwrite_a=True)
             if C[k, k] > 1e-20:
                 components_subset[k] = gradient_subset[k] / self.C_[k, k]
-                # Else do not update
+            # Else do not update
             if self.comp_pos:
                 components_subset[components_subset < 0] = 0
             enet_projection_fast(components_subset[k],
                                  atom_temp,
-                                 norm[k], self.comp_l1_ratio)
+                                 norm_temp, self.comp_l1_ratio)
             components_subset[k] = atom_temp
             subset_norm = enet_norm_fast(components_subset[k],
                                          self.comp_l1_ratio)
-            norm[k] -= subset_norm
+            norm[k] += subset_norm
             gradient_subset = ger(-1.0, C[k], components_subset[k],
                                   a=gradient_subset, overwrite_a=True)
 
@@ -374,6 +373,8 @@ class DictFactSlow:
     def score(self, X):
         code = self.transform(X)
         loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
+        # S = np.sqrt((self.components_ ** 2).sum(axis=1))
+        # code *= S[np.newaxis, :]
         norm1_code = np.sum(np.abs(code))
         norm2_code = np.sum(code ** 2)
         regul = self.code_alpha * (norm1_code * self.code_l1_ratio

@@ -715,7 +715,6 @@ cdef class DictFactImpl(object):
         w_A = get_simple_weights(self.total_counter_, len_batch,
                                  self.learning_rate,
                                  self.offset)
-
         # Dx = this_code
         w_batch = w_A / len_batch
         one_m_w = 1 - w_A

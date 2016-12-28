@@ -28,8 +28,8 @@ decompose_ex = Experiment('decompose_images',
 def config():
     batch_size = 200
     learning_rate = 0.92
-    G_agg = 'average'
-    Dx_agg = 'average'
+    G_agg = 'full'
+    Dx_agg = 'full'
     reduction = 10
     code_alpha = 1e-1
     code_l1_ratio = 1
@@ -43,7 +43,7 @@ def config():
     mask_sampling = 'random'
     test_size = 4000
     buffer_size = 5000
-    max_patches = 100000
+    max_patches = 10000
     patch_shape = (16, 16)
     n_threads = 2
 
@@ -88,6 +88,7 @@ class ImageScorer():
         self.iter.append(dict_fact.n_iter_)
 
         self.test_time += time.clock() - test_time
+        print(dict_fact.comp_norm_)
 
 
 @decompose_ex.automain
@@ -161,7 +162,7 @@ def decompose_run(batch_size,
                          n_threads=n_threads,
                          )
     first_batch = True
-    for _ in range(n_epochs):
+    for i in range(n_epochs):
         for batch, indices in batcher.generate_once():
             if center:
                 batch -= np.mean(batch, axis=(1, 2))[:, np.newaxis, np.newaxis, :]
