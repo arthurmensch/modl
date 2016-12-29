@@ -1009,7 +1009,7 @@ cdef class DictFactImpl(object):
                                     X_norm,
                                     H[t],
                                     XtA[t],
-                                    self.n_components,
+                                    100,
                                     self.lasso_tol, self.random_state_, 0, self.non_negative_A)
         else:
             with nogil, parallel(num_threads=this_n_threads):

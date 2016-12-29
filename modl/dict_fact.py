@@ -175,8 +175,9 @@ class DictFact(BaseEstimator):
             if data_for_init is None:
                 D[:] = random_state.randn(self.n_components, n_features)
             else:
-                random_idx = random_state.permutation(n_samples)[
-                             :self.n_components]
+                random_idx = np.arange(self.n_components)
+                # random_state.permutation(n_samples)[
+                #              :self.n_components]
                 D[:] = data_for_init[random_idx]
         if self.non_negative_D:
             D[D <= 0] = - D[D <= 0]
@@ -318,4 +319,4 @@ class DictFact(BaseEstimator):
         norm2_code = np.sum(code ** 2)
         regul = self.alpha * (norm1_code * self.pen_l1_ratio
                               + (1 - self.pen_l1_ratio) * norm2_code / 2)
-        return (loss + regul) / X.shape[0]
+        return (loss ) / X.shape[0]

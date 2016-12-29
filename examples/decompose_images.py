@@ -26,12 +26,12 @@ decompose_ex = Experiment('decompose_images',
 
 @decompose_ex.config
 def config():
-    batch_size = 200
+    batch_size = 1000
     learning_rate = 0.92
-    G_agg = 'full'
-    Dx_agg = 'full'
+    G_agg = 'average'
+    Dx_agg = 'average'
     reduction = 10
-    code_alpha = 1e-1
+    code_alpha = 0.8e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
     n_epochs = 3
@@ -43,9 +43,10 @@ def config():
     mask_sampling = 'random'
     test_size = 4000
     buffer_size = 5000
-    max_patches = 10000
+    max_patches = 100000
     patch_shape = (16, 16)
-    n_threads = 2
+    n_threads = 1
+    verbose = 10
 
 
 @data_ing.config
@@ -75,7 +76,7 @@ class ImageScorer():
         self.iter = []
 
     def __call__(self, dict_fact):
-        test_time   = time.clock()
+        test_time = time.clock()
 
         score = dict_fact.score(self.test_data)
         self.test_time += time.clock() - test_time
@@ -88,7 +89,6 @@ class ImageScorer():
         self.iter.append(dict_fact.n_iter_)
 
         self.test_time += time.clock() - test_time
-        print(dict_fact.comp_norm_)
 
 
 @decompose_ex.automain
@@ -112,6 +112,7 @@ def decompose_run(batch_size,
                   max_patches,
                   data,
                   n_threads,
+                  verbose,
                   _seed,
                   ):
     clean = data['source'] == 'aviris'
@@ -158,7 +159,7 @@ def decompose_run(batch_size,
                          code_alpha=code_alpha,
                          code_l1_ratio=code_l1_ratio,
                          callback=cb,
-                         verbose=1,
+                         verbose=verbose,
                          n_threads=n_threads,
                          )
     first_batch = True
