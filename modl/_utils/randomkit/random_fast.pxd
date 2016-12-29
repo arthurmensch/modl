@@ -17,15 +17,15 @@ cdef class RandomState:
     cdef double randn(self) nogil
 
 cdef class Sampler(object):
-    cdef int n_features
-    cdef double reduction
-    cdef int sampling
+    cdef int range
+    cdef bint rand_size
+    cdef bint replacement
 
-    cdef int[:] feature_range
-    cdef int[:] temp_subset
+    cdef int[:] box
+    cdef int[:] temp
     cdef int lim_sup
     cdef int lim_inf
 
     cdef RandomState random_state
 
-    cpdef int[:] yield_subset(self) nogil
+    cpdef int[:] yield_subset(self, double reduction) nogil

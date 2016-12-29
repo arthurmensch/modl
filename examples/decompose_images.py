@@ -4,19 +4,15 @@
 
 # Load ADDH
 import time
-from os.path import join, expanduser
-from tempfile import TemporaryDirectory
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-from modl.datasets.images import load_images
-from modl.dict_fact import DictFact
-from modl.dict_fact_slow import DictFactSlow
-from modl.plotting.images import plot_patches
 from sacred import Experiment
 from sacred.ingredient import Ingredient
 
+from modl.datasets.images import load_images
+from modl.dict_fact import DictFact
+from modl.plotting.images import plot_patches
 from modl.streaming.batcher import ImageBatcher
 
 data_ing = Ingredient('data')
@@ -26,26 +22,25 @@ decompose_ex = Experiment('decompose_images',
 
 @decompose_ex.config
 def config():
-    batch_size = 1000
+    batch_size = 200
     learning_rate = 0.92
-    G_agg = 'average'
+    G_agg = 'full'
     Dx_agg = 'average'
     reduction = 10
     code_alpha = 0.8e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
-    n_epochs = 3
+    n_epochs = 15
     n_components = 50
     code_pos = False
     comp_pos = False
     normalize = True
     center = True
-    mask_sampling = 'random'
     test_size = 4000
     buffer_size = 5000
-    max_patches = 100000
+    max_patches = 10000
     patch_shape = (16, 16)
-    n_threads = 1
+    n_threads = 2
     verbose = 10
 
 
@@ -104,7 +99,6 @@ def decompose_run(batch_size,
                   code_l1_ratio,
                   comp_l1_ratio,
                   n_components,
-                  mask_sampling,
                   n_epochs,
                   patch_shape,
                   test_size,
@@ -143,7 +137,7 @@ def decompose_run(batch_size,
     n_samples = batcher.n_samples_
 
     cb = ImageScorer(test_data)
-    dict_fact = DictFactSlow(
+    dict_fact = DictFact(
                          n_epochs=n_epochs,
                          random_state=_seed,
                          n_components=n_components,
@@ -152,7 +146,6 @@ def decompose_run(batch_size,
                          comp_pos=comp_pos,
                          code_pos=code_pos,
                          batch_size=batch_size,
-                         mask_sampling=mask_sampling,
                          G_agg=G_agg,
                          Dx_agg=Dx_agg,
                          reduction=reduction,
