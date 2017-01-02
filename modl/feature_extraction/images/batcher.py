@@ -9,12 +9,17 @@ from .clean import clean_mask
 class ImageBatcher(BaseBatcher):
     def __init__(self, patch_shape=(8,), batch_size=10, random_state=None,
                  clean=True,
+                 normalize=False,
+                 center=False,
                  max_samples=None):
         BaseBatcher.__init__(self, random_state=random_state,
                              batch_size=batch_size)
         self.patch_shape = patch_shape
         self.clean = clean
         self.max_samples = max_samples
+
+        self.normalize = normalize
+        self.center = center
 
     def prepare(self, image):
         if len(self.patch_shape) == 1:
@@ -29,23 +34,32 @@ class ImageBatcher(BaseBatcher):
             mask = clean_mask(self.patches_, image)
         else:
             mask = np.ones(self.patches_.shape[:3], dtype=bool)
-        # 3d index of each patch
-        self.indices_3d_ = np.c_[np.where(mask)][:self.max_samples]
-        n_samples = self.indices_3d_.shape[0]
-        # 1d index of each patch
-        self.indices_1d_ = np.arange(n_samples)
+        self.indices = np.c_[np.where(mask)]
+        n_samples = self.indices.shape[0]
+        selection = self.random_state_.permutation(n_samples)[:self.max_samples]
+        self.n_samples_ = selection.shape[0]
+        self.indices = self.indices[selection]
+        self.indices_1d = np.arange(n_samples)
 
     def generate_once(self):
-        n_samples = self.indices_3d_.shape[0]
-        permutation = self.random_state_.permutation(n_samples)
-        self.indices_1d_ = self.indices_1d_[permutation]
-        self.indices_3d_ = self.indices_3d_[permutation]
-        batches = gen_batches(n_samples, self.batch_size)
+        batches = gen_batches(self.n_samples_, self.batch_size)
         for batch in batches:
-            these_indices_3d = list(self.indices_3d_[batch].T)
-            these_indices_1d = self.indices_1d_[batch]
-            yield self.patches_[these_indices_3d], these_indices_1d
+            these_indices_3d = list(self.indices[batch].T)
+            patches = self.patches_[these_indices_3d]
+            if self.center:
+                patches -= np.mean(patches, axis=(1, 2))[:,
+                           np.newaxis, np.newaxis, :]
+            if self.normalize:
+                std = np.sqrt(np.sum(patches ** 2,
+                                     axis=(1, 2)))
+                std[std == 0] = 1
+                patches /= std[:, np.newaxis, np.newaxis, :]
+            batch_size = patches.shape[0]
+            patches = patches.reshape((batch_size, -1))
+            yield patches, self.indices_1d[batch]
 
-    @property
-    def n_samples_(self):
-        return self.indices_3d_.shape[0]
+    def shuffle(self):
+        n_samples = self.indices.shape[0]
+        permutation = self.random_state_.permutation(n_samples)
+        self.indices = self.indices[permutation]
+        self.indices_1d = self.indices_1d[permutation]

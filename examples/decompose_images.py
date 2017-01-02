@@ -10,7 +10,9 @@ from sacred.ingredient import Ingredient
 from modl.datasets.images import load_images
 from modl.dict_fact import DictFact
 from modl.plotting.images import plot_patches
-from modl.feature_extraction.batcher import ImageBatcher
+from modl.feature_extraction.images import ImageBatcher
+
+from math import sqrt
 
 data_ing = Ingredient('data')
 decompose_ex = Experiment('decompose_images',
@@ -19,15 +21,15 @@ decompose_ex = Experiment('decompose_images',
 
 @decompose_ex.config
 def config():
-    batch_size = 400
+    batch_size = 200
     learning_rate = 0.92
-    G_agg = 'full'
+    G_agg = 'average'
     Dx_agg = 'average'
     reduction = 10
     code_alpha = 0.8e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
-    n_epochs = 10
+    n_epochs = 2
     n_components = 200
     code_pos = False
     comp_pos = False
@@ -37,7 +39,7 @@ def config():
     buffer_size = 5000
     max_patches = 50000
     patch_shape = (16, 16)
-    n_threads = 2
+    n_threads = 3
     verbose = 10
 
 
@@ -113,29 +115,22 @@ def decompose_run(batch_size,
     batcher = ImageBatcher(patch_shape=patch_shape,
                            batch_size=test_size,
                            clean=clean,
+                           normalize=normalize,
+                           center=center,
                            random_state=_seed)
     batcher.prepare(image[:, :height // 2, :])
     test_data, _ = batcher.generate_single()
-    if center:
-        test_data -= np.mean(test_data, axis=(1, 2))[:, np.newaxis, np.newaxis, :]
-    if normalize:
-        std = np.sqrt(np.sum(test_data ** 2, axis=(1, 2)))
-        std[std == 0] = 1
-        test_data /= std[:, np.newaxis, np.newaxis, :]
-    test_data = test_data.reshape((test_data.shape[0], -1))
 
     batcher = ImageBatcher(patch_shape=patch_shape,
                            batch_size=buffer_size,
                            max_samples=max_patches,
                            clean=clean,
+                           normalize=normalize,
+                           center=center,
                            random_state=_seed)
     batcher.prepare(image[:, height // 2:, :])
-    n_samples = batcher.n_samples_
-
     cb = ImageScorer(test_data)
-    cb = None
-    dict_fact = DictFact(
-                         n_epochs=n_epochs,
+    dict_fact = DictFact(n_epochs=n_epochs,
                          random_state=_seed,
                          n_components=n_components,
                          comp_l1_ratio=comp_l1_ratio,
@@ -152,21 +147,7 @@ def decompose_run(batch_size,
                          verbose=verbose,
                          n_threads=n_threads,
                          )
-    first_batch = True
-    for i in range(n_epochs):
-        for batch, indices in batcher.generate_once():
-            if center:
-                batch -= np.mean(batch, axis=(1, 2))[:, np.newaxis, np.newaxis, :]
-            if normalize:
-                std = np.sqrt(np.sum(batch ** 2, axis=(1, 2)))
-                std[std == 0] = 1
-                batch /= std[:, np.newaxis, np.newaxis, :]
-            batch = batch.reshape((batch.shape[0], -1))
-            if first_batch:
-                dict_fact.prepare(n_samples=n_samples,
-                                  X=batch)
-                first_batch = False
-            dict_fact.partial_fit(batch, indices)
+    dict_fact.connect(batcher)
 
     fig = plt.figure()
     patches = dict_fact.components_.reshape((dict_fact.components_.shape[0],
@@ -175,7 +156,8 @@ def decompose_run(batch_size,
     plot_patches(fig, patches)
     fig.suptitle('Dictionary components')
     fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.iter, cb.score)
+    ax.plot(cb.time, cb.score)
+    ax.set_xscale('log')
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Test objective value')
     plt.show()

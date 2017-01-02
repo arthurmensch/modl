@@ -11,30 +11,7 @@ for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 """
 from libc.math cimport sqrt, fabs
 
-ctypedef np.uint32_t UINT32_t
 from cython cimport floating
-
-cdef enum:
-    # Max value for our rand_r replacement (near the bottom).
-    # We don't use RAND_MAX because it's different across platforms and
-    # particularly tiny on Windows/MSVC.
-    RAND_R_MAX = 0x7FFFFFFF
-
-
-# The following two functions are shamelessly copied from the tree code.
-cdef inline UINT32_t our_rand_r(UINT32_t* seed) nogil:
-    seed[0] ^= <UINT32_t>(seed[0] << 13)
-    seed[0] ^= <UINT32_t>(seed[0] >> 17)
-    seed[0] ^= <UINT32_t>(seed[0] << 5)
-
-    return seed[0] % (<UINT32_t>RAND_R_MAX + 1)
-
-
-cdef inline UINT32_t randint(UINT32_t end,
-                              UINT32_t* random_state) nogil:
-    """Generate a random integer in [0; end)."""
-    return our_rand_r(random_state) % end
-
 
 cdef inline floating positive(floating a) nogil:
     if a > 0:
@@ -61,7 +38,6 @@ cdef inline void swap(floating[:] b, unsigned int i, unsigned int j,
 cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
                              floating l1_ratio) nogil:
     cdef unsigned int m = v.shape[0]
-    cdef UINT32_t random_state = 0
     cdef unsigned int i
     cdef unsigned int j
     cdef unsigned int size_U
@@ -109,7 +85,7 @@ cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
             start_U = 0
             size_U = m
             while size_U > 0:
-                pivot = randint(size_U, &random_state) + start_U
+                pivot = start_U + size_U / 2
                 # Putting pivot at the beginning
                 swap(b, pivot, start_U, &buf)
                 pivot = start_U

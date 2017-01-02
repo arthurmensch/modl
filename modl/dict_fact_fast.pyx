@@ -97,7 +97,7 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     else:
         for ii in range(batch_size):
             i = indices[ii]
-            this_G = G[i, :, :]
+            this_G = G[ii, :, :]
             this_Dx = Dx[ii, :]
             this_X = X[ii, :]
             this_code = code[i, :]
@@ -134,7 +134,7 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
     positive: bint, enet-regression parameter
     '''
     cdef int batch_size = indices.shape[0]
-    cdef int i, j, info
+    cdef int i, j, info, ii
     cdef int n_components = G.shape[0]
     cdef int n_features = X.shape[1]
     cdef floating* G_ptr = <floating*> &G[0, 0]
@@ -155,7 +155,6 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
     else:
         posv = dposv
         format = 'd'
-
     if l1_ratio == 0:
         # Make it thread-safe
         G_copy = view.array((n_components, n_components),
@@ -200,7 +199,7 @@ def _update_G_average(floating[:, :, ::1] G_average, floating[:, ::1] G,
                       floating[:] w_sample, long[:] indices):
     cdef int batch_size = indices.shape[0]
     cdef int n_components = G_average.shape[1]
-    cdef int i, p, q
+    cdef int i, p, q, ii
     for ii in range(batch_size):
         i = indices[ii]
         for p in range(n_components):
@@ -209,6 +208,17 @@ def _update_G_average(floating[:, :, ::1] G_average, floating[:, ::1] G,
                 G_average[i, p, q] += G[p, q] * w_sample[ii]
     return G_average
 
+def _assign_G_average(floating[:, :, ::1] G_average, floating[:, :, ::1] this_G_average,
+                      long[:] indices):
+    cdef int n_samples = this_G_average.shape[0]
+    cdef int n_components = G_average.shape[1]
+    cdef int i, ii
+    with nogil:
+        for ii in range(n_samples):
+            i = indices[ii]
+            for p in range(n_components):
+                for q in range(n_components):
+                    G_average[i, p, q] = this_G_average[ii, p, q]
 
 # Shamelessly copied from sklearn (no .pxd in sources :-( )
 cdef inline floating fmax(floating x, floating y) nogil:

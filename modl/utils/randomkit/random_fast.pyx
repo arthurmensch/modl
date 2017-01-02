@@ -12,8 +12,6 @@ from cython cimport view
 import numpy as np
 cimport numpy as np
 
-from libc.math cimport ceil
-
 cdef extern from "randomkit.h":
 
     ctypedef struct rk_state:

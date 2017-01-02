@@ -3,12 +3,16 @@ from math import log, ceil
 
 import numpy as np
 import scipy
-from .utils.math.enet_proj import enet_norm, enet_projection, enet_scale
-from .utils.randomkit.random_fast import Sampler
 from sklearn.utils import check_array, check_random_state, gen_batches
 
+from modl.utils import get_sub_slice
 from .dict_fact_fast import _enet_regression_multi_gram, \
-    _enet_regression_single_gram, _update_G_average, _batch_weight
+    _enet_regression_single_gram, _update_G_average, _batch_weight, \
+    _assign_G_average
+from .utils.math.enet import enet_norm, enet_projection, enet_scale
+from .utils.randomkit import Sampler
+
+from math import sqrt
 
 
 class DictFact:
@@ -101,14 +105,23 @@ class DictFact:
 
         n_samples, n_features = X.shape
         batches = gen_batches(n_samples, self.batch_size)
+
         for batch in batches:
             this_X = X[batch]
-            if sample_indices is None:
-                these_sample_indices = batch
-            else:
-                these_sample_indices = sample_indices[batch]
+            these_sample_indices = get_sub_slice(sample_indices, batch)
             self._single_batch_fit(this_X, these_sample_indices)
         return self
+
+    def connect(self, batcher):
+        for i in range(self.n_epochs):
+            self.reduction_ = self.reduction
+            for j, (batch, indices) in enumerate(batcher.generate_once()):
+                if j + i == 0:
+                    self.prepare(n_samples=batcher.n_samples_, X=batch)
+                self.partial_fit(batch, indices)
+            if self.G_agg != 'average':
+                if i < self.n_epochs - 1:
+                    batcher.shuffle()
 
     def prepare(self, n_samples=None, n_features=None,
                 dtype=np.float64, X=None):
@@ -131,10 +144,14 @@ class DictFact:
 
         # Regression statistics
         if self.G_agg == 'average':
-            self.G_average_ = np.zeros((n_samples, self.n_components,
-                                        self.n_components), dtype=dtype)
+            self.G_average_ = np.memmap('G_average', mode='w+',
+                                        shape=(n_samples, self.n_components,
+                                               self.n_components), dtype=dtype)
+            # self.G_average_ = np.zeros((n_samples, self.n_components,
+            #                             self.n_components), dtype=dtype)
         if self.Dx_agg == 'average':
-            self.Dx_average_ = np.zeros((n_samples, self.n_components), dtype=dtype)
+            self.Dx_average_ = np.zeros((n_samples, self.n_components),
+                                        dtype=dtype)
         # Dictionary statistics
         self.C_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
         self.B_ = np.zeros((self.n_components, n_features), dtype=dtype)
@@ -153,9 +170,9 @@ class DictFact:
             self.components_[self.components_ <= 0] = \
                 - self.components_[self.components_ <= 0]
         for i in range(self.n_components):
-            self.components_[i] = enet_scale(self.components_[i],
-                                             l1_ratio=self.comp_l1_ratio,
-                                             radius=1)
+            enet_scale(self.components_[i],
+                       l1_ratio=self.comp_l1_ratio,
+                       radius=1)
 
         self.code_ = np.ones((n_samples, self.n_components), dtype=dtype)
 
@@ -193,7 +210,7 @@ class DictFact:
             batches = list(gen_batches(n_samples, size_job))
             par_func = lambda batch: _enet_regression_single_gram(
                 G, Dx[batch], X[batch], code,
-                sample_indices[batch],
+                get_sub_slice(sample_indices, batch),
                 self.code_l1_ratio, self.code_alpha, self.code_pos)
             res = self.pool_.map(par_func, batches)
             _ = list(res)
@@ -220,16 +237,16 @@ class DictFact:
                 self.callback(self)
             self.verbose_iter_ = self.verbose_iter_[1:]
 
-        subset = self.feature_sampler_.yield_subset(self.reduction)
+        subset = self.feature_sampler_.yield_subset(self.reduction_)
         batch_size = X.shape[0]
 
         self.n_iter_ += batch_size
         self.sample_n_iter_[sample_indices] += 1
         this_sample_n_iter = self.sample_n_iter_[sample_indices]
-        w_sample = np.power(this_sample_n_iter, -self.sample_learning_rate).\
+        w_sample = np.power(this_sample_n_iter, -self.sample_learning_rate). \
             astype(self.components_.dtype)
         w = _batch_weight(self.n_iter_, batch_size,
-                         self.learning_rate, 0)
+                          self.learning_rate, 0)
 
         self._compute_code(X, sample_indices, w_sample, subset)
 
@@ -279,7 +296,7 @@ class DictFact:
     def _compute_code(self, X, sample_indices,
                       w_sample, subset):
         batch_size, n_features = X.shape
-        reduction = self.reduction
+        reduction = self.reduction_
 
         if self.n_threads > 1:
             size_job = ceil(batch_size / self.n_threads)
@@ -303,37 +320,41 @@ class DictFact:
         if self.G_agg != 'full':
             G = components_subset.dot(components_subset.T) * reduction
             if self.G_agg == 'average':
+                G_average = np.array(self.G_average_[sample_indices],
+                                     copy=True)
                 if self.n_threads > 1:
-                    par_func = lambda batch: _update_G_average(self.G_average_,
-                                                               G, w_sample[batch],
-                                                               sample_indices[batch])
+                    par_func = lambda batch: _update_G_average(G_average,
+                                                               G,
+                                                               w_sample[batch],
+                                                               np.arange(batch.start, batch.stop))
                     res = self.pool_.map(par_func, batches)
                     _ = list(res)
                 else:
                     _update_G_average(
                         self.G_average_, G, w_sample, sample_indices)
+                self.G_average_[sample_indices] = G_average
         else:
             G = self.G_
-
         if self.n_threads > 1:
+            # Asynchronous IO
             if self.G_agg == 'average':
                 par_func = lambda batch: _enet_regression_multi_gram(
-                    self.G_average_, Dx[batch], X[batch], self.code_,
-                    sample_indices[batch],
-                self.code_l1_ratio, self.code_alpha, self.code_pos)
+                    G_average[batch], Dx[batch], X[batch], self.code_,
+                    get_sub_slice(sample_indices, batch),
+                    self.code_l1_ratio, self.code_alpha, self.code_pos)
             else:
                 par_func = lambda batch: _enet_regression_single_gram(
                     G, Dx[batch], X[batch], self.code_,
-                    sample_indices[batch],
+                    get_sub_slice(sample_indices, batch),
                     self.code_l1_ratio, self.code_alpha, self.code_pos)
             res = self.pool_.map(par_func, batches)
             _ = list(res)
         else:
             if self.G_agg == 'average':
                 _enet_regression_multi_gram(
-                    self.G_average_, Dx, X, self.code_,
+                    G_average, Dx, X, self.code_,
                     sample_indices,
-                self.code_l1_ratio, self.code_alpha, self.code_pos)
+                    self.code_l1_ratio, self.code_alpha, self.code_pos)
             else:
                 _enet_regression_single_gram(
                     G, Dx, X, self.code_,
