@@ -9,7 +9,7 @@ from nilearn.input_data import NiftiMasker
 from sklearn.externals.joblib import delayed, Parallel
 from sklearn.linear_model import Ridge
 
-from modl._utils.enet_proj import enet_scale
+from modl.utils.math.enet_proj import enet_scale
 from modl.datasets.hcp import get_hcp_data
 
 data_dir = expanduser('~/data')

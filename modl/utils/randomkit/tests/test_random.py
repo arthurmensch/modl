@@ -5,7 +5,7 @@ from numpy.testing import (assert_almost_equal, assert_array_equal,
 from lightning.impl.randomkit import RandomState
 from sklearn.externals.six.moves import xrange
 
-from modl._utils.randomkit.random_fast import Sampler
+from modl.utils.randomkit.random_fast import Sampler
 
 
 def test_randint():

@@ -13,10 +13,10 @@ def configuration(parent_package='', top_path=None):
     if sys.platform == 'win32':
         libs.append('Advapi32')
 
-    extensions = [Extension('modl/_utils/randomkit/random_fast',
-                            sources=['modl/_utils/randomkit/random_fast.pyx',
-                                     'modl/_utils/randomkit/randomkit.c',
-                                     'modl/_utils/randomkit/distributions.c',
+    extensions = [Extension('modl.utils.randomkit.random_fast',
+                            sources=['modl/utils/randomkit/random_fast.pyx',
+                                     'modl/utils/randomkit/randomkit.c',
+                                     'modl/utils/randomkit/distributions.c',
                                      ],
                             include_dirs=[numpy.get_include(),
                                           'modl/_utils/randomkit'],

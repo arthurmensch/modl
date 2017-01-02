@@ -3,19 +3,20 @@ from distutils.extension import Extension
 import numpy
 from Cython.Build import cythonize
 
+
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
-    config = Configuration('streaming', parent_package, top_path)
+    config = Configuration('math', parent_package, top_path)
 
-    extensions = [
-                  Extension('modl/streaming/images_fast',
-                            sources=['modl/streaming/images_fast.pyx'],
-                            include_dirs=[numpy.get_include(),
-                                          'modl/_utils/randomkit'],
+    extensions = [Extension('modl._utils.math.enet_proj',
+                            sources=['modl/utils/math/enet_proj.pyx'],
+                            include_dirs=[numpy.get_include()],
                             ),
                   ]
     config.ext_modules += cythonize(extensions)
+
+    config.add_subpackage('tests')
 
     return config
 

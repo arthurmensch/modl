@@ -10,7 +10,7 @@ import numpy as np
 import seaborn.apionly as sns
 from joblib import Parallel
 from joblib import delayed
-from modl._utils.system.misc import NumpyAwareJSONEncoder
+from modl.utils.system.misc import NumpyAwareJSONEncoder
 from modl.dict_fact import DictFact
 from scipy import misc
 from skimage.io import imread

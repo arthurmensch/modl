@@ -29,10 +29,8 @@ ctypedef void (*AXPY)(int* N, floating* alpha, floating* X, int* incX,
                       floating* Y, int* incY) nogil
 ctypedef floating (*ASUM)(int* N, floating* X, int* incX) nogil
 
-# np.import_array()
-
-cpdef double batch_weight(long count, long batch_size,
-           double learning_rate, double offset) nogil:
+def _batch_weight(long count, long batch_size,
+           double learning_rate, double offset):
     cdef long i
     cdef double w = 1
     for i in range(count + 1 - batch_size, count + 1):
@@ -40,10 +38,30 @@ cpdef double batch_weight(long count, long batch_size,
     w = 1 - w
     return w
 
-cpdef enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx, floating[:, ::1] X,
-                                 floating[: , ::1] code, floating l1_ratio, floating alpha,
-                                 bint positive):
-    cdef int batch_size = code.shape[0]
+def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
+                                floating[:, ::1] X,
+                                floating[: , ::1] code,
+                                long[:] indices,
+                                floating l1_ratio, floating alpha,
+                                bint positive):
+    '''
+    Perform elastic net regression: for all i in indices,
+    find code[i] s.t code[i].dot(G[i]) = Dx[ii], where i = indices[ii].
+    G and code are the arrays containing the values for all samples,
+    while Dx and X should already be subscripted.
+
+    Parameters
+    ----------
+    G: array, shape (n_samples x n_components x n_components)
+    Dx: array, shape (batch_size x n_components x n_components)
+    X: array, shape (batch_size x n_components x n_components
+    code: array, shape (n_samples x n_components)
+    indices: array, shape (batch_size
+    l1_ratio: floating, enet-regression parameter
+    alpha: floating, enet-regression paramater
+    positive: bint, enet-regression parameter
+    '''
+    cdef int batch_size = indices.shape[0]
     cdef int n_components = code.shape[1]
     cdef int i, j, info
     cdef floating tol = 1e-2
@@ -64,9 +82,9 @@ cpdef enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx, flo
 
 
     if l1_ratio == 0:
-        code[:, :] = Dx[:, :]
-
-        for i in range(batch_size):
+        for ii in range(batch_size):
+            i = indices[ii]
+            code[i, :] = Dx[ii, :]
             for j in range(n_components):
                 G[i, j, j] += alpha
             posv(&UP, &n_components, &ONE,
@@ -76,12 +94,12 @@ cpdef enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx, flo
                 &info)
             for j in range(n_components):
                 G[i, j, j] -= alpha
-
     else:
-        for i in range(batch_size):
+        for ii in range(batch_size):
+            i = indices[ii]
             this_G = G[i, :, :]
-            this_Dx = Dx[i, :]
-            this_X = X[i, :]
+            this_Dx = Dx[ii, :]
+            this_X = X[ii, :]
             this_code = code[i, :]
             enet_coordinate_descent_gram(
                 this_code,
@@ -92,12 +110,30 @@ cpdef enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx, flo
     return np.asarray(code)
 
 
-def enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
+def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
                                 floating[:, ::1] X,
                                 floating[:, ::1] code,
+                                long[:] indices,
                                 floating l1_ratio, floating alpha,
                                 bint positive):
-    cdef int batch_size = code.shape[0]
+    '''
+    Perform elastic net regression: for all i in indices,
+    find code[i] s.t code[i].dot(G) = Dx[ii], where i = indices[ii].
+    G and code are the arrays containing the values for all samples,
+    while Dx and X should already be subscripted.
+
+    Parameters
+    ----------
+    G: array, shape (n_samples x n_components x n_components)
+    Dx: array, shape (batch_size x n_components x n_components)
+    X: array, shape (batch_size x n_components x n_components
+    code: array, shape (n_samples x n_components)
+    indices: array, shape (batch_size
+    l1_ratio: floating, enet-regression parameter
+    alpha: floating, enet-regression paramater
+    positive: bint, enet-regression parameter
+    '''
+    cdef int batch_size = indices.shape[0]
     cdef int i, j, info
     cdef int n_components = G.shape[0]
     cdef int n_features = X.shape[1]
@@ -111,6 +147,7 @@ def enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
     cdef floating[::1] this_Dx
     cdef floating[:] this_X
     cdef floating[:, ::1] G_copy
+    cdef floating[:, ::1] code_copy
 
     if floating is float:
         posv = sposv
@@ -120,25 +157,35 @@ def enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
         format = 'd'
 
     if l1_ratio == 0:
+        # Make it thread-safe
         G_copy = view.array((n_components, n_components),
                                               sizeof(floating),
                                               format=format, mode='c')
         G_copy[:, :] = G[:, :]
         G = G_copy
         G_ptr = &G[0, 0]
-        code[:, :] = Dx[:, :]
         for j in range(n_components):
             G[j, j] += alpha
+
+        code_copy = view.array((batch_size, n_components),
+                                      sizeof(floating),
+                                      format=format, mode='c')
+        code_ptr = &code_copy[0, 0]
+        for ii in range(batch_size):
+            code_copy[ii, :] = Dx[ii, :]
         posv(&UP, &n_components, &batch_size,
         G_ptr,
         &n_components,
         code_ptr, &n_components,
         &info)
+        for ii in range(batch_size):
+            i = indices[ii]
+            code[i, :] = code_copy[ii, :]
     else:
-        # Unused but unfortunate API
-        for i in range(batch_size):
-            this_Dx = Dx[i, :]
-            this_X = X[i, :]
+        for ii in range(batch_size):
+            i = indices[ii]
+            this_Dx = Dx[ii, :]
+            this_X = X[ii, :]
             this_code = code[i, :]
             enet_coordinate_descent_gram(
                 this_code,
@@ -147,6 +194,21 @@ def enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
                 G, this_Dx, this_X, max_iter, tol,
                 positive)
     return np.asarray(code)
+
+
+def _update_G_average(floating[:, :, ::1] G_average, floating[:, ::1] G,
+                      floating[:] w_sample, long[:] indices):
+    cdef int batch_size = indices.shape[0]
+    cdef int n_components = G_average.shape[1]
+    cdef int i, p, q
+    for ii in range(batch_size):
+        i = indices[ii]
+        for p in range(n_components):
+            for q in range(n_components):
+                G_average[i, p, q] *= (1 - w_sample[ii])
+                G_average[i, p, q] += G[p, q] * w_sample[ii]
+    return G_average
+
 
 # Shamelessly copied from sklearn (no .pxd in sources :-( )
 cdef inline floating fmax(floating x, floating y) nogil:

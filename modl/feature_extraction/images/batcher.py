@@ -1,27 +1,9 @@
 import numpy as np
-from joblib import Memory
-from nilearn.input_data.masker_validation import check_embedded_nifti_masker
-
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.utils import check_random_state, gen_batches
 
-from .images_fast import clean_mask
-
-
-class BaseBatcher(object):
-    def __init__(self, batch_size=10, random_state=None):
-        self.batch_size = batch_size
-        self.random_state = random_state
-
-    def prepare(self, data_source):
-        pass
-
-    def generate_once(self):
-        return
-        yield
-
-    def generate_single(self):
-        return next(self.generate_once())
+from ...feature_extraction.base import BaseBatcher
+from .clean import clean_mask
 
 
 class ImageBatcher(BaseBatcher):
@@ -51,7 +33,7 @@ class ImageBatcher(BaseBatcher):
         self.indices_3d_ = np.c_[np.where(mask)][:self.max_samples]
         n_samples = self.indices_3d_.shape[0]
         # 1d index of each patch
-        self.indices_1d_ = np.arange(n_samples, dtype='i4')
+        self.indices_1d_ = np.arange(n_samples)
 
     def generate_once(self):
         n_samples = self.indices_3d_.shape[0]

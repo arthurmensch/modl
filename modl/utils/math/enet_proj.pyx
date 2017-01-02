@@ -9,15 +9,9 @@
 J. Mairal, F. Bach, J. Ponce, G. Sapiro, 2009: Online dictionary learning
 for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 """
-
-
-import cython
-
 from libc.math cimport sqrt, fabs
 
-from .enet_proj_fast cimport UINT32_t
-
-from cython cimport view
+ctypedef np.uint32_t UINT32_t
 from cython cimport floating
 
 cdef enum:
@@ -64,7 +58,7 @@ cdef inline void swap(floating[:] b, unsigned int i, unsigned int j,
     return
 
 
-cpdef void enet_projection_fast(floating[:] v, floating[:] b, floating radius,
+cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
                              floating l1_ratio) nogil:
     cdef unsigned int m = v.shape[0]
     cdef UINT32_t random_state = 0
@@ -152,7 +146,7 @@ cpdef void enet_projection_fast(floating[:] v, floating[:] b, floating radius,
     return
 
 
-cpdef floating enet_norm_fast(floating[:] v, floating l1_ratio) nogil:
+cpdef floating enet_norm(floating[:] v, floating l1_ratio) nogil:
     """Returns the elastic net norm of a vector
 
     Parameters
@@ -177,7 +171,7 @@ cpdef floating enet_norm_fast(floating[:] v, floating l1_ratio) nogil:
         res += v_abs * (l1_ratio + (1 - l1_ratio) * v_abs)
     return res
 
-cpdef void enet_scale_fast(floating[:] X,
+cpdef void enet_scale(floating[:] X,
                            floating l1_ratio, floating radius=1) nogil:
     cdef int n_features = X.shape[0]
     cdef floating l1_norm = 0
@@ -196,12 +190,3 @@ cpdef void enet_scale_fast(floating[:] X,
         S = radius / l1_norm
     for j in range(n_features):
         X[j] *= S
-
-cpdef void enet_scale_matrix_fast(floating[:, :] X,
-                           floating l1_ratio, floating radius=1) nogil:
-    cdef int n_vectors = X.shape[0]
-    cdef int i
-    cdef floating[:] this_X
-    for i in range(n_vectors):
-        this_X = X[i]
-        enet_scale_fast(this_X, l1_ratio, radius=radius)

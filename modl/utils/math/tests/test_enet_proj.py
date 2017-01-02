@@ -6,7 +6,7 @@ from numpy import sqrt
 from numpy.testing import assert_array_almost_equal
 from sklearn.utils import check_random_state
 
-from modl._utils.enet_proj import enet_norm, enet_projection, \
+from modl.utils.math.enet_proj import enet_norm, enet_projection, \
     enet_scale
 
 

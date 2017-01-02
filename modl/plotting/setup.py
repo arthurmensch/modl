@@ -1,7 +1,14 @@
+from distutils.extension import Extension
+
+import numpy
+from Cython.Build import cythonize
+
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
-    config = Configuration('system', parent_package, top_path)
+    config = Configuration('plotting', parent_package, top_path)
+
+    config.add_subpackage('tests')
 
     return config
 

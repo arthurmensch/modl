@@ -8,7 +8,7 @@ from os.path import expanduser
 import numpy as np
 from nilearn.datasets import fetch_atlas_smith_2009
 
-from modl._utils.system.mkl import num_threads
+from modl.utils.system.mkl import num_threads
 from modl.datasets.hcp import get_hcp_data
 from modl.spca_fmri import SpcaFmri
 

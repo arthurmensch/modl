@@ -9,15 +9,8 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('_utils', parent_package, top_path)
 
-    extensions = [Extension('modl/_utils/enet_proj_fast',
-                            sources=['modl/_utils/enet_proj_fast.pyx'],
-                            include_dirs=[numpy.get_include()],
-                            ),
-                  ]
-    config.ext_modules += cythonize(extensions)
-
+    config.add_subpackage('math')
     config.add_subpackage('tests')
-    config.add_subpackage('system')
     config.add_subpackage('randomkit')
 
     return config

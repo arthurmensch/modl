@@ -1,8 +1,5 @@
 # Author: Arthur Mensch
 # License: BSD
-# Adapted from nilearn example
-
-# Load ADDH
 import time
 
 import matplotlib.pyplot as plt
@@ -13,7 +10,7 @@ from sacred.ingredient import Ingredient
 from modl.datasets.images import load_images
 from modl.dict_fact import DictFact
 from modl.plotting.images import plot_patches
-from modl.streaming.batcher import ImageBatcher
+from modl.feature_extraction.batcher import ImageBatcher
 
 data_ing = Ingredient('data')
 decompose_ex = Experiment('decompose_images',
@@ -24,21 +21,21 @@ decompose_ex = Experiment('decompose_images',
 def config():
     batch_size = 400
     learning_rate = 0.92
-    G_agg = 'average'
+    G_agg = 'full'
     Dx_agg = 'average'
     reduction = 10
     code_alpha = 0.8e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
     n_epochs = 10
-    n_components = 50
+    n_components = 200
     code_pos = False
     comp_pos = False
     normalize = True
     center = True
     test_size = 4000
     buffer_size = 5000
-    max_patches = 10000
+    max_patches = 50000
     patch_shape = (16, 16)
     n_threads = 2
     verbose = 10
@@ -126,7 +123,6 @@ def decompose_run(batch_size,
         std[std == 0] = 1
         test_data /= std[:, np.newaxis, np.newaxis, :]
     test_data = test_data.reshape((test_data.shape[0], -1))
-    n_features = test_data.shape[1]
 
     batcher = ImageBatcher(patch_shape=patch_shape,
                            batch_size=buffer_size,
@@ -137,6 +133,7 @@ def decompose_run(batch_size,
     n_samples = batcher.n_samples_
 
     cb = ImageScorer(test_data)
+    cb = None
     dict_fact = DictFact(
                          n_epochs=n_epochs,
                          random_state=_seed,

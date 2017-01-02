@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 import matplotlib.pyplot as plt
 from data import load_data, data_ing, load_init, init_ing
-from modl._utils.system import get_cache_dirs
+from modl.utils.system import get_cache_dirs
 from modl.plotting.fmri import display_maps
 from modl.spca_fmri import SpcaFmri
 from sacred import Experiment
