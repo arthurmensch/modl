@@ -2,6 +2,7 @@
 # cython: cdivision=True
 # cython: boundscheck=False
 # cython: wraparound=False
+from modl.utils.randomkit.random_fast import rk_interval
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -400,3 +401,26 @@ cdef void enet_coordinate_descent_gram(floating[:] w, floating alpha, floating b
                 if gap < tol:
                     # return if we reached desired tolerance
                     break
+
+cpdef shuffle_G(self, floating[:, :, ::1] x) nogil:
+    cdef int i, j
+    cdef int copy
+
+    cdef long x_temp
+
+    cdef int[:] permutation = view.array(x.shape[0],
+                                              sizeof(int),
+                                              format='i', mode='c')
+    for i in range(x.shape[0]):
+        permutation[i] = i
+    i = x.shape[0] - 1
+    while i > 0:
+        j = rk_interval(i, self.internal_state)
+        permutation_temp = permutation[i]
+        x_temp = x[i]
+        permutation[i] = permutation[j]
+        x[i] = x[j]
+        permutation[j] = j
+        x[j] = x_temp
+        i = i - 1
+    return np.asarray(permutation)

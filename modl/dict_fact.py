@@ -118,10 +118,12 @@ class DictFact:
             for j, (batch, indices) in enumerate(batcher.generate_once()):
                 if j + i == 0:
                     self.prepare(n_samples=batcher.n_samples_, X=batch)
+                print(indices)
                 self.partial_fit(batch, indices)
-            if self.G_agg != 'average':
-                if i < self.n_epochs - 1:
-                    batcher.shuffle()
+            if self.G_agg != 'average' and i < self.n_epochs - 1:
+                batcher.shuffle()
+            else:
+
 
     def prepare(self, n_samples=None, n_features=None,
                 dtype=np.float64, X=None):
