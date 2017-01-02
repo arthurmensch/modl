@@ -19,7 +19,7 @@ def load_images(source,
     data_dir = get_data_dirs()[0]
     if source == 'face':
         image = face(gray=gray)
-        image = image / 255
+        image = image.astype(np.float32) / 255
         if image.ndim == 2:
             image = image[..., np.newaxis]
         if scale != 1:
@@ -33,7 +33,7 @@ def load_images(source,
         return image
     elif source == 'lisboa':
         image = imread(join(data_dir, 'images', 'lisboa.jpg'), as_grey=gray)
-        image = image / 255
+        image = image.astype(np.float32) / 255
         if image.ndim == 2:
             image = image[..., np.newaxis]
         if scale != 1:
@@ -51,7 +51,7 @@ def load_images(source,
                  'aviris',
                  'f100826t01p00r05rdn_b/'
                  'f100826t01p00r05rdn_b_sc01_ort_img.hdr'))
-        image = np.array(image.open_memmap(), dtype=float)
+        image = np.array(image.open_memmap(), dtype=np.float32)
         good_bands = list(range(image.shape[2]))
         good_bands.remove(110)
         image = image[:, :, good_bands]

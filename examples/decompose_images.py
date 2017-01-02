@@ -22,15 +22,15 @@ decompose_ex = Experiment('decompose_images',
 
 @decompose_ex.config
 def config():
-    batch_size = 200
+    batch_size = 400
     learning_rate = 0.92
-    G_agg = 'full'
+    G_agg = 'average'
     Dx_agg = 'average'
     reduction = 10
     code_alpha = 0.8e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
-    n_epochs = 15
+    n_epochs = 10
     n_components = 50
     code_pos = False
     comp_pos = False
@@ -166,7 +166,8 @@ def decompose_run(batch_size,
                 batch /= std[:, np.newaxis, np.newaxis, :]
             batch = batch.reshape((batch.shape[0], -1))
             if first_batch:
-                dict_fact.prepare(n_samples=n_samples, n_features=n_features, X=batch)
+                dict_fact.prepare(n_samples=n_samples,
+                                  X=batch)
                 first_batch = False
             dict_fact.partial_fit(batch, indices)
 

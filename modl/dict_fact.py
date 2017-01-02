@@ -17,6 +17,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from math import log, ceil
 
+from .dict_fact_fast import enet_regression_multi_gram, \
+    enet_regression_single_gram
+
 
 class DictFact:
     def __init__(self,
@@ -73,7 +76,7 @@ class DictFact:
         -------
 
         """
-        X = check_array(X, order='C', dtype='float')
+        X = check_array(X, order='C', dtype=[np.float32, np.float64])
         self.prepare(X=X)
         # Main loop
         n_features, n_samples = X.shape
@@ -104,7 +107,7 @@ class DictFact:
         -------
 
         """
-        X = check_array(X, dtype='float', order='C')
+        X = check_array(X, dtype=[np.float32, np.float64], order='C')
 
         n_samples, n_features = X.shape
         batches = gen_batches(n_samples, self.batch_size)
@@ -117,9 +120,11 @@ class DictFact:
             self._single_batch_fit(this_X, these_sample_indices)
         return self
 
-    def prepare(self, n_samples=None, n_features=None, X=None):
+    def prepare(self, n_samples=None, n_features=None,
+                dtype=np.float64, X=None):
         if X is not None:
-            X = check_array(X, order='C', dtype='float')
+            X = check_array(X, order='C', dtype=[np.float32, np.float64])
+            dtype = X.dtype
             # Transpose to fit usual column streaming
             this_n_samples = X.shape[0]
             if n_samples is None:
@@ -137,13 +142,14 @@ class DictFact:
         # Regression statistics
         if self.G_agg == 'average':
             self.G_average_ = np.zeros((n_samples, self.n_components,
-                                        self.n_components))
+                                        self.n_components), dtype=dtype)
         if self.Dx_agg == 'average':
-            self.Dx_average_ = np.zeros((n_samples, self.n_components))
+            self.Dx_average_ = np.zeros((n_samples, self.n_components), dtype=dtype)
         # Dictionary statistics
-        self.C_ = np.zeros((self.n_components, self.n_components))
-        self.B_ = np.zeros((self.n_components, n_features))
-        self.gradient_ = np.zeros((self.n_components, n_features), order='F')
+        self.C_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
+        self.B_ = np.zeros((self.n_components, n_features), dtype=dtype)
+        self.gradient_ = np.zeros((self.n_components, n_features), dtype=dtype,
+                                  order='F')
 
         self.random_state_ = check_random_state(self.random_state)
         if X is None:
@@ -158,11 +164,11 @@ class DictFact:
                 - self.components_[self.components_ <= 0]
         self.components_ = enet_scale(self.components_,
                                       l1_ratio=self.comp_l1_ratio,
-                                      radius=1)
+                                      radius=1).astype(dtype)
 
-        self.code_ = np.ones((n_samples, self.n_components))
+        self.code_ = np.ones((n_samples, self.n_components), dtype=dtype)
 
-        self.comp_norm_ = np.zeros(self.n_components)
+        self.comp_norm_ = np.zeros(self.n_components, dtype=dtype)
 
         if self.G_agg == 'full':
             self.G_ = self.components_.dot(self.components_.T)
@@ -181,25 +187,28 @@ class DictFact:
             self.pool_ = ThreadPoolExecutor(self.n_threads)
 
     def transform(self, X):
-        X = check_array(X, order='C', dtype='float')
+        dtype = self.components_.dtype
+        X = check_array(X, order='C', dtype=dtype.type)
         n_samples, n_features = X.shape
         if self.G_agg != 'full':
             G = self.components_.dot(self.components_.T)
         else:
             G = self.G_
         Dx = X.dot(self.components_.T)
-        code = np.ones((n_samples, self.n_components))
-        lr_func = lambda batch: enet_regression_single_gram(
-            G, Dx[batch], X[batch], code[batch],
-            self.code_l1_ratio, self.code_alpha, self.code_pos)
+        code = np.ones((n_samples, self.n_components), dtype=dtype)
         if self.n_threads > 1:
             size_job = ceil(n_samples / self.n_threads)
             batches = list(gen_batches(n_samples, size_job))
-            codes = self.pool_.map(lr_func, batches)
+            par_func = lambda batch: enet_regression_single_gram(
+                G, Dx[batch], X[batch], code[batch],
+                self.code_l1_ratio, self.code_alpha, self.code_pos)
+            codes = self.pool_.map(par_func, batches)
             for batch, this_code in zip(batches, codes):
                 code[batch] = this_code
         else:
-            code = lr_func(slice(None))
+            code = enet_regression_single_gram(
+                G, Dx, X, code, self.code_l1_ratio, self.code_alpha,
+                self.code_pos)
         return code
 
     def score(self, X):
@@ -226,7 +235,7 @@ class DictFact:
         this_sample_n_iter = self.sample_n_iter_[sample_indices]
         w_sample = np.power(this_sample_n_iter, -self.sample_learning_rate)
         w = batch_weight(self.n_iter_, batch_size,
-                               self.learning_rate, 0)
+                         self.learning_rate, 0)
 
         self._compute_code(X, sample_indices, w_sample, subset)
 
@@ -295,43 +304,60 @@ class DictFact:
 
         if self.G_agg != 'full':
             G = components_subset.dot(components_subset.T) * reduction
-            if self.Dx_agg == 'average':
-                self.G_average_[sample_indices] *= \
-                    1 - w_sample[:, np.newaxis, np.newaxis]
-                # For some reason dot with 3d array makes
-                # the product along the 2nd dimension of right side factor
-                self.G_average_[sample_indices] += \
-                    w_sample[:, np.newaxis].dot(G[:, np.newaxis, :])
+            if self.G_agg == 'average':
+                if self.n_threads > 1:
+                    size_job = ceil(batch_size / self.n_threads)
+                    batches = list(gen_batches(batch_size, size_job))
+                    def par_func(batch):
+                        self.G_average_[sample_indices[batch]] *= \
+                            1 - w_sample[batch, np.newaxis, np.newaxis]
+
+                        self.G_average_[sample_indices[batch]] += \
+                            w_sample[batch, np.newaxis].dot( G[:, np.newaxis, :])
+                    _ = list(self.pool_.map(par_func, batches))
+                else:
+                    self.G_average_[sample_indices] *= \
+                        1 - w_sample[:, np.newaxis, np.newaxis]
+                    # For some reason dot with 3d array makes
+                    # the product along the 2nd
+                    #  dimension of right side factor
+                    self.G_average_[sample_indices] += \
+                        w_sample[:, np.newaxis].dot(G[:, np.newaxis, :])
+            G = self.G_average_[sample_indices]
         else:
             G = self.G_
 
-        if self.G_agg == 'average':
-            lr_func = lambda batch: \
-                enet_regression_multi_gram(
-                    self.G_average_[sample_indices[batch]], Dx[batch],
-                    X[batch],
-                    self.code_[sample_indices[batch]],
-                    self.code_l1_ratio, self.code_alpha, self.code_pos)
-        else:
-            lr_func = lambda batch: \
-                enet_regression_single_gram(
-                    G, Dx[batch], X[batch],
-                    self.code_[sample_indices[batch]],
-                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+        code = self.code_[sample_indices]
+
         if self.n_threads > 1:
             size_job = ceil(batch_size / self.n_threads)
             batches = list(gen_batches(batch_size, size_job))
-            codes = self.pool_.map(lr_func, batches)
-            for batch, code in zip(batches, codes):
-                self.code_[sample_indices[batch]] = code
+            if self.G_agg == 'average':
+                par_func = lambda batch: enet_regression_multi_gram(
+                    G[batch], Dx[batch], X[batch], code[batch],
+                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+            else:
+                par_func = lambda batch: enet_regression_single_gram(
+                    G, Dx[batch], X[batch], code[batch],
+                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+            codes = self.pool_.map(par_func, batches)
+            for batch, this_code in zip(batches, codes):
+                self.code_[sample_indices[batch]] = this_code
         else:
-            self.code_[sample_indices] = lr_func(slice(None))
+            if self.G_agg == 'average':
+                self.code_[sample_indices] = enet_regression_multi_gram(
+                    G, Dx, X, code,
+                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+            else:
+                self.code_[sample_indices] = enet_regression_single_gram(
+                    G, Dx, X, code,
+                    self.code_l1_ratio, self.code_alpha, self.code_pos)
 
     def _update_dict(self, subset):
         len_subset = subset.shape[0]
         n_components, n_features = self.components_.shape
         components_subset = self.components_[:, subset]
-        atom_temp = np.zeros(len_subset)
+        atom_temp = np.zeros(len_subset, dtype=self.components_.dtype)
         gradient_subset = self.gradient_[:, subset]
         ger, = scipy.linalg.get_blas_funcs(('ger',), (self.C_,
                                                       components_subset))
@@ -372,14 +398,14 @@ class DictFact:
                 self.G_[:] = self.components_.dot(self.components_.T)
 
 
-def enet_regression_multi_gram(G, Dx, X, code, l1_ratio, alpha,
+def enet_regression_multi_gram_(G, Dx, X, code, l1_ratio, alpha,
                                positive):
     batch_size = code.shape[0]
     if l1_ratio == 0:
         n_components = G.shape[1]
         for i in range(batch_size):
             G.flat[::n_components + 1] += alpha
-            code[:] = linalg.solve(G[i], Dx[i])
+            code[i] = linalg.solve(G[i], Dx[i])
             G.flat[::n_components + 1] -= alpha
     else:
         # Unused but unfortunate API
@@ -396,14 +422,14 @@ def enet_regression_multi_gram(G, Dx, X, code, l1_ratio, alpha,
     return code
 
 
-def enet_regression_single_gram(G, Dx, X, code, code_l1_ratio, code_alpha,
+def enet_regression_single_gram_(G, Dx, X, code, code_l1_ratio, code_alpha,
                                 code_pos):
     batch_size = code.shape[0]
     if code_l1_ratio == 0:
         n_components = G.shape[0]
         G = G.copy()
         G.flat[::n_components + 1] += code_alpha
-        code[:] = linalg.solve(G, Dx)
+        code[:] = linalg.solve(G, Dx.T).T
         G.flat[::n_components + 1] -= code_alpha
     else:
         # Unused but unfortunate API

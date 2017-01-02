@@ -18,6 +18,7 @@ from libc.math cimport sqrt, fabs
 from .enet_proj_fast cimport UINT32_t
 
 from cython cimport view
+from cython cimport floating
 
 cdef enum:
     # Max value for our rand_r replacement (near the bottom).
@@ -41,48 +42,48 @@ cdef inline UINT32_t randint(UINT32_t end,
     return our_rand_r(random_state) % end
 
 
-cdef inline double positive(double a) nogil:
+cdef inline floating positive(floating a) nogil:
     if a > 0:
         return a
     else:
         return 0
 
 
-cdef inline double sign(double a) nogil:
+cdef inline floating sign(floating a) nogil:
     if a >= 0.:
         return 1.
     else:
         return -1.
 
 
-cdef inline void swap(double[:] b, unsigned int i, unsigned int j,
-                      double * buf) nogil:
+cdef inline void swap(floating[:] b, unsigned int i, unsigned int j,
+                      floating * buf) nogil:
     buf[0] = b[i]
     b[i] = b[j]
     b[j] = buf[0]
     return
 
 
-cpdef void enet_projection_fast(double[:] v, double[:] b, double radius,
-                             double l1_ratio) nogil:
+cpdef void enet_projection_fast(floating[:] v, floating[:] b, floating radius,
+                             floating l1_ratio) nogil:
     cdef unsigned int m = v.shape[0]
     cdef UINT32_t random_state = 0
     cdef unsigned int i
     cdef unsigned int j
     cdef unsigned int size_U
     cdef unsigned int start_U
-    cdef double buf = 0
-    cdef double gamma
+    cdef floating buf = 0
+    cdef floating gamma
     cdef unsigned int pivot
     cdef unsigned int rho
     cdef unsigned int drho
-    cdef double s
-    cdef double ds
-    cdef double a
-    cdef double d
-    cdef double c
-    cdef double l
-    cdef double norm = 0
+    cdef floating s
+    cdef floating ds
+    cdef floating a
+    cdef floating d
+    cdef floating c
+    cdef floating l
+    cdef floating norm = 0
     if radius == 0:
         b[:] = 0
         return
@@ -151,12 +152,12 @@ cpdef void enet_projection_fast(double[:] v, double[:] b, double radius,
     return
 
 
-cpdef double enet_norm_fast(double[:] v, double l1_ratio) nogil:
+cpdef floating enet_norm_fast(floating[:] v, floating l1_ratio) nogil:
     """Returns the elastic net norm of a vector
 
     Parameters
     -----------------------------------------
-    v: double memory-view,
+    v: floating memory-view,
         Vector
 
     l1_gamma: float,
@@ -168,20 +169,20 @@ cpdef double enet_norm_fast(double[:] v, double l1_ratio) nogil:
         Elastic-net norm
     """
     cdef int n = v.shape[0]
-    cdef double res = 0
-    cdef double v_abs
+    cdef floating res = 0
+    cdef floating v_abs
     cdef unsigned int i
     for i in range(n):
         v_abs = fabs(v[i])
         res += v_abs * (l1_ratio + (1 - l1_ratio) * v_abs)
     return res
 
-cpdef void enet_scale_fast(double[:] X,
-                           double l1_ratio, double radius=1) nogil:
+cpdef void enet_scale_fast(floating[:] X,
+                           floating l1_ratio, floating radius=1) nogil:
     cdef int n_features = X.shape[0]
-    cdef double l1_norm = 0
-    cdef double l2_norm = 0
-    cdef double S = 0
+    cdef floating l1_norm = 0
+    cdef floating l2_norm = 0
+    cdef floating S = 0
 
     for j in range(n_features):
         l1_norm += fabs(X[j])
@@ -196,9 +197,11 @@ cpdef void enet_scale_fast(double[:] X,
     for j in range(n_features):
         X[j] *= S
 
-cpdef void enet_scale_matrix_fast(double[:, :] X,
-                           double l1_ratio, double radius=1) nogil:
+cpdef void enet_scale_matrix_fast(floating[:, :] X,
+                           floating l1_ratio, floating radius=1) nogil:
     cdef int n_vectors = X.shape[0]
     cdef int i
+    cdef floating[:] this_X
     for i in range(n_vectors):
-        enet_scale_fast(X[i], l1_ratio, radius=radius)
+        this_X = X[i]
+        enet_scale_fast(this_X, l1_ratio, radius=radius)

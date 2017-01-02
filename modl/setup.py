@@ -9,17 +9,19 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('modl', parent_package, top_path)
 
-    extensions = [Extension('modl/dict_fact_old_fast',
-                            sources=['modl/dict_fact_old_fast.pyx'],
-                            include_dirs=[numpy.get_include(),
-                                          'modl/_utils/randomkit'],
-                            extra_compile_args=['-fopenmp'],
-                            extra_link_args=['-fopenmp']
-                            ),
-                  Extension('modl/dict_fact_fast',
-                            sources=['modl/dict_fact_fast.pyx'],
-                            ),
-                  ]
+    extensions = [
+        Extension('modl.dict_fact_old_fast',
+                  sources=['modl/dict_fact_old_fast.pyx'],
+                  include_dirs=[numpy.get_include(),
+                                'modl/_utils/randomkit'],
+                  extra_compile_args=['-fopenmp'],
+                  extra_link_args=['-fopenmp']
+                  ),
+        Extension('modl.dict_fact_fast',
+                  sources=['modl/dict_fact_fast.pyx'],
+                  include_dirs=[numpy.get_include()]
+                  ),
+    ]
     config.ext_modules += cythonize(extensions)
 
     config.add_subpackage('tests')

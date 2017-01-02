@@ -21,7 +21,9 @@ from scipy.linalg.cython_lapack cimport dposv
 from ._utils.randomkit.random_fast cimport Sampler, RandomState
 # noinspection PyUnresolvedReferences
 from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, \
-      enet_scale_fast, enet_scale_matrix_fast
+      enet_scale_fast
+
+from ._utils.enet_proj_fast import enet_scale_matrix_fast
 
 from tempfile import NamedTemporaryFile
 import numpy as np
@@ -835,7 +837,7 @@ cdef class DictFactImpl(object):
 
         for kk in range(self.n_components):
             k = self.D_range[kk]
-            norm_temp = enet_norm_fast(self.D_subset[k, :len_subset],
+            norm_temp = enet_norm_fast[double](self.D_subset[k, :len_subset],
                                        self.l1_ratio)
             self.norm_temp[k] = norm_temp + 1 - self.norm_[k]
             self.norm_[k] -= norm_temp
@@ -870,12 +872,12 @@ cdef class DictFactImpl(object):
                 for jj in range(len_subset):
                     if self.D_subset[k, jj] < 0:
                         self.D_subset[k, jj] = 0
-            enet_projection_fast(self.D_subset[k, :len_subset],
+            enet_projection_fast[double](self.D_subset[k, :len_subset],
                                     self.proj_temp[:len_subset],
                                     self.norm_temp[k], self.l1_ratio)
             for jj in range(len_subset):
                 self.D_subset[k, jj] = self.proj_temp[jj]
-            self.norm_[k] += enet_norm_fast(self.D_subset[k, :len_subset],
+            self.norm_[k] += enet_norm_fast[double](self.D_subset[k, :len_subset],
                                        self.l1_ratio)
             # R -= A_[:, k] Q[:, k].T
             dger(&n_components, &len_subset, &FMONE,
