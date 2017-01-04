@@ -16,7 +16,7 @@ def scale_patches(X, with_mean=True, with_std=True, channel_wise=True, copy=True
             n_channel = X.shape[3]
             std = np.sqrt(np.sum(X ** 2, axis=(1, 2)))
             std[std == 0] = 1
-            X /= std[:, np.newaxis, np.newaxis, :] * n_channel
+            X /= std[:, np.newaxis, np.newaxis, :] * sqrt(n_channel)
         else:
             std = np.sqrt(np.sum(X ** 2, axis=(1, 2, 3)))
             std[std == 0] = 1

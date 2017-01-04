@@ -20,29 +20,28 @@ def config():
     batch_size = 400
     learning_rate = 0.92
     reduction = 10
-    alpha = 0.1
-    n_epochs = 1
-    n_components = 200
-    test_size = 1000
-    max_patches = 100000
+    alpha = 0.08
+    n_epochs = 10
+    n_components = 50
+    test_size = 4000
+    max_patches = 10000
     patch_size = (16, 16)
-    n_threads = 1
+    n_threads = 2
     verbose = 20
-    method = 'masked'
+    method = 'gram'
     setting = 'dictionary learning'
 
 
 @data_ing.config
 def config():
-    source = 'lisboa'
+    source = 'aviris'
     gray = False
     scale = 1
 
 
 @data_ing.capture
 def load_data(source, scale, gray):
-    return load_images(source, scale=scale,
-                       gray=gray)
+    return load_images(source, scale=scale, gray=gray)
 
 
 class DictionaryScorer:
@@ -72,12 +71,12 @@ def decompose_run(batch_size,
                   n_epochs,
                   patch_size,
                   test_size,
-                  method,
                   alpha,
                   setting,
                   n_threads,
                   verbose,
                   max_patches,
+                  method,
                   _seed,
                   ):
     image = load_data()
@@ -105,12 +104,13 @@ def decompose_run(batch_size,
     dict_fact.fit(image[:, height // 2:, :])
 
     fig = plt.figure()
-
     patches = dict_fact.components_
     plot_patches(fig, patches)
     fig.suptitle('Dictionary components')
+
     fig, ax = plt.subplots(1, 1)
     ax.plot(cb.time, cb.score, marker='o')
+    ax.legend()
     ax.set_xscale('log')
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Test objective value')

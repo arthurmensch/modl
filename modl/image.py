@@ -61,8 +61,7 @@ class ImageDictFact(BaseEstimator):
         self.buffer_size = buffer_size
         self.max_patches = max_patches
 
-    def fit(self, X, y=None):
-        image = X
+    def fit(self, image, y=None):
         self.random_state = check_random_state(self.random_state)
 
         method = ImageDictFact.methods[self.method]
@@ -107,9 +106,9 @@ class ImageDictFact(BaseEstimator):
         self.patch_shape_ = patch_extractor.patch_shape_
         init_patches = patch_extractor.partial_transform(batch=
                                                          self.n_components)
-        init_patches = init_patches.reshape((self.n_components, -1))
+        init_patches = _flatten_patches(init_patches, with_std=with_std,
+                                        with_mean=with_mean, copy=False)
         self.dict_fact_.prepare(n_samples=n_patches, X=init_patches)
-        print(self.dict_fact_.verbose_iter_)
         for i in range(self.n_epochs):
             if self.verbose:
                 print('Epoch %i' % (i + 1))
@@ -122,38 +121,43 @@ class ImageDictFact(BaseEstimator):
             if self.method == 'gram' and i == 2:
                 self.dict_fact_.set_params(G_agg='full', Dx_agg='average')
             if self.method == 'reducing ratio':
-                self.dict_fact_.set_params(
-                    1 + (self.reduction - 1) / sqrt(i + 1))
+                reduction = 1 + (self.reduction - 1) / sqrt(i + 1)
+                self.dict_fact_.set_params(reduction=reduction)
             for j, buffer in enumerate(buffers):
                 buffer_size = buffer.stop - buffer.start
                 patches = patch_extractor.partial_transform(batch=buffer)
                 patches = _flatten_patches(patches, with_mean=with_mean,
-                                                with_std=with_std, copy=False)
+                                           with_std=with_std, copy=False)
                 self.dict_fact_.partial_fit(patches, buffer)
+        return self
 
-        components_shape = (self.n_components,) + self.patch_shape_
-        self.components_ = self.dict_fact_.components_.reshape(
-            components_shape)
-
-    def transform(self, X):
+    def transform(self, patches):
         with_std = ImageDictFact.settings[self.setting]['with_std']
         with_mean = ImageDictFact.settings[self.setting]['with_mean']
 
-        patches = _flatten_patches(X, with_mean=with_mean,
-                                        with_std=with_std, copy=True)
+        patches = _flatten_patches(patches, with_mean=with_mean,
+                                   with_std=with_std, copy=True)
         return self.dict_fact_.transform(patches)
 
-    def score(self, X):
+    def score(self, patches):
         with_std = ImageDictFact.settings[self.setting]['with_std']
         with_mean = ImageDictFact.settings[self.setting]['with_mean']
 
-        patches = _flatten_patches(X, with_mean=with_mean,
-                                        with_std=with_std, copy=True)
+        patches = _flatten_patches(patches, with_mean=with_mean,
+                                   with_std=with_std, copy=True)
         return self.dict_fact_.score(patches)
 
     @property
     def n_iter_(self):
+        # Property for callback purpose
         return self.dict_fact_.n_iter_
+
+    @property
+    def components_(self):
+        # Property for callback purpose
+        components_shape = (self.n_components,) + self.patch_shape_
+        return self.dict_fact_.components_.reshape(
+            components_shape)
 
     def _callback(self):
         if self.callback is not None:

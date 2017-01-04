@@ -38,7 +38,7 @@ class DictFact(BaseEstimator):
                  tol=1e-2,
                  max_iter=100,
                  rand_size=True,
-                 replacement=False,
+                 replacement=True,
                  ):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -252,7 +252,7 @@ class DictFact(BaseEstimator):
         if self.verbose_iter_ and self.n_iter_ >= self.verbose_iter_[0]:
             print('Iteration %i' % self.n_iter_)
             if self.callback is not None:
-                self.callback()
+                self.callback(self)
             self.verbose_iter_ = self.verbose_iter_[1:]
 
         subset = self.feature_sampler_.yield_subset(self.reduction)
@@ -341,26 +341,24 @@ class DictFact(BaseEstimator):
                 G_average = np.array(self.G_average_[sample_indices],
                                      copy=True)
                 if self.n_threads > 1:
-                    par_func = lambda batch: _update_G_average(G_average,
+                    par_func = lambda batch: _update_G_average(G_average[batch],
                                                                G,
                                                                w_sample[batch],
-                                                               np.arange(batch.start, batch.stop))
+                                                               None)
                     res = self.pool_.map(par_func, batches)
                     _ = list(res)
                 else:
-                    _update_G_average(
-                        self.G_average_, G, w_sample, sample_indices)
+                    _update_G_average(G_average, G, w_sample, None)
                 self.G_average_[sample_indices] = G_average
         else:
             G = self.G_
         if self.n_threads > 1:
-            # Asynchronous IO
             if self.G_agg == 'average':
                 par_func = lambda batch: _enet_regression_multi_gram(
                     G_average[batch], Dx[batch], X[batch], self.code_,
                     get_sub_slice(sample_indices, batch),
                     self.code_l1_ratio, self.code_alpha, self.code_pos,
-                    self.tol, self.max_iter)
+                    self.tol, self.max_iter, False)
             else:
                 par_func = lambda batch: _enet_regression_single_gram(
                     G, Dx[batch], X[batch], self.code_,
@@ -375,7 +373,7 @@ class DictFact(BaseEstimator):
                     G_average, Dx, X, self.code_,
                     sample_indices,
                     self.code_l1_ratio, self.code_alpha, self.code_pos,
-                    self.tol, self.max_iter)
+                    self.tol, self.max_iter, False)
             else:
                 _enet_regression_single_gram(
                     G, Dx, X, self.code_,

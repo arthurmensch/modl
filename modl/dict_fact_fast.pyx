@@ -1,7 +1,4 @@
 # encoding: utf-8
-# cython: cdivision=True
-# cython: boundscheck=False
-# cython: wraparound=False
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -29,23 +26,16 @@ ctypedef void (*AXPY)(int* N, floating* alpha, floating* X, int* incX,
                       floating* Y, int* incY) nogil
 ctypedef floating (*ASUM)(int* N, floating* X, int* incX) nogil
 
-def _batch_weight(long count, long batch_size,
-           double learning_rate, double offset):
-    cdef long i
-    cdef double w = 1
-    for i in range(count + 1 - batch_size, count + 1):
-        w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
-    w = 1 - w
-    return w
-
 def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
                                 floating[:, ::1] X,
                                 floating[: , ::1] code,
                                 long[:] indices,
                                 floating l1_ratio, floating alpha,
+                                bint positive,
                                 floating tol,
                                 int max_iter,
-                                bint positive):
+                                bint inplace_G,
+                                ):
     '''
     Perform elastic net regression: for all i in indices,
     find code[i] s.t code[i].dot(G[i]) = Dx[ii], where i = indices[ii].
@@ -65,7 +55,7 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     '''
     cdef int batch_size = indices.shape[0]
     cdef int n_components = code.shape[1]
-    cdef int i, j, info
+    cdef int i, j, k, info, ii
     cdef floating* G_ptr = <floating*> &G[0, 0, 0]
     cdef floating* code_ptr = <floating*> &code[0, 0]
     cdef POSV posv
@@ -84,20 +74,22 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     if l1_ratio == 0:
         for ii in range(batch_size):
             i = indices[ii]
+            k = i if inplace_G else ii
             code[i, :] = Dx[ii, :]
             for j in range(n_components):
-                G[i, j, j] += alpha
+                G[k, j, j] += alpha
             posv(&UP, &n_components, &ONE,
-                G_ptr + i * n_components ** 2,
+                G_ptr + k * n_components ** 2,
                 &n_components,
                 code_ptr + i * n_components, &n_components,
                 &info)
             for j in range(n_components):
-                G[i, j, j] -= alpha
+                G[ii, j, j] -= alpha
     else:
         for ii in range(batch_size):
             i = indices[ii]
-            this_G = G[ii, :, :]
+            k = i if inplace_G else ii
+            this_G = G[k, :, :]
             this_Dx = Dx[ii, :]
             this_X = X[ii, :]
             this_code = code[i, :]
@@ -108,6 +100,15 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
                 this_G, this_Dx, this_X, max_iter, tol,
                 positive)
     return np.asarray(code)
+
+def _batch_weight(long count, long batch_size,
+           double learning_rate, double offset):
+    cdef long i
+    cdef double w = 1
+    for i in range(count + 1 - batch_size, count + 1):
+        w *= (1 - pow((1 + offset) / (offset + i), learning_rate))
+    w = 1 - w
+    return w
 
 
 def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
@@ -194,31 +195,22 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
                 positive)
     return np.asarray(code)
 
-
-def _update_G_average(floating[:, :, ::1] G_average, floating[:, ::1] G,
-                      floating[:] w_sample, long[:] indices):
-    cdef int batch_size = indices.shape[0]
+def _update_G_average(floating[:, :, ::1] G_average,
+                              floating[:, ::1] G,
+                              floating[:] w_sample,
+                              long[:] indices):
+    cdef int batch_size = w_sample.shape[0]
     cdef int n_components = G_average.shape[1]
-    cdef int i, p, q, ii
+    cdef int ii, i, k, p, q
+    cdef bint inplace = indices is not None
     for ii in range(batch_size):
-        i = indices[ii]
+        k = indices[ii] if inplace else ii
         for p in range(n_components):
             for q in range(n_components):
-                G_average[i, p, q] *= (1 - w_sample[ii])
-                G_average[i, p, q] += G[p, q] * w_sample[ii]
+                G_average[k, p, q] *= (1 - w_sample[ii])
+                G_average[k, p, q] += G[p, q] * w_sample[ii]
     return G_average
 
-def _assign_G_average(floating[:, :, ::1] G_average, floating[:, :, ::1] this_G_average,
-                      long[:] indices):
-    cdef int n_samples = this_G_average.shape[0]
-    cdef int n_components = G_average.shape[1]
-    cdef int i, ii
-    with nogil:
-        for ii in range(n_samples):
-            i = indices[ii]
-            for p in range(n_components):
-                for q in range(n_components):
-                    G_average[i, p, q] = this_G_average[ii, p, q]
 
 # Shamelessly copied from sklearn (no .pxd in sources :-( )
 cdef inline floating fmax(floating x, floating y) nogil:
