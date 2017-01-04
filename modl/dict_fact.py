@@ -323,7 +323,7 @@ class DictFact:
                     #  dimension of right side factor
                     self.G_average_[sample_indices] += \
                         w_sample[:, np.newaxis].dot(G[:, np.newaxis, :])
-            G = self.G_average_[sample_indices]
+                G = self.G_average_[sample_indices]
         else:
             G = self.G_
 

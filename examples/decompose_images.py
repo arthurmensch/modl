@@ -24,13 +24,13 @@ decompose_ex = Experiment('decompose_images',
 def config():
     batch_size = 400
     learning_rate = 0.92
-    G_agg = 'average'
-    Dx_agg = 'average'
+    G_agg = 'masked'
+    Dx_agg = 'masked'
     reduction = 10
     code_alpha = 0.8e-1
     code_l1_ratio = 1
     comp_l1_ratio = 0
-    n_epochs = 10
+    n_epochs = 1
     n_components = 50
     code_pos = False
     comp_pos = False
@@ -38,7 +38,7 @@ def config():
     center = True
     test_size = 4000
     buffer_size = 5000
-    max_patches = 10000
+    max_patches = 100000
     patch_shape = (16, 16)
     n_threads = 2
     verbose = 10
