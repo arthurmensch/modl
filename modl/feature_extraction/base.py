@@ -8,15 +8,15 @@ class BaseBatcher(object):
         self.batch_size = batch_size
         self.random_state = random_state
 
-    def prepare(self, data_source):
+    def fit(self, data_source):
         pass
 
-    def generate_once(self):
+    def partial_transform(self):
         return
         yield
 
     def generate_single(self):
-        return next(self.generate_once())
+        return next(self.partial_transform())
 
 
 class NumpyBatcher(BaseBatcher):
@@ -28,7 +28,7 @@ class NumpyBatcher(BaseBatcher):
         self.copy = copy
         self.max_samples = max_samples
 
-    def prepare(self, data_source):
+    def fit(self, data_source):
         self.data_ = check_array(data_source)
         n_samples = self.data_.shape[0]
         self.random_state_ = check_random_state(self.random_state_)
@@ -41,7 +41,7 @@ class NumpyBatcher(BaseBatcher):
         else:
             self.base_indices_ = selection
 
-    def generate_once(self):
+    def partial_transform(self):
         batches = gen_batches(self.n_samples_, self.batch_size)
         for batch in batches:
             if self.copy:
@@ -50,8 +50,9 @@ class NumpyBatcher(BaseBatcher):
                 yield self.data_[self.base_indices_[batch]], \
                       self.indices_[batch]
 
-    def shuffle(self):
-        permutation = self.random_state_.permutation(self.n_samples_)
+    def shuffle(self, permutation=None):
+        if permutation is None:
+            permutation = self.random_state_.permutation(self.n_samples_)
         self.indices_ = self.indices_[permutation]
         if self.copy:
             self.data_ = self.data_[permutation]

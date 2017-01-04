@@ -3,19 +3,20 @@ from math import log, ceil
 
 import numpy as np
 import scipy
+from modl.utils.randomkit import RandomState
+from sklearn.base import BaseEstimator
 from sklearn.utils import check_array, check_random_state, gen_batches
 
 from modl.utils import get_sub_slice
 from .dict_fact_fast import _enet_regression_multi_gram, \
-    _enet_regression_single_gram, _update_G_average, _batch_weight, \
-    _assign_G_average
+    _enet_regression_single_gram, _update_G_average, _batch_weight
 from .utils.math.enet import enet_norm, enet_projection, enet_scale
 from .utils.randomkit import Sampler
 
-from math import sqrt
+MAX_INT = np.iinfo(np.int64).max
 
 
-class DictFact:
+class DictFact(BaseEstimator):
     def __init__(self,
                  reduction=1,
                  learning_rate=1,
@@ -33,7 +34,12 @@ class DictFact:
                  comp_l1_ratio=0,
                  verbose=0,
                  callback=None,
-                 n_threads=1):
+                 n_threads=1,
+                 tol=1e-2,
+                 max_iter=100,
+                 rand_size=True,
+                 replacement=False,
+                 ):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.sample_learning_rate = sample_learning_rate
@@ -57,6 +63,12 @@ class DictFact:
 
         self.n_threads = n_threads
 
+        self.tol = tol
+        self.max_iter = max_iter
+
+        self.rand_size = rand_size
+        self.replacement = replacement
+
     def fit(self, X):
         """
         Compute the matrix factorisation X ~ components_ x code_,solving for
@@ -73,18 +85,10 @@ class DictFact:
         X = check_array(X, order='C', dtype=[np.float32, np.float64])
         self.prepare(X=X)
         # Main loop
-        n_features, n_samples = X.shape
         for _ in range(self.n_epochs):
-            permutation = self.random_state_.permutation(n_features)
-            X = X[permutation]
-            if self.G_agg == 'average':
-                self.G_average = self.G_average[permutation]
-            if self.Dx_agg == 'average':
-                self.Dx_average = self.Dx_average[permutation]
-                self.code_ = self.code_[permutation]
-            self.sample_n_iter_ = self.sample_n_iter_[permutation]
-
             self.partial_fit(X)
+            permutation = self.relabel()
+            X = X[permutation]
         return self
 
     def partial_fit(self, X, sample_indices=None):
@@ -112,18 +116,27 @@ class DictFact:
             self._single_batch_fit(this_X, these_sample_indices)
         return self
 
-    def connect(self, batcher):
-        for i in range(self.n_epochs):
-            self.reduction_ = self.reduction
-            for j, (batch, indices) in enumerate(batcher.generate_once()):
-                if j + i == 0:
-                    self.prepare(n_samples=batcher.n_samples_, X=batch)
-                print(indices)
-                self.partial_fit(batch, indices)
-            if self.G_agg != 'average' and i < self.n_epochs - 1:
-                batcher.shuffle()
-            else:
+    def set_params(self, **params):
+        G_agg = params.pop('G_agg', None)
+        if G_agg == 'full' and self.G_agg != 'full':
+            if self.is_prepared():
+                self.G_ = self.components_.dot(self.components_.T)
+            self.G_agg = 'full'
+        BaseEstimator.set_params(self, **params)
 
+    def is_prepared(self):
+        return hasattr(self, 'components_')
+
+    def shuffle(self):
+        random_seed = self.random_state.randint(MAX_INT)
+        random_state = RandomState(random_seed)
+        list = [self.code_]
+        if self.G_agg == 'average':
+            list.append(self.G_average_)
+        list.append(self.Dx_average_)
+        perm = random_state.shuffle_with_trace(list)
+        self.labels_ = self.labels_[perm]
+        return perm
 
     def prepare(self, n_samples=None, n_features=None,
                 dtype=np.float64, X=None):
@@ -147,25 +160,24 @@ class DictFact:
         # Regression statistics
         if self.G_agg == 'average':
             self.G_average_ = np.memmap('G_average', mode='w+',
-                                        shape=(n_samples, self.n_components,
-                                               self.n_components), dtype=dtype)
-            # self.G_average_ = np.zeros((n_samples, self.n_components,
-            #                             self.n_components), dtype=dtype)
-        if self.Dx_agg == 'average':
-            self.Dx_average_ = np.zeros((n_samples, self.n_components),
+                                        shape=(n_samples,
+                                               self.n_components,
+                                               self.n_components),
                                         dtype=dtype)
+        self.Dx_average_ = np.zeros((n_samples, self.n_components),
+                                    dtype=dtype)
         # Dictionary statistics
         self.C_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
         self.B_ = np.zeros((self.n_components, n_features), dtype=dtype)
         self.gradient_ = np.zeros((self.n_components, n_features), dtype=dtype,
                                   order='F')
 
-        self.random_state_ = check_random_state(self.random_state)
+        self.random_state = check_random_state(self.random_state)
         if X is None:
-            self.components_ = self.random_state_.randn(self.n_components,
+            self.components_ = self.random_state.randn(self.n_components,
                                                         n_features)
         else:
-            random_idx = self.random_state_.permutation(this_n_samples)[
+            random_idx = self.random_state.permutation(this_n_samples)[
                          :self.n_components]
             self.components_ = X[random_idx].copy()
         if self.comp_pos:
@@ -178,6 +190,8 @@ class DictFact:
 
         self.code_ = np.ones((n_samples, self.n_components), dtype=dtype)
 
+        self.labels_ = np.arange(n_samples)
+
         self.comp_norm_ = np.zeros(self.n_components, dtype=dtype)
 
         if self.G_agg == 'full':
@@ -185,9 +199,10 @@ class DictFact:
 
         self.n_iter_ = 0
         self.sample_n_iter_ = np.zeros(n_samples, dtype='int')
-        self.random_state_ = check_random_state(self.random_state)
-        random_seed = self.random_state_.randint(np.iinfo(np.uint32).max)
-        self.feature_sampler_ = Sampler(n_features, True, True, random_seed)
+        self.random_state = check_random_state(self.random_state)
+        random_seed = self.random_state.randint(MAX_INT)
+        self.feature_sampler_ = Sampler(n_features, self.rand_size,
+                                        self.replacement, random_seed)
         if self.verbose:
             log_lim = log(n_samples * self.n_epochs / self.batch_size, 10)
             self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
@@ -213,14 +228,15 @@ class DictFact:
             par_func = lambda batch: _enet_regression_single_gram(
                 G, Dx[batch], X[batch], code,
                 get_sub_slice(sample_indices, batch),
-                self.code_l1_ratio, self.code_alpha, self.code_pos)
+                self.code_l1_ratio, self.code_alpha, self.code_pos,
+                self.tol, self.max_iter)
             res = self.pool_.map(par_func, batches)
             _ = list(res)
         else:
             _enet_regression_single_gram(
                 G, Dx, X, code, sample_indices,
                 self.code_l1_ratio, self.code_alpha,
-                self.code_pos)
+                self.code_pos, self.tol, self.max_iter)
         return code
 
     def score(self, X):
@@ -236,10 +252,10 @@ class DictFact:
         if self.verbose_iter_ and self.n_iter_ >= self.verbose_iter_[0]:
             print('Iteration %i' % self.n_iter_)
             if self.callback is not None:
-                self.callback(self)
+                self.callback()
             self.verbose_iter_ = self.verbose_iter_[1:]
 
-        subset = self.feature_sampler_.yield_subset(self.reduction_)
+        subset = self.feature_sampler_.yield_subset(self.reduction)
         batch_size = X.shape[0]
 
         self.n_iter_ += batch_size
@@ -298,7 +314,7 @@ class DictFact:
     def _compute_code(self, X, sample_indices,
                       w_sample, subset):
         batch_size, n_features = X.shape
-        reduction = self.reduction_
+        reduction = self.reduction
 
         if self.n_threads > 1:
             size_job = ceil(batch_size / self.n_threads)
@@ -312,11 +328,11 @@ class DictFact:
         else:
             X_subset = X[:, subset]
             Dx = X_subset.dot(components_subset.T) * reduction
+            self.Dx_average_[sample_indices] \
+                *= 1 - w_sample[:, np.newaxis]
+            self.Dx_average_[sample_indices] \
+                += Dx * w_sample[:, np.newaxis]
             if self.Dx_agg == 'average':
-                self.Dx_average_[sample_indices] \
-                    *= 1 - w_sample[:, np.newaxis]
-                self.Dx_average_[sample_indices] \
-                    += Dx * w_sample[:, np.newaxis]
                 Dx = self.Dx_average_[sample_indices]
 
         if self.G_agg != 'full':
@@ -343,12 +359,14 @@ class DictFact:
                 par_func = lambda batch: _enet_regression_multi_gram(
                     G_average[batch], Dx[batch], X[batch], self.code_,
                     get_sub_slice(sample_indices, batch),
-                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+                    self.code_l1_ratio, self.code_alpha, self.code_pos,
+                    self.tol, self.max_iter)
             else:
                 par_func = lambda batch: _enet_regression_single_gram(
                     G, Dx[batch], X[batch], self.code_,
                     get_sub_slice(sample_indices, batch),
-                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+                    self.code_l1_ratio, self.code_alpha, self.code_pos,
+                    self.tol, self.max_iter)
             res = self.pool_.map(par_func, batches)
             _ = list(res)
         else:
@@ -356,12 +374,14 @@ class DictFact:
                 _enet_regression_multi_gram(
                     G_average, Dx, X, self.code_,
                     sample_indices,
-                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+                    self.code_l1_ratio, self.code_alpha, self.code_pos,
+                    self.tol, self.max_iter)
             else:
                 _enet_regression_single_gram(
                     G, Dx, X, self.code_,
                     sample_indices,
-                    self.code_l1_ratio, self.code_alpha, self.code_pos)
+                    self.code_l1_ratio, self.code_alpha, self.code_pos,
+                    self.tol, self.max_iter)
 
     def _update_dict(self, subset):
         len_subset = subset.shape[0]
@@ -377,7 +397,7 @@ class DictFact:
 
         gradient_subset -= self.C_.dot(components_subset)
 
-        order = self.random_state_.permutation(n_components)
+        order = self.random_state.permutation(n_components)
         for k in order:
             subset_norm = enet_norm(components_subset[k],
                                     self.comp_l1_ratio)

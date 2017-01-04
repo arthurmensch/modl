@@ -1,16 +1,11 @@
-# encoding: utf-8
-# cython: cdivision=True
-# cython: boundscheck=False
-# cython: wraparound=False
-#
-#  Copyright 2005 Robert Kern (robert.kern@gmail.com)
-cimport cython
+# Copyright 2005 Robert Kern (robert.kern@gmail.com)
 
 from libc cimport stdlib
-from cython cimport view
 
 import numpy as np
 cimport numpy as np
+
+from cython cimport view
 
 cdef extern from "randomkit.h":
 
@@ -35,22 +30,20 @@ cdef extern from "randomkit.h":
     unsigned long rk_random(rk_state *state)
     long rk_long(rk_state *state)
     unsigned long rk_ulong(rk_state *state)
-    unsigned long rk_interval(unsigned long max, rk_state *state) nogil
+    unsigned long rk_interval(unsigned long max, rk_state *state)
     double rk_double(rk_state *state)
     void rk_fill(void *buffer, size_t size, rk_state *state)
     rk_error rk_devfill(void *buffer, size_t size, int strong)
     rk_error rk_altfill(void *buffer, size_t size, int strong,
             rk_state *state)
-    double rk_gauss(rk_state *state) nogil
+    double rk_gauss(rk_state *state)
 
 cdef extern from "distributions.h":
     long rk_binomial(rk_state *state, long n, double p) nogil
-    long long rk_geometric(rk_state *state, double p) nogil
-
-cdef unsigned int MAX_INT = np.iinfo(np.uint32).max
 
 cdef class RandomState:
-    def __cinit__(self, seed=None):
+
+    def __init__(self, seed=None):
         self.internal_state = <rk_state*>stdlib.malloc(sizeof(rk_state))
         self.initial_seed = seed
         self.seed(seed)
@@ -62,133 +55,91 @@ cdef class RandomState:
 
     def seed(self, seed=None):
         cdef rk_error errcode
-        cdef unsigned long long_seed
         if seed is None:
             errcode = rk_randomseed(self.internal_state)
-        else:
-            long_seed = <unsigned long> seed
+        elif type(seed) is int:
             rk_seed(seed, self.internal_state)
+        elif isinstance(seed, np.integer):
+            iseed = int(seed)
+            rk_seed(iseed, self.internal_state)
+        else:
+            raise ValueError("Wrong seed")
 
-    cdef int randint(self, unsigned int high=MAX_INT) nogil:
-        return <int>rk_interval(high, self.internal_state)
+    cpdef long randint(self, unsigned long high):
+        return <long>rk_interval(high, self.internal_state)
 
-    cdef int binomial(self, int n, double p) nogil:
-        return <int>rk_binomial(self.internal_state, n, p)
-
-    cdef int geometric(self, double p) nogil:
-        return <int>rk_geometric(self.internal_state, p)
-
-    cdef double randn(self) nogil:
-        return rk_gauss(self.internal_state)
-
-    cpdef shuffle_G(self, double[:, :, ::1] x) nogil:
-        cdef int i, j
-        cdef int copy
-
-        cdef long x_temp
-
-        cdef int[:] permutation = view.array(x.shape[0],
-                                                  sizeof(int),
-                                                  format='i', mode='c')
-        for i in range(x.shape[0]):
-            permutation[i] = i
-        i = x.shape[0] - 1
-        while i > 0:
-            j = rk_interval(i, self.internal_state)
-            permutation_temp = permutation[i]
-            x_temp = x[i]
-            permutation[i] = permutation[j]
-            x[i] = x[j]
-            permutation[j] = j
-            x[j] = x_temp
-            i = i - 1
-        return np.asarray(permutation)
-
-    cdef void shuffle(self, int[:] x) nogil:
-        cdef int i, j
-        cdef int copy
-
-        cdef long x_temp
-
-        i = x.shape[0] - 1
-        while i > 0:
-            j = rk_interval(i, self.internal_state)
-            x_temp = x[i]
-            x[i] = x[j]
-            x[j] = x_temp
-            i = i - 1
-        return
-
-    cdef int[:] permutation(self, int size):
-        cdef int i
-        cdef int[:] res = view.array((size, ), sizeof(int), format='i')
+    cpdef long[:] permutation(self, long size):
+        cdef long i
+        cdef long[:] res = view.array((size, ), sizeof(long), format='l')
         for i in range(size):
             res[i] = i
         self.shuffle(res)
         return res
 
-@cython.final
-cdef class Sampler(object):
-    def __cinit__(self, int range, bint rand_size,
-                  bint replacement,
-                 unsigned long random_seed):
-        """
+    def shuffle(self, object x, long[:] swap=None):
+        cdef int i, j
+        cdef n = len(x)
+        cdef int copy
+        cdef bint random
 
-        Parameters
-        ----------
-        range
-        reduction
-        sampling: int in {1, 2, 3}.
-            1: Bernouilli sampling
-            2: Fixed-size sampling without replacement
-            3: Fixed-size sampling
-        random_seed
+        if swap is None:
+            swap = view.array((n, ), sizeof(long), format='l')
+            i = n - 1
+            while i > 0:
+                j = rk_interval(i, self.internal_state)
+                swap[i] = j
+                i = i - 1
 
-        Returns
-        -------
+        i = n - 1
+        try:
+            j = len(x[0])
+        except:
+            j = 0
 
-        """
-        self.range = range
-        self.rand_size = rand_size
-        self.replacement = replacement
-        self.random_state = RandomState(seed=random_seed)
-
-        self.box = self.random_state.permutation(self.range)
-        self.temp = view.array((self.range, ),
-                                        sizeof(int),
-                                        format='i')
-        self.lim_sup = 0
-        self.lim_inf = 0
-
-        self.random_state.shuffle(self.box)
-
-    cpdef int[:] yield_subset(self, double reduction) nogil:
-        cdef int remainder
-        cdef int len_subset
-        if self.rand_size:
-            len_subset = self.random_state.binomial(self.range,
-                                                         1. / reduction)
+        if j == 0:
+            # adaptation of random.shuffle()
+            while i > 0:
+                j = swap[i]
+                x[i], x[j] = x[j], x[i]
+                i = i - 1
         else:
-            len_subset = int(self.range / reduction)
-        if self.replacement:
-            self.random_state.shuffle(self.box)
-            self.lim_inf = 0
-            self.lim_sup = len_subset
-        else: # Without replacement
-            if self.range != len_subset:
-                self.lim_inf = self.lim_sup
-                remainder = self.range - self.lim_inf
-                if remainder == 0:
-                    self.random_state.shuffle(self.box)
-                    self.lim_inf = 0
-                elif remainder < len_subset:
-                    self.temp[:remainder] = self.box[:remainder]
-                    self.box[:remainder] = self.box[self.lim_inf:]
-                    self.box[self.lim_inf:] = self.temp[:remainder]
-                    self.random_state.shuffle(self.box[remainder:])
-                    self.lim_inf = 0
-                self.lim_sup = self.lim_inf + len_subset
+            # make copies
+            copy = hasattr(x[0], 'copy')
+            if copy:
+                while(i > 0):
+                    j = swap[i]
+                    x[i], x[j] = x[j].copy(), x[i].copy()
+                    i = i - 1
             else:
-                self.lim_inf = 0
-                self.lim_sup = self.range
-        return self.box[self.lim_inf:self.lim_sup]
+                while(i > 0):
+                    j = swap[i]
+                    x[i], x[j] = x[j][:], x[i][:]
+                    i = i - 1
+
+    def shuffle_with_trace(self, object list):
+        cdef int i, j
+        cdef int l = len(list)
+        cdef int n = len(list[0])
+        cdef long[:] trace = view.array((n, ), sizeof(long), format='l')
+        cdef long[:] swap = view.array((n, ), sizeof(long), format='l')
+        for i in range(n):
+            trace[i] = i
+        i = n - 1
+        while i > 0:
+            j = rk_interval(i, self.internal_state)
+            swap[i] = j
+            trace[i], trace[j] = trace[j], trace[i]
+            i = i - 1
+        for k in range(l):
+            x = list[k]
+            self.shuffle(x, swap=swap)
+        return np.asarray(trace)
+
+
+
+
+    cpdef binomial(self, int n, double p):
+        return <int>rk_binomial(self.internal_state, n, p)
+
+    def __reduce__(self):
+        return (RandomState, (self.initial_seed, ))

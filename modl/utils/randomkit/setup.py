@@ -5,6 +5,7 @@ from distutils.extension import Extension
 
 from Cython.Build import cythonize
 
+
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
@@ -17,20 +18,25 @@ def configuration(parent_package='', top_path=None):
                             sources=['modl/utils/randomkit/random_fast.pyx',
                                      'modl/utils/randomkit/randomkit.c',
                                      'modl/utils/randomkit/distributions.c',
+                                     'modl/utils/randomkit/distributions.h',
                                      ],
                             include_dirs=[numpy.get_include(),
-                                          'modl/_utils/randomkit'],
+                                          'modl/utils/randomkit'],
+                            ),
+                  Extension('modl.utils.randomkit.sampler',
+                            sources=['modl/utils/randomkit/sampler.pyx'],
+                            include_dirs=[numpy.get_include()]
                             )]
     config.ext_modules += cythonize(extensions)
 
     config.add_subpackage('tests')
+    config.add_data_files('distribution.h')
     config.add_data_files('randomkit.h')
-    config.add_data_files('distributions.h')
 
     return config
 
 
 if __name__ == '__main__':
-    from numpy.distutils.core import setup
+    from numpy.distutils.core import setup, Extension
 
     setup(**configuration(top_path='').todict())

@@ -9,7 +9,7 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('math', parent_package, top_path)
 
-    extensions = [Extension('modl._utils.math.enet',
+    extensions = [Extension('modl.utils.math.enet',
                             sources=['modl/utils/math/enet.pyx'],
                             include_dirs=[numpy.get_include()],
                             ),

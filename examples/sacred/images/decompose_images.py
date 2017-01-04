@@ -146,7 +146,7 @@ def decompose_run(batch_size,
                       batch_size=test_size,
                       clean=data['source'] == 'aviris',
                       random_state=_seed)
-    batcher.prepare(image[:, :height // 2, :])
+    batcher.fit(image[:, :height // 2, :])
     test_data, _ = batcher.generate_one()
     _run.info['data_shape'] = (test_data.shape[1],
                                test_data.shape[2],
@@ -164,7 +164,7 @@ def decompose_run(batch_size,
                       max_samples=max_patches,
                       clean=data['source'] == 'aviris',
                       random_state=_seed)
-    batcher.prepare(image[:, height // 2:, :])
+    batcher.fit(image[:, height // 2:, :])
     n_samples = batcher.n_samples_
 
     if _run.observers:

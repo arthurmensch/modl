@@ -1,1 +1,2 @@
-from .random_fast import RandomState, Sampler
+from .random_fast import RandomState
+from .sampler import Sampler

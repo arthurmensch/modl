@@ -70,7 +70,7 @@ def main():
     data /= np.std(data, axis=0)
     print('done in %.2fs.' % (time() - t0))
     random_state = check_random_state(0)
-    random_state.shuffle(data)
+    random_state.relabel(data)
 
     ###############################################################################
     # Learn the dictionary from reference patches

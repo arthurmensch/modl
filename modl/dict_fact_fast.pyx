@@ -2,7 +2,6 @@
 # cython: cdivision=True
 # cython: boundscheck=False
 # cython: wraparound=False
-from modl.utils.randomkit.random_fast import rk_interval
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -44,6 +43,8 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
                                 floating[: , ::1] code,
                                 long[:] indices,
                                 floating l1_ratio, floating alpha,
+                                floating tol,
+                                int max_iter,
                                 bint positive):
     '''
     Perform elastic net regression: for all i in indices,
@@ -65,8 +66,6 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     cdef int batch_size = indices.shape[0]
     cdef int n_components = code.shape[1]
     cdef int i, j, info
-    cdef floating tol = 1e-2
-    cdef int max_iter = 100
     cdef floating* G_ptr = <floating*> &G[0, 0, 0]
     cdef floating* code_ptr = <floating*> &code[0, 0]
     cdef POSV posv
@@ -116,7 +115,9 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
                                 floating[:, ::1] code,
                                 long[:] indices,
                                 floating l1_ratio, floating alpha,
-                                bint positive):
+                                bint positive,
+                                floating tol,
+                                int max_iter):
     '''
     Perform elastic net regression: for all i in indices,
     find code[i] s.t code[i].dot(G) = Dx[ii], where i = indices[ii].
@@ -140,8 +141,6 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
     cdef int n_features = X.shape[1]
     cdef floating* G_ptr = <floating*> &G[0, 0]
     cdef floating* code_ptr = <floating*> &code[0, 0]
-    cdef floating tol = 1e-2
-    cdef int max_iter = 100
     cdef POSV posv
     cdef str format
     cdef floating[:] this_code
@@ -401,26 +400,3 @@ cdef void enet_coordinate_descent_gram(floating[:] w, floating alpha, floating b
                 if gap < tol:
                     # return if we reached desired tolerance
                     break
-
-cpdef shuffle_G(self, floating[:, :, ::1] x) nogil:
-    cdef int i, j
-    cdef int copy
-
-    cdef long x_temp
-
-    cdef int[:] permutation = view.array(x.shape[0],
-                                              sizeof(int),
-                                              format='i', mode='c')
-    for i in range(x.shape[0]):
-        permutation[i] = i
-    i = x.shape[0] - 1
-    while i > 0:
-        j = rk_interval(i, self.internal_state)
-        permutation_temp = permutation[i]
-        x_temp = x[i]
-        permutation[i] = permutation[j]
-        x[i] = x[j]
-        permutation[j] = j
-        x[j] = x_temp
-        i = i - 1
-    return np.asarray(permutation)

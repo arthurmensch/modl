@@ -8,7 +8,6 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('feature_extraction', parent_package, top_path)
 
-    config.add_subpackage('images')
     config.add_subpackage('tests')
 
     return config
