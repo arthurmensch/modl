@@ -8,7 +8,9 @@ component sparsity
 from __future__ import division
 
 import itertools
+import warnings
 
+import nibabel
 import numpy as np
 from nilearn._utils import check_niimg
 from nilearn._utils.cache_mixin import CacheMixin
@@ -27,6 +29,37 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
     Parameters
     ----------
+    n_components: int
+        Number of components to extract
+
+    n_epochs: int
+        number of time to cycle over images
+
+    alpha: float
+        Penalty to apply. The larger, the sparser the decomposition will be in
+        space
+
+    dict_init: Niimg-like or None
+        Initial dictionary (e.g, from ICA). If None, a random initialization
+        will be used
+
+    random_state: RandomState or int,
+        Control randomness of the algorithm. Different value will lead to different,
+        although rather equivalent, decompositions.
+
+    batch_size: int,
+        Number of 3D-image to use at each iteration
+
+    reduction: float, > 1
+        Subsampling to use in streaming data. The larger, the faster the
+        algorithm will go over data.
+        Too large reduction may lead to slower convergence
+
+    learning_rate: float in [0.917, 1[
+        Learning rate to use in streaming data. 1 means to not forget about past
+        iterations, when slower value leads to faster forgetting. Convergence
+        is not guaranteed below 0.917.
+
     mask: Niimg-like object or MultiNiftiMasker instance, optional
         Mask to be used on data. If an instance of masker is passed,
         then its mask will be used. If no mask is given,
@@ -110,7 +143,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
                  mask_strategy='epi', mask_args=None,
-                 memory=Memory(cachedir=None), memory_level=0,
+                 memory=Memory(cachedir='/tmp'), memory_level=0,
                  buffer_size=None,
                  n_jobs=1, verbose=0,
                  callback=None):
@@ -144,7 +177,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         self.callback = callback
 
     def fit(self, imgs, y=None, confounds=None, raw=False):
-        """Compute the mask and the ICA maps across subjects
+        """Compute the mask and the dictionary maps across subjects
 
         Parameters
         ----------
@@ -156,10 +189,22 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         confounds: CSV file path or 2D matrix
             This parameter is passed to nilearn.signal.clean. Please see the
             related documentation for details
+
+        Returns
+        -------
+        self
         """
+        if not isinstance(imgs, (list, tuple)):
+            imgs = [imgs]
+        raw = isinstance(imgs[0], np.ndarray)
         # Base logic for decomposition estimators
-        BaseDecomposition.fit(self, imgs)
-        self.masker_._shelving = True
+        if raw:
+            BaseDecomposition.fit(self)
+        else:
+            BaseDecomposition.fit(self, imgs)
+        shelving = self.memory is not None and self.memory.cachedir is not None
+        self.masker_._shelving = shelving
+        # Avoid cache trashing due to nibabel bad design
         _ = self.masker_.mask_img_.get_data()
 
         self.random_state = check_random_state(self.random_state)
@@ -181,11 +226,25 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         else:
             if confounds is None:
                 confounds = itertools.repeat(None)
-            data_list = self.masker_.transform(imgs, confounds)
-            if self.verbose:
-                print("Counting samples")
-            n_samples_list = [check_niimg(img).shape[3] for img in imgs]
-            dtype = check_niimg(imgs[0]).get_data_dtype()
+            if shelving:
+                data_list = self.masker_.transform(imgs, confounds)
+                n_samples_list = [data.get().shape[0] for data in data_list]
+                dtype = data_list[0].get().dtype
+            else:
+                data_list = zip(imgs, confounds)
+                n_samples_list = []
+                for img in imgs:
+                    if isinstance(img, str):
+                        warnings.warn('Provide a cachedir for efficiency')
+                        this_n_samples = check_niimg(img).shape[3]
+                    else:
+                        this_n_samples = nibabel.load(img).get_data_shape()[3]
+                    n_samples_list.append(this_n_samples)
+                if isinstance(img, str):
+                    dtype = check_niimg(imgs[0]).get_data_dtype()
+                else:
+                    dtype = nibabel.load(img).get_data_dtype()
+
 
         indices_list = np.zeros(len(imgs) + 1, dtype='int')
         indices_list[1:] = np.cumsum(n_samples_list)
@@ -196,7 +255,9 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if self.dict_init is not None:
             if self.verbose:
                 print("Preloading initial dictionary")
-            dict_init = self.masker_.transform(self.dict_init).get()
+            dict_init = self.masker_.transform(self.dict_init)
+            if shelving:
+                dict_init = dict_init.get()
         else:
             dict_init = None
 
@@ -223,13 +284,13 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
                                              base=10) - 1
             self.verbose_iter_ = self.verbose_iter_.tolist()
-            current_n_records = 0
+        current_n_records = 0
         for i in range(self.n_epochs):
             if self.verbose:
                 print('Epoch %i' % (i + 1))
             record_list = self.random_state.permutation(n_records)
             for record in record_list:
-                if (self.verbose_iter_ and
+                if (self.verbose and self.verbose_iter_ and
                             current_n_records >= self.verbose_iter_[0]):
                     print('Record %i' % current_n_records)
                     if self.callback is not None:
@@ -241,16 +302,49 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 if raw:
                     data = np.load(data, mmap_mode='r')
                 else:
-                    data = data.get()
+                    if shelving:
+                        data = data.get()
+                    else:
+                        data = self.masker_.transform(data)
                 permutation = self.random_state.permutation(n_records)
                 data = data[permutation]
                 sample_indices = sample_indices[permutation]
                 self.dict_fact_.partial_fit(data,
                                             sample_indices=sample_indices)
                 current_n_records += 1
+
+        self.masker_._shelving = False
+
         return self
 
-    def score(self, imgs, confounds=None, raw=False):
+    def score(self, imgs, confounds=None):
+        """
+        Score the images on the learning spatial components, based on the
+        objective function value that is minimized by the algorithm. Lower
+        means better fit.
+
+        Parameters
+        ----------
+        imgs: list of Niimg-like objects
+            See http://nilearn.github.io/building_blocks/manipulating_mr_images.html#niimg.
+            Data on which PCA must be calculated. If this is a list,
+            the affine is considered the same for all.
+
+        confounds: CSV file path or 2D matrix
+            This parameter is passed to nilearn.signal.clean. Please see the
+            related documentation for details
+
+        Returns
+        -------
+        scores: float
+            Average score on all input data
+        """
+        if not isinstance(imgs, (list, tuple)):
+            imgs = [imgs]
+        raw = isinstance(imgs[0], np.ndarray)
+
+        shelving = self.masker_._shelving
+
         score = 0.
         if raw:
             data_list = imgs
@@ -262,12 +356,37 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             if raw:
                 data = np.load(data)
             else:
-                data = data.get()
+                if shelving:
+                    data = data.get()
             score += self.dict_fact_.score(data)
         score /= len(data_list)
         return score
 
-    def transform(self, imgs, confounds=None, raw=False):
+    def transform(self, imgs, confounds=None):
+        """Compute the mask and the ICA maps across subjects
+
+        Parameters
+        ----------
+        imgs: list of Niimg-like objects
+            See http://nilearn.github.io/building_blocks/manipulating_mr_images.html#niimg.
+            Data on which PCA must be calculated. If this is a list,
+            the affine is considered the same for all.
+
+        confounds: CSV file path or 2D matrix
+            This parameter is passed to nilearn.signal.clean. Please see the
+            related documentation for details
+
+        Returns
+        -------
+        codes, list of ndarray, shape = n_images * (n_samples, n_components)
+            Loadings for each of the images, and each of the time steps
+        """
+        if not isinstance(imgs, (list, tuple)):
+            imgs = [imgs]
+        raw = isinstance(imgs[0], np.ndarray)
+
+        shelving = self.masker_._shelving
+
         codes = []
         if raw:
             data_list = imgs
@@ -279,20 +398,21 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             if raw:
                 data = np.load(data)
             else:
-                data = data.get()
+                if shelving:
+                    data = data.get()
             codes.append(self.dict_fact_.transform(data))
         return codes
 
     @property
     def components_(self):
-        # Property for callback purpose
+        """Property for callback purpose"""
         components = self.dict_fact_.components_
         components = _normalize_and_flip(components)
         return self.masker_.inverse_transform(components)
 
     @property
     def n_iter_(self):
-        # Property for callback purpose
+        """Property for callback purpose"""
         return self.dict_fact_.n_iter_
 
     def _callback(self):

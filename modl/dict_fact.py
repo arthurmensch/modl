@@ -62,7 +62,9 @@ class DictFact(BaseEstimator):
         Parameters
         ----------
         reduction: float
-            Ratio of reduction in accessing the features of the data stream
+            Ratio of reduction in accessing the features of the data stream.
+            The larger, the faster the algorithm will go over data.
+             Too large reduction may lead to slower convergence.
         learning_rate: float in ]0.917, 1]
             Weights to use in learning the dictionary. 1 means no forgetting,
             lower means forgetting the past faster, 0.917 is the theoretical
