@@ -11,6 +11,20 @@ from cython cimport floating
 
 def clean_mask(floating[:, :, :, :, :, :] patches,
           floating[:, :, :] image):
+    """
+    Given the patches extracted from image using gen_patches, return the indices
+    for which patch are clean (i.e. with non-negative values)
+    Parameters
+    ----------
+    patches: float/double ndarray, shape (*patch_indices, *patch_shape)
+        Extracted from sklearn.feature_extraction.image.gen_batches
+    image: float/double ndarray, shape (width, height, n_channel)
+
+    Returns
+    -------
+    indices: int ndarray, shape = (n_good_patches, 3)
+        Coordinates of the clean patches
+    """
     cdef long p = patches.shape[0]
     cdef long q = patches.shape[1]
     cdef long r = patches.shape[2]
@@ -18,7 +32,8 @@ def clean_mask(floating[:, :, :, :, :, :] patches,
     cdef long y = patches.shape[4]
     cdef long z = patches.shape[5]
     cdef long size = p * q * r
-    cdef long pp, qq, rr, xx, yy, zz, l
+    cdef long pp, qq, rr, xx, yy, zz
+    cdef long l = 0
     cdef long n_samples = 0
     cdef int[:, :, :] take = view.array((p, q, r), sizeof(int), format='i', mode='c')
     cdef long[:, :] indices = view.array((size, 3), sizeof(long), format='l')
@@ -42,6 +57,9 @@ def clean_mask(floating[:, :, :, :, :, :] patches,
     return np.asarray(indices[:l])
 
 def fill(long p, long q, long r):
+    """
+    Faster np.c_[np.where(np.ones(p, q, r))]
+    """
     cdef long size = p * q * r
     cdef long pp, qq, rr
     cdef long l = 0

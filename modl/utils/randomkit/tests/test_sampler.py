@@ -30,11 +30,12 @@ def test_sampler():
     a = np.mean(np.array([sampler.yield_subset(10).shape[0]
                           for t in range(100)]))
     assert_equal(a, 10)
-    A = np.concatenate([np.array(sampler.yield_subset(10))[:, np.newaxis]
-                        for t in range(10)], axis=1)
-    A = A.mean(axis=1)
-    assert_equal(A, 50)
-
+    A = []
+    for t in range(100):
+        A.append(sampler.yield_subset(10))
+    A = np.concatenate(A)
+    m = np.mean(np.bincount(A))
+    assert_equal(m, 10)
 
     # Without replacement, with random size
     sampler = Sampler(100, rand_size=True,

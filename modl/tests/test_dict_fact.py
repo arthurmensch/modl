@@ -2,14 +2,23 @@
 
 import numpy as np
 import pytest
-from numpy.testing import assert_array_almost_equal, assert_array_equal
+from numpy.testing import assert_array_equal
 from sklearn.utils import check_random_state
+from sklearn.linear_model import cd_fast
+from numpy import linalg
 
 from modl.dict_fact import DictFact
 
 rng_global = 0
 
-solvers = ['masked', 'gram', 'average']
+solvers = ['masked', 'gram', 'average', 'full']
+
+solver_dict = {
+    'masked': {'Dx_agg': 'masked', 'G_agg': 'masked'},
+    'gram': {'Dx_agg': 'masked', 'G_agg': 'full'},
+    'average': {'Dx_agg': 'masked', 'G_agg': 'masked'},
+    'full': {'Dx_agg': 'full', 'G_agg': 'full'},
+}
 
 
 def generate_sparse_synthetic(n_samples=200,
@@ -22,7 +31,7 @@ def generate_sparse_synthetic(n_samples=200,
         for j in range(2):
             atom = np.zeros((square_size, square_size))
             atom[(half_size * i):(half_size * (i + 1)),
-            (half_size * j): (half_size * (j + 1))] = 1
+                 (half_size * j): (half_size * (j + 1))] = 1
             Q[2 * i + j] = np.ravel(atom)
     code = rng.randn(n_samples, 4)
     X = code.dot(Q)
@@ -47,14 +56,18 @@ def generate_synthetic(n_samples=200,
 @pytest.mark.parametrize("solver", solvers)
 def test_dict_mf_reconstruction(solver):
     X, Q = generate_synthetic()
-    dict_mf = DictFact(n_components=4, alpha=1e-4,
-                       max_n_iter=300, l1_ratio=0,
-                       G_ag=solver,
+    dict_mf = DictFact(n_components=4,
+                       code_alpha=1e-4,
+                       n_epochs=5,
+                       comp_l1_ratio=0,
+                       G_agg=solver_dict[solver]['G_agg'],
+                       Dx_agg=solver_dict[solver]['Dx_agg'],
                        random_state=rng_global, reduction=1)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.components_)
-    assert_array_almost_equal(X, Y, decimal=1)
+    Y = P.dot(dict_mf.components_)
+    rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
+    assert (rel_error < 0.02)
 
 
 @pytest.mark.parametrize("solver", solvers)
@@ -62,16 +75,18 @@ def test_dict_mf_reconstruction_reduction(solver):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
-    dict_mf = DictFact(n_components=4, alpha=1e-6,
-                       max_n_iter=800, l1_ratio=0,
-                       G_ag=solver,
-                       learning_rate=0.9,
+    dict_mf = DictFact(n_components=4,
+                       code_alpha=1e-4,
+                       n_epochs=2,
+                       comp_l1_ratio=0,
+                       G_agg=solver_dict[solver]['G_agg'],
+                       Dx_agg=solver_dict[solver]['Dx_agg'],
                        random_state=rng_global, reduction=2)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.components_)
+    Y = P.dot(dict_mf.components_)
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
-    assert (rel_error < 0.06)
+    assert (rel_error < 0.02)
 
 
 @pytest.mark.parametrize("solver", solvers)
@@ -79,13 +94,18 @@ def test_dict_mf_reconstruction_reproductible(solver):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
-    dict_mf = DictFact(n_components=4, alpha=1e-6,
-                       max_n_iter=800, l1_ratio=0,
-                       G_ag=solver,
-                       random_state=rng_global, reduction=2)
+    dict_mf = DictFact(n_components=4,
+                       code_alpha=1e-4,
+                       n_epochs=2,
+                       comp_l1_ratio=0,
+                       G_agg=solver_dict[solver]['G_agg'],
+                       Dx_agg=solver_dict[solver]['Dx_agg'],
+                       random_state=0, reduction=2)
     dict_mf.fit(X)
     D1 = dict_mf.components_.copy()
     P1 = dict_mf.transform(X)
+
+    dict_mf.random_state = 0
 
     dict_mf.fit(X)
     D2 = dict_mf.components_.copy()
@@ -99,28 +119,32 @@ def test_dict_mf_reconstruction_reduction_batch(solver):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
-    dict_mf = DictFact(n_components=4, alpha=1e-6,
-                       max_n_iter=400, l1_ratio=0,
-                       G_ag=solver,
-                       random_state=3, batch_size=3,
-                       coupled_subset=True,
-                       learning_rate=0.9,
-                       reduction=2, )
+    dict_mf = DictFact(n_components=4,
+                       code_alpha=1e-4,
+                       n_epochs=2,
+                       comp_l1_ratio=0,
+                       G_agg=solver_dict[solver]['G_agg'],
+                       Dx_agg=solver_dict[solver]['Dx_agg'],
+                       random_state=rng_global, reduction=2,
+                       batch_size=10)
     dict_mf.fit(X)
     P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.components_)
+    Y = P.dot(dict_mf.components_)
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
     assert (rel_error < 0.06)
 
 
 @pytest.mark.parametrize("solver", solvers)
 def test_dict_mf_reconstruction_sparse_dict(solver):
-    X, Q = generate_sparse_synthetic(300, 4)
+    X, Q = generate_sparse_synthetic(500, 4)
     rng = check_random_state(0)
-    dict_init = Q + rng.randn(*Q.shape) * 0.01
-    dict_mf = DictFact(n_components=4, alpha=1e-4, max_n_iter=400, l1_ratio=1,
+    dict_init = Q  + rng.randn(*Q.shape) * 0.2
+    dict_mf = DictFact(n_components=4, code_alpha=1e-2, n_epochs=2,
+                       code_l1_ratio=0,
+                       comp_l1_ratio=1,
                        dict_init=dict_init,
-                       G_ag=solver,
+                       G_agg=solver_dict[solver]['G_agg'],
+                       Dx_agg=solver_dict[solver]['Dx_agg'],
                        random_state=rng_global)
     dict_mf.fit(X)
     Q_rec = dict_mf.components_
@@ -130,7 +154,51 @@ def test_dict_mf_reconstruction_sparse_dict(solver):
     recovered_maps = min(np.sum(np.any(G > 0.95, axis=1)),
                          np.sum(np.any(G > 0.95, axis=0)))
     assert (recovered_maps >= 4)
-    P = dict_mf.transform(X)
-    Y = P.T.dot(dict_mf.components_)
-    # Much stronger
-    # assert_array_almost_equal(X, Y, decimal=2)
+
+
+def enet_regression_multi_gram_(G, Dx, X, code, l1_ratio, alpha,
+                                positive):
+    batch_size = code.shape[0]
+    if l1_ratio == 0:
+        n_components = G.shape[1]
+        for i in range(batch_size):
+            G.flat[::n_components + 1] += alpha
+            code[i] = linalg.solve(G[i], Dx[i])
+            G.flat[::n_components + 1] -= alpha
+    else:
+        # Unused but unfortunate API
+        random_state = check_random_state(0)
+        for i in range(batch_size):
+            cd_fast.enet_coordinate_descent_gram(
+                code[i],
+                alpha * l1_ratio,
+                alpha * (
+                    1 - l1_ratio),
+                G[i], Dx[i], X[i], 100, 1e-2,
+                random_state,
+                False, positive)
+    return code
+
+
+def enet_regression_single_gram_(G, Dx, X, code, code_l1_ratio, code_alpha,
+                                 code_pos):
+    batch_size = code.shape[0]
+    if code_l1_ratio == 0:
+        n_components = G.shape[0]
+        G = G.copy()
+        G.flat[::n_components + 1] += code_alpha
+        code[:] = linalg.solve(G, Dx.T).T
+        G.flat[::n_components + 1] -= code_alpha
+    else:
+        # Unused but unfortunate API
+        random_state = check_random_state(0)
+        for i in range(batch_size):
+            cd_fast.enet_coordinate_descent_gram(
+                code[i],
+                code_alpha * code_l1_ratio,
+                code_alpha * (
+                    1 - code_l1_ratio),
+                G, Dx[i], X[i], 100, 1e-2,
+                random_state,
+                False, code_pos)
+    return code

@@ -62,4 +62,4 @@ cdef class Sampler(object):
             else:
                 self.lim_inf = 0
                 self.lim_sup = self.range
-        return self.box[self.lim_inf:self.lim_sup]
+        return np.array(self.box[self.lim_inf:self.lim_sup])

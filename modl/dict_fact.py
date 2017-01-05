@@ -27,6 +27,7 @@ class DictFact(BaseEstimator):
                  G_agg='masked',
                  code_alpha=1,
                  code_l1_ratio=1,
+                 dict_init=None,
                  n_epochs=1,
                  n_components=10,
                  batch_size=10,
@@ -42,6 +43,102 @@ class DictFact(BaseEstimator):
                  rand_size=True,
                  replacement=True,
                  ):
+        """
+        Estimator to perform matrix factorization by streaming samples and
+        subsampling them randomly to increase speed. Solve for
+                argmin_{comp_l1_ratio ||D^j ||_1
+                 + (1 - comp_l1_ratio) || D^j ||_2^2 < 1, A}
+                1 / 2 || X - D A ||_2
+                + code_alpha ((1 - code_l1_ratio) || A ||_2 / 2
+                + code_l1_ratio || A ||_1)
+
+        References
+        ----------
+        'Massive Online Dictionary Learning'
+        A. Mensch, J. Mairal, B. Thrion, G. Varoquaux, ICML '16
+        'Subsampled Online Matrix Factorization with Convergence Guarantees
+        A. Mensch, J. Mairal, G. Varoquaux, B. Thrion, OPT@NIPS '16
+
+        Parameters
+        ----------
+        reduction: float
+            Ratio of reduction in accessing the features of the data stream
+        learning_rate: float in ]0.917, 1]
+            Weights to use in learning the dictionary. 1 means no forgetting,
+            lower means forgetting the past faster, 0.917 is the theoretical
+            limit for convergence.
+        sample_learning_rate: float in ]0.75, 3 * learning_rate - 2[
+            Weights to use in reducing the variance due to the stochastic
+            subsampling, when Dx_agg == 'average' or G_agg == 'average'.
+            Lower means forgetting the past faster
+        Dx_agg: str in ['full', 'average', 'masked']
+            Estimator to use in estimating D^T x_t
+        G_agg: str in ['full', 'average', 'masked']
+            Estimator to use in estimating the Gram matrix D^T D
+        code_alpha: float, positive
+            Penalty applied to the code in the minimization problem
+        code_l1_ratio: float in [0, 1]
+            Ratio of l1 penalty for the code in the minimization problem
+        dict_init: ndarray, shape = (n_components, n_features)
+            Initial dictionary
+        n_epochs: int
+            Number of epochs to perform over data
+        n_components: int
+            Number of components in the dictionary
+        batch_size: int
+            Size of mini-batches to use
+        code_pos: boolean,
+            Learn a positive code
+        comp_pos: boolean,
+            Learn a positive dictionary
+        random_state: np.random.RandomState or int
+            Seed randomness in the learning algorithm
+        comp_l1_ratio: float in [0, 1]
+            Ratio of l1 in the dictionary constraint
+        verbose: int, positive
+            Control the verbosity of the estimator
+        callback: callable,
+            Function called from time to time with local variables
+        n_threads: int
+            Number of processors to use in the algorithm
+        tol: float, positive
+            Tolerance for the elastic-net solver
+        max_iter: int, positive
+            Maximum iteration for the elastic-net solver
+        rand_size: boolean
+            Whether the masks should have fixed size
+        replacement: boolean
+            Whether to compute random or cycling masks
+
+        Attributes
+        ----------
+        self.components_: ndarray, shape = (n_components, n_features)
+            Current estimation of the dictionary
+        self.code_: ndarray, shape = (n_samples, n_components)
+            Current estimation of each sample code
+        self.C_: ndarray, shape = (n_components, n_components)
+            For computing D gradient
+        self.B_: ndarray, shape = (n_components, n_features)
+            For computing D gradient
+        self.gradient_: ndarray, shape = (n_components, n_features)
+            D gradient, to perform block coordinate descent
+        self.G_: ndarray, shape = (n_components, n_components)
+            Gram matrix
+        self.Dx_average_: ndarray, shape = (n_samples, n_components)
+            Current estimate of D^T X
+        self.G_average_: ndarray, shape =
+        (n_samples, n_components, n_components)
+            Averaged previously seen subsampled Gram matrix. Memory-mapped
+        self.n_iter_: int
+            Number of seen samples
+        self.sample_n_iter_: int
+            Number of time each sample has been seen
+        self.verbose_iter_: int
+            List of verbose iteration
+        self.feature_sampler_: Sampler
+            Generator of masks
+        """
+
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.sample_learning_rate = sample_learning_rate
@@ -58,6 +155,7 @@ class DictFact(BaseEstimator):
         self.n_components = n_components
         self.n_epochs = n_epochs
 
+        self.dict_init = dict_init
         self.random_state = random_state
 
         self.verbose = verbose
@@ -73,29 +171,35 @@ class DictFact(BaseEstimator):
 
     def fit(self, X):
         """
-        Compute the matrix factorisation X ~ components_ x code_,solving for
+        Compute the factorisation X ~ code_ x components_, solving for
         D, code_ = argmin_{r2 ||D^j ||_1 + (1 - r2) || D^j ||_2^2 < 1}
         1 / 2 || X - D A ||_2 + (1 - r) || A ||_2 / 2 + r || A ||_1
         Parameters
         ----------
-        X:  n_samples * n_features
+        X:  ndarray, shape= (n_samples, n_features)
 
         Returns
         -------
-
+        self
         """
         X = check_array(X, order='C', dtype=[np.float32, np.float64])
-        self.prepare(X=X)
+        if self.dict_init is None:
+            dict_init = X
+        else:
+            dict_init = check_array(self.dict_init,
+                                    dtype=X.dtype.type)
+        self.prepare(n_samples=X.shape[0], X=dict_init)
         # Main loop
         for _ in range(self.n_epochs):
             self.partial_fit(X)
-            permutation = self.relabel()
+            permutation = self.shuffle()
             X = X[permutation]
         return self
 
     def partial_fit(self, X, sample_indices=None):
         """
         Update the factorization using rows from X
+
         Parameters
         ----------
         X: ndarray, shape (n_samples, n_features)
@@ -105,7 +209,7 @@ class DictFact(BaseEstimator):
             (useful when providing the whole data to the function)
         Returns
         -------
-
+        self
         """
         X = check_array(X, dtype=[np.float32, np.float64], order='C')
 
@@ -119,17 +223,36 @@ class DictFact(BaseEstimator):
         return self
 
     def set_params(self, **params):
+        """Set the parameters of this estimator.
+
+        The method works on simple estimators as well as on nested objects
+        (such as pipelines). The latter have parameters of the form
+        ``<component>__<parameter>`` so that it's possible to update each
+        component of a nested object.
+
+        Returns
+        -------
+        self
+        """
+
         G_agg = params.pop('G_agg', None)
         if G_agg == 'full' and self.G_agg != 'full':
-            if self.is_prepared():
+            if hasattr(self, 'components_'):
                 self.G_ = self.components_.dot(self.components_.T)
             self.G_agg = 'full'
         BaseEstimator.set_params(self, **params)
 
-    def is_prepared(self):
-        return hasattr(self, 'components_')
-
     def shuffle(self):
+        """
+        Shuffle regression statistics, code_,
+        G_average_ and Dx_average_ and return the permutation used
+
+        Returns
+        -------
+        permutation: ndarray, shape = (n_samples)
+            Permutation used in shuffling regression statistics
+        """
+
         random_seed = self.random_state.randint(MAX_INT)
         random_state = RandomState(random_seed)
         list = [self.code_]
@@ -142,6 +265,25 @@ class DictFact(BaseEstimator):
 
     def prepare(self, n_samples=None, n_features=None,
                 dtype=None, X=None):
+        """
+        Init estimator attributes based on input shape and type.
+
+        Parameters
+        ----------
+        n_samples: int,
+
+        n_features: int,
+
+        dtype: dtype in np.float32, np.float64
+             to use in the estimator. Override X.dtype if provided
+        X: ndarray, shape (> n_components, n_features)
+            Array to use to determine shape and types, and init dictionary if
+            provided
+
+        Returns
+        -------
+        self
+        """
         if X is not None:
             X = check_array(X, order='C', dtype=[np.float32, np.float64])
             if dtype is None:
@@ -224,8 +366,21 @@ class DictFact(BaseEstimator):
             self.verbose_iter_ = self.verbose_iter_.tolist()
         if self.n_threads > 1:
             self.pool_ = ThreadPoolExecutor(self.n_threads)
+        return self
 
     def transform(self, X):
+        """
+        Compute the codes associated to input matrix X, decomposing it onto
+        the dictionary
+
+        Parameters
+        ----------
+        X: ndarray, shape = (n_samples, n_features)
+
+        Returns
+        -------
+        code: ndarray, shape = (n_samples, n_components)
+        """
         dtype = self.components_.dtype
         X = check_array(X, order='C', dtype=dtype.type)
         n_samples, n_features = X.shape
@@ -254,6 +409,17 @@ class DictFact(BaseEstimator):
         return code
 
     def score(self, X):
+        """
+        Objective function value on test data X
+
+        Parameters
+        ----------
+        X: ndarray, shape=(n_samples, n_features)
+            Input matrix
+        Returns
+        -------
+        score: float, positive
+        """
         code = self.transform(X)
         loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
         norm1_code = np.sum(np.abs(code))
@@ -267,6 +433,8 @@ class DictFact(BaseEstimator):
             self.callback(self)
 
     def _single_batch_fit(self, X, sample_indices):
+        """Fit a single batch X: compute code, update statistics, update the
+        dictionary"""
         if (self.verbose and self.verbose_iter_
                 and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
@@ -295,12 +463,14 @@ class DictFact(BaseEstimator):
                                                 this_code, w)
 
     def _update_stat_and_dict(self, subset, X, code, w):
+        """For multi-threading"""
         self._update_C(code, w)
         self._update_B(X, code, w)
         self.gradient_[:, subset] = self.B_[:, subset]
         self._update_dict(subset)
 
     def _update_stat_and_dict_parallel(self, subset, X, this_code, w):
+        """For multi-threading"""
         self.gradient_[:, subset] = self.B_[:, subset]
         dict_thread = self.pool_.submit(self._update_stat_partial_and_dict,
                                         subset, X, this_code, w)
@@ -310,6 +480,7 @@ class DictFact(BaseEstimator):
         B_thread.result()
 
     def _update_stat_partial_and_dict(self, subset, X, code, w):
+        """For multi-threading"""
         self._update_C(code, w)
         # Gradient update
         batch_size = X.shape[0]
@@ -320,17 +491,21 @@ class DictFact(BaseEstimator):
         self._update_dict(subset)
 
     def _update_B(self, X, code, w):
+        """Update B statistics (for updating D)"""
         batch_size = X.shape[0]
         self.B_ *= 1 - w
         self.B_ += w * code.T.dot(X) / batch_size
 
     def _update_C(self, this_code, w):
+        """Update C statistics (for updating D)"""
         batch_size = this_code.shape[0]
         self.C_ *= 1 - w
         self.C_ += w * this_code.T.dot(this_code) / batch_size
 
     def _compute_code(self, X, sample_indices,
                       w_sample, subset):
+        """Update regression statistics if
+        necessary and compute code from X[:, subset]"""
         batch_size, n_features = X.shape
         reduction = self.reduction
 
@@ -401,6 +576,14 @@ class DictFact(BaseEstimator):
                     self.tol, self.max_iter)
 
     def _update_dict(self, subset):
+        """Dictionary update part
+
+        Parameters
+        ----------
+        subset: ndarray,
+            Subset of features to update.
+
+        """
         len_subset = subset.shape[0]
         n_components, n_features = self.components_.shape
         components_subset = self.components_[:, subset]
@@ -445,5 +628,7 @@ class DictFact(BaseEstimator):
                 self.G_[:] = self.components_.dot(self.components_.T)
 
     def _exit(self):
+        """Useful to delete G_average_ memorymap when the algorithm is
+         interrupted/completed"""
         if hasattr(self, 'G_average_mmap_'):
             self.G_average_mmap_.close()
