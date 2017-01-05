@@ -1,4 +1,5 @@
 # Copyright 2005 Robert Kern (robert.kern@gmail.com)
+# Adapted from lightning (github.com/lightning/lightning)
 
 from libc cimport stdlib
 
@@ -134,9 +135,6 @@ cdef class RandomState:
             x = list[k]
             self.shuffle(x, swap=swap)
         return np.asarray(trace)
-
-
-
 
     cpdef binomial(self, int n, double p):
         return <int>rk_binomial(self.internal_state, n, p)

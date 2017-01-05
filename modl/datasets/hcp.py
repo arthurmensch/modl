@@ -3,7 +3,7 @@ import json
 import os
 from os.path import join
 
-from ..datasets import get_data_dirs
+from modl.utils.system import get_data_dirs
 
 import numpy as np
 from nilearn.input_data import NiftiMasker

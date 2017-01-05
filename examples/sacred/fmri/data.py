@@ -2,7 +2,7 @@ import json
 import os
 from os.path import expanduser, join
 
-from modl.datasets import get_data_dirs
+from modl.utils.system import get_data_dirs
 from modl.datasets.hcp import fetch_hcp_rest
 from sacred import Ingredient
 from sklearn.model_selection import train_test_split

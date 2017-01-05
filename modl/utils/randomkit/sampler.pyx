@@ -1,4 +1,5 @@
 from cython cimport view
+import numpy as np
 
 cdef class Sampler(object):
     def __cinit__(self, long range, bint rand_size,
