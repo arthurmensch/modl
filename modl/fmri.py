@@ -15,6 +15,7 @@ import numpy as np
 from nilearn._utils import check_niimg
 from nilearn._utils.cache_mixin import CacheMixin
 from nilearn.decomposition.base import BaseDecomposition
+from nilearn.input_data import NiftiMasker
 from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
 from sklearn.utils import check_random_state
@@ -143,7 +144,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
                  mask_strategy='epi', mask_args=None,
-                 memory=Memory(cachedir='/tmp'), memory_level=0,
+                 memory=Memory(cachedir=None), memory_level=2,
                  buffer_size=None,
                  n_jobs=1, verbose=0,
                  callback=None):
@@ -231,19 +232,8 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 n_samples_list = [data.get().shape[0] for data in data_list]
                 dtype = data_list[0].get().dtype
             else:
-                data_list = zip(imgs, confounds)
-                n_samples_list = []
-                for img in imgs:
-                    if isinstance(img, str):
-                        warnings.warn('Provide a cachedir for efficiency')
-                        this_n_samples = check_niimg(img).shape[3]
-                    else:
-                        this_n_samples = nibabel.load(img).get_data_shape()[3]
-                    n_samples_list.append(this_n_samples)
-                if isinstance(img, str):
-                    dtype = check_niimg(imgs[0]).get_data_dtype()
-                else:
-                    dtype = nibabel.load(img).get_data_dtype()
+                data_list = list(zip(imgs, confounds))
+                n_samples_list, dtype = _lazy_scan(imgs)
 
 
         indices_list = np.zeros(len(imgs) + 1, dtype='int')
@@ -255,9 +245,9 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if self.dict_init is not None:
             if self.verbose:
                 print("Preloading initial dictionary")
-            dict_init = self.masker_.transform(self.dict_init)
-            if shelving:
-                dict_init = dict_init.get()
+            masker = NiftiMasker(smoothing_fwhm=0,
+                                 mask_img=self.mask_img_).fit()
+            dict_init = masker.transform(self.dict_init)
         else:
             dict_init = None
 
@@ -305,7 +295,8 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                     if shelving:
                         data = data.get()
                     else:
-                        data = self.masker_.transform(data)
+                        img, confound = data
+                        data = self.masker_.transform(img, confound)
                 permutation = self.random_state.permutation(n_records)
                 data = data[permutation]
                 sample_indices = sample_indices[permutation]
@@ -421,9 +412,26 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
 
 def _normalize_and_flip(components):
-    # Flip signs in each composant positive part is l1 larger
-    # than negative part
+    """Flip signs in each composant positive part is l1 larger
+    than negative part"""
     for component in components:
         if np.sum(component < 0) > np.sum(component > 0):
             component *= -1
     return components
+
+def _lazy_scan(imgs):
+    """Extracts number of samples and dtype
+    from a 4D list of Niilike-image, without loading data"""
+    n_samples_list = []
+    for img in imgs:
+        if isinstance(img, str):
+            warnings.warn('Provide a cachedir for efficiency')
+            this_n_samples = nibabel.load(img).shape[3]
+        else:
+            this_n_samples = img.shape[3]
+        n_samples_list.append(this_n_samples)
+    if isinstance(img, str):
+        dtype = nibabel.load(img).get_data_dtype()
+    else:
+        dtype = imgs[0].get_data_dtype()
+    return n_samples_list, dtype

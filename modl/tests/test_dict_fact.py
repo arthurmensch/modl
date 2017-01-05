@@ -69,7 +69,6 @@ def test_dict_mf_reconstruction(solver):
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
     assert (rel_error < 0.02)
 
-
 @pytest.mark.parametrize("solver", solvers)
 def test_dict_mf_reconstruction_reduction(solver):
     X, Q = generate_synthetic(n_features=20,
