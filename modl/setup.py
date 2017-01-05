@@ -15,7 +15,8 @@ def configuration(parent_package='', top_path=None):
                   include_dirs=[numpy.get_include()]
                   ),
     ]
-    config.ext_modules += cythonize(extensions)
+    config.ext_modules += cythonize(extensions,
+                                    )
 
     config.add_subpackage('tests')
     config.add_subpackage('utils')

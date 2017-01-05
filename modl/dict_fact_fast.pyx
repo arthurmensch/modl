@@ -1,7 +1,10 @@
 # encoding: utf-8
+# cython: linetrace=True
 # cython: cdivision=True
 # cython: boundscheck=False
 # cython: wraparound=False
+# distutils: define_macros=CYTHON_TRACE=1
+# distutils: define_macros=CYTHON_TRACE_NOGIL=1
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'

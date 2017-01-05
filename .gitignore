@@ -67,6 +67,5 @@ MANIFEST
 
 .html
 *.c
-!modl/utils/randomkit_old/randomkit.c
-!modl/utils/randomkit_old/distributions.c
-cython_debug/
+!modl/utils/randomkit/randomkit.c
+!modl/utils/randomkit/distributions.c
