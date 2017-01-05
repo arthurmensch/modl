@@ -419,6 +419,7 @@ def _normalize_and_flip(components):
             component *= -1
     return components
 
+
 def _lazy_scan(imgs):
     """Extracts number of samples and dtype
     from a 4D list of Niilike-image, without loading data"""

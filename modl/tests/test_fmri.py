@@ -111,7 +111,6 @@ def test_dict_fact(method, memory):
     G = np.abs(components.dot(maps.T))
 
     recovered_maps = np.sum(G > 0.95)
-    print(G)
     assert (recovered_maps >= 4)
 
 
