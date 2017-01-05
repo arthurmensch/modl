@@ -1,4 +1,7 @@
 # encoding: utf-8
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 
 cdef char UP = 'U'
 cdef char NTRANS = 'N'
@@ -34,7 +37,6 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
                                 bint positive,
                                 floating tol,
                                 int max_iter,
-                                bint inplace_G,
                                 ):
     '''
     Perform elastic net regression: for all i in indices,
@@ -55,7 +57,7 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     '''
     cdef int batch_size = indices.shape[0]
     cdef int n_components = code.shape[1]
-    cdef int i, j, k, info, ii
+    cdef int i, j, info, ii
     cdef floating* G_ptr = <floating*> &G[0, 0, 0]
     cdef floating* code_ptr = <floating*> &code[0, 0]
     cdef POSV posv
@@ -74,12 +76,11 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     if l1_ratio == 0:
         for ii in range(batch_size):
             i = indices[ii]
-            k = i if inplace_G else ii
             code[i, :] = Dx[ii, :]
             for j in range(n_components):
-                G[k, j, j] += alpha
+                G[ii, j, j] += alpha
             posv(&UP, &n_components, &ONE,
-                G_ptr + k * n_components ** 2,
+                G_ptr + ii * n_components ** 2,
                 &n_components,
                 code_ptr + i * n_components, &n_components,
                 &info)
@@ -88,8 +89,7 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     else:
         for ii in range(batch_size):
             i = indices[ii]
-            k = i if inplace_G else ii
-            this_G = G[k, :, :]
+            this_G = G[ii, :, :]
             this_Dx = Dx[ii, :]
             this_X = X[ii, :]
             this_code = code[i, :]
@@ -141,7 +141,7 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
     cdef int n_components = G.shape[0]
     cdef int n_features = X.shape[1]
     cdef floating* G_ptr = <floating*> &G[0, 0]
-    cdef floating* code_ptr = <floating*> &code[0, 0]
+    cdef floating* Dx_ptr = <floating*> &Dx[0, 0]
     cdef POSV posv
     cdef str format
     cdef floating[:] this_code
@@ -152,7 +152,7 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
 
     if floating is float:
         posv = sposv
-        format = 's'
+        format = 'f'
     else:
         posv = dposv
         format = 'd'
@@ -170,17 +170,16 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
         code_copy = view.array((batch_size, n_components),
                                       sizeof(floating),
                                       format=format, mode='c')
-        code_ptr = &code_copy[0, 0]
-        for ii in range(batch_size):
-            code_copy[ii, :] = Dx[ii, :]
         posv(&UP, &n_components, &batch_size,
         G_ptr,
         &n_components,
-        code_ptr, &n_components,
+        Dx_ptr, &n_components,
         &info)
+        for j in range(n_components):
+            G[j, j] -= alpha
         for ii in range(batch_size):
             i = indices[ii]
-            code[i, :] = code_copy[ii, :]
+            code[i, :] = Dx[ii, :]
     else:
         for ii in range(batch_size):
             i = indices[ii]
@@ -197,18 +196,15 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
 
 def _update_G_average(floating[:, :, ::1] G_average,
                               floating[:, ::1] G,
-                              floating[:] w_sample,
-                              long[:] indices):
+                              floating[:] w_sample):
     cdef int batch_size = w_sample.shape[0]
     cdef int n_components = G_average.shape[1]
     cdef int ii, i, k, p, q
-    cdef bint inplace = indices is not None
     for ii in range(batch_size):
-        k = indices[ii] if inplace else ii
         for p in range(n_components):
             for q in range(n_components):
-                G_average[k, p, q] *= (1 - w_sample[ii])
-                G_average[k, p, q] += G[p, q] * w_sample[ii]
+                G_average[ii, p, q] *= (1 - w_sample[ii])
+                G_average[ii, p, q] += G[p, q] * w_sample[ii]
     return G_average
 
 

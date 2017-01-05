@@ -10,10 +10,10 @@ from spectral import open_image
 import numpy as np
 
 
-def load_images(source,
-                scale=1,
-                gray=False,
-                memory=Memory(cachedir=None)):
+def load_image(source,
+               scale=1,
+               gray=False,
+               memory=Memory(cachedir=None)):
     data_dir = get_data_dirs()[0]
     if source == 'face':
         image = face(gray=gray)

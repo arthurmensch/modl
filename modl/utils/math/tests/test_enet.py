@@ -3,11 +3,10 @@
 
 import numpy as np
 from numpy import sqrt
-from numpy.testing import assert_array_almost_equal
+from numpy.testing import assert_array_almost_equal, assert_almost_equal
 from sklearn.utils import check_random_state
 
-from modl.utils.math.enet_proj import enet_norm, enet_projection, \
-    enet_scale
+from modl.utils.math.enet import enet_norm, enet_projection, enet_scale
 
 
 def _enet_norm_for_projection(v, gamma):
@@ -85,6 +84,7 @@ def test_slow_enet_norm():
         norms2[i] = (1 - 0.1) * (a ** 2).sum() + 0.1 * np.abs(a).sum()
     assert_array_almost_equal(norms, norms2)
 
+
 def test_slow_enet_projection_norm():
     norms = np.zeros(10)
     random_state = check_random_state(0)
@@ -96,26 +96,26 @@ def test_slow_enet_projection_norm():
     assert_array_almost_equal(norms, np.ones(10))
 
 
-def test_fast_enet_projection_norm():
+def test_enet_projection_norm():
     random_state = check_random_state(0)
     norms = np.zeros(10)
     for i in range(10):
         a = random_state.randn(20000)
         a /= np.sqrt(np.sum(a ** 2))
         c = np.zeros(20000)
-        c[:] = enet_projection(a, 1, 0.15)
+        enet_projection(a, c, 1, 0.15)
         norms[i] = enet_norm(c, l1_ratio=0.15)
     assert_array_almost_equal(norms, np.ones(10))
 
 
-def test_fast_enet_projection():
+def test_enet_projection():
     c = np.empty((10, 100))
     b = np.empty((10, 100))
     random_state = check_random_state(0)
     for i in range(10):
         a = random_state.randn(100)
         b[i, :] = enet_projection_slow(a, radius=1, l1_ratio=0.1)
-        c[i] = enet_projection(a, radius=1, l1_ratio=0.1)
+        enet_projection(a, c[i], radius=1, l1_ratio=0.1)
     assert_array_almost_equal(c, b, 4)
 
 
@@ -125,33 +125,32 @@ def test_fast_enet_l2_ball():
     for i in range(10):
         a = random_state.randn(100)
         c = np.zeros(100)
-        c[:] = enet_projection(a, 2, 0.0)
+        enet_projection(a, c, 2, 0.0)
         norms[i] = np.sqrt(np.sum(c ** 2))
     assert_array_almost_equal(norms, np.ones(10) * sqrt(2))
     for i in range(10):
         a = random_state.randn(100)
         a /= np.sqrt(np.sum(a ** 2)) * 10
-        c = enet_projection(a, 2, 0.0)
+        enet_projection(a, c, 2, 0.0)
         assert_array_almost_equal(a, c)
 
-def test_fast_enet_l1_ball():
+
+def test_enet_l1_ball():
     random_state = check_random_state(0)
     norms = np.zeros(10)
     for i in range(10):
         a = random_state.randn(100)
         b = np.zeros(100)
-        b[:] = enet_projection(a, 1, 1.0)
+        enet_projection(a, b, 1, 1.0)
         norms[i] = np.sum(np.abs(b))
     assert_array_almost_equal(norms, np.ones(10))
 
 
 def test_enet_scale():
     random_state = check_random_state(0)
-    a = random_state.randn(10, 100)
-    a1 = random_state.randn(100)
-    for r in [1, 2]:
-        for this_a in [a, a1]:
-            for l1_ratio in [0., 0.5, 1]:
-                b = enet_scale(this_a, r, l1_ratio)
-                norms = enet_norm(b, l1_ratio)
-            assert_array_almost_equal(norms, r)
+    a = random_state.randn(100)
+    for r in [1., 2.]:
+        for l1_ratio in [0., 0.5, 1.]:
+            enet_scale(a, l1_ratio, r)
+            norm = enet_norm(a, l1_ratio)
+        assert_almost_equal(norm, r)

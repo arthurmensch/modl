@@ -8,7 +8,6 @@ component sparsity
 from __future__ import division
 
 import itertools
-import time
 
 import numpy as np
 from nilearn._utils import check_niimg
@@ -22,7 +21,7 @@ from .dict_fact import DictFact
 from math import log
 
 
-class rfMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
+class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
     """Perform a map learning algorithm based on component sparsity,
      over a CanICA initialization.  This yields more stable maps than CanICA.
 
@@ -103,7 +102,6 @@ class rfMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  alpha=0.1,
                  dict_init=None,
                  random_state=None,
-                 l1_ratio=1,
                  batch_size=20,
                  reduction=1,
                  learning_rate=1,
@@ -132,7 +130,6 @@ class rfMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    memory_level=memory_level,
                                    n_jobs=n_jobs, verbose=verbose,
                                    )
-        self.l1_ratio = l1_ratio
         self.alpha = alpha
         self.dict_init = dict_init
         self.n_epochs = n_epochs
@@ -163,24 +160,32 @@ class rfMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         # Base logic for decomposition estimators
         BaseDecomposition.fit(self, imgs)
         self.masker_._shelving = True
+        _ = self.masker_.mask_img_.get_data()
 
         self.random_state = check_random_state(self.random_state)
 
-        method = rfMRIDictFact.methods[self.method]
+        method = fMRIDictFact.methods[self.method]
         G_agg = method['G_agg']
         Dx_agg = method['Dx_agg']
 
         n_records = len(imgs)
 
+        if self.verbose:
+            print("Preloading data")
+
         if raw:  # Hack
             data_list = imgs
+            dtype = np.load(imgs[0], mmap_mode='r').dtype
             n_samples_list = [np.load(img, mmap_mode='r').shape[0] for img in
                               imgs]
         else:
             if confounds is None:
                 confounds = itertools.repeat(None)
             data_list = self.masker_.transform(imgs, confounds)
+            if self.verbose:
+                print("Counting samples")
             n_samples_list = [check_niimg(img).shape[3] for img in imgs]
+            dtype = check_niimg(imgs[0]).get_data_dtype()
 
         indices_list = np.zeros(len(imgs) + 1, dtype='int')
         indices_list[1:] = np.cumsum(n_samples_list)
@@ -189,9 +194,14 @@ class rfMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
 
         if self.dict_init is not None:
+            if self.verbose:
+                print("Preloading initial dictionary")
             dict_init = self.masker_.transform(self.dict_init).get()
         else:
             dict_init = None
+
+        if self.verbose:
+            print("Learning decomposition")
 
         self.dict_fact_ = DictFact(n_components=self.n_components,
                                    code_alpha=self.alpha,
@@ -203,24 +213,25 @@ class rfMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    learning_rate=self.learning_rate,
                                    batch_size=self.batch_size,
                                    random_state=self.random_state,
-                                   n_jobs=self.n_jobs,
+                                   n_threads=self.n_jobs,
                                    verbose=0)
         self.dict_fact_.prepare(n_samples=n_samples, n_features=n_voxels,
-                                X=dict_init)
+                                X=dict_init, dtype=dtype)
 
         if self.verbose:
             log_lim = log(n_records * self.n_epochs, 10)
             self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
                                              base=10) - 1
             self.verbose_iter_ = self.verbose_iter_.tolist()
+            current_n_records = 0
         for i in range(self.n_epochs):
             if self.verbose:
                 print('Epoch %i' % (i + 1))
             record_list = self.random_state.permutation(n_records)
             for record in record_list:
                 if (self.verbose_iter_ and
-                            self.n_iter_ >= self.verbose_iter_[0]):
-                    print('Record %i' % self.n_iter_)
+                            current_n_records >= self.verbose_iter_[0]):
+                    print('Record %i' % current_n_records)
                     if self.callback is not None:
                         self.callback(self)
                     self.verbose_iter_ = self.verbose_iter_[1:]
@@ -236,6 +247,7 @@ class rfMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 sample_indices = sample_indices[permutation]
                 self.dict_fact_.partial_fit(data,
                                             sample_indices=sample_indices)
+                current_n_records += 1
         return self
 
     def score(self, imgs, confounds=None, raw=False):
@@ -292,6 +304,6 @@ def _normalize_and_flip(components):
     # Flip signs in each composant positive part is l1 larger
     # than negative part
     for component in components:
-        if np.sum(component < 0) < np.sum(component > 0):
+        if np.sum(component < 0) > np.sum(component > 0):
             component *= -1
     return components

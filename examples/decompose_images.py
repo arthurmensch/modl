@@ -8,8 +8,8 @@ from modl.image import ImageDictFact
 from sacred import Experiment
 from sacred.ingredient import Ingredient
 
-from modl.datasets.images import load_images
-from modl.plotting.images import plot_patches
+from modl.datasets.image import load_image
+from modl.plotting.image import plot_patches
 
 data_ing = Ingredient('data')
 decompose_ex = Experiment('decompose_images', ingredients=[data_ing])
@@ -28,20 +28,20 @@ def config():
     patch_size = (16, 16)
     n_threads = 2
     verbose = 20
-    method = 'gram'
+    method = 'average'
     setting = 'dictionary learning'
 
 
 @data_ing.config
 def config():
-    source = 'aviris'
+    source = 'lisboa'
     gray = False
     scale = 1
 
 
 @data_ing.capture
 def load_data(source, scale, gray):
-    return load_images(source, scale=scale, gray=gray)
+    return load_image(source, scale=scale, gray=gray)
 
 
 class DictionaryScorer:
@@ -79,7 +79,9 @@ def decompose_run(batch_size,
                   method,
                   _seed,
                   ):
+    print('Loading data')
     image = load_data()
+    print('Done')
     width, height, n_channel = image.shape
     patch_extractor = LazyCleanPatchExtractor(patch_size=patch_size,
                                               max_patches=test_size,

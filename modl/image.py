@@ -98,12 +98,18 @@ class ImageDictFact(BaseEstimator):
                                    verbose=self.verbose,
                                    n_threads=self.n_threads)
 
+        if self.verbose:
+            print('Preparing patch extraction')
         patch_extractor = LazyCleanPatchExtractor(
             patch_size=self.patch_size, max_patches=self.max_patches,
             random_state=self.random_state)
         patch_extractor.fit(image)
+
         n_patches = patch_extractor.n_patches_
         self.patch_shape_ = patch_extractor.patch_shape_
+
+        if self.verbose:
+            print('Fitting dictionary')
         init_patches = patch_extractor.partial_transform(batch=
                                                          self.n_components)
         init_patches = _flatten_patches(init_patches, with_std=with_std,
@@ -159,7 +165,7 @@ class ImageDictFact(BaseEstimator):
         return self.dict_fact_.components_.reshape(
             components_shape)
 
-    def _callback(self):
+    def _callback(self, *args):
         if self.callback is not None:
             self.callback(self)
 

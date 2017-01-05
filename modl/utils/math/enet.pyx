@@ -35,7 +35,7 @@ cdef inline void swap(floating[:] b, unsigned int i, unsigned int j,
     return
 
 
-cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
+cpdef void enet_projection(floating[:] v, floating[:] out, floating radius,
                              floating l1_ratio) nogil:
     cdef unsigned int m = v.shape[0]
     cdef unsigned int i
@@ -55,7 +55,7 @@ cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
     cdef floating l
     cdef floating norm = 0
     if radius == 0:
-        b[:] = 0
+        out[:] = 0
         return
 
     # L2 projection
@@ -67,17 +67,17 @@ cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
         else:
             norm = sqrt(norm / radius)
         for i in range(m):
-            b[i] = v[i] / norm
+            out[i] = v[i] / norm
     else:
         # Scaling by 1 / l1_ratio
         gamma = 2 / l1_ratio - 2
         radius /= l1_ratio
         # Preparing data
         for j in range(m):
-            b[j] = fabs(v[j])
-            norm += b[j] * (1 + gamma / 2 * b[j])
+            out[j] = fabs(v[j])
+            norm += out[j] * (1 + gamma / 2 * out[j])
         if norm <= radius:
-            b[:] = v[:]
+            out[:] = v[:]
         else:
             # s and rho computation
             s = 0
@@ -87,18 +87,18 @@ cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
             while size_U > 0:
                 pivot = start_U + size_U / 2
                 # Putting pivot at the beginning
-                swap(b, pivot, start_U, &buf)
+                swap(out, pivot, start_U, &buf)
                 pivot = start_U
                 drho = 1
-                ds = b[pivot] * (1 + gamma / 2 * b[pivot])
+                ds = out[pivot] * (1 + gamma / 2 * out[pivot])
                 # Ordering : [pivot, >=, <], using Lobato quicksort
                 for i in range(start_U + 1, start_U + size_U):
-                    if b[i] >= b[pivot]:
-                        ds += b[i] * (1 + gamma / 2 * b[i])
-                        swap(b, i, start_U + drho, &buf)
+                    if out[i] >= out[pivot]:
+                        ds += out[i] * (1 + gamma / 2 * out[i])
+                        swap(out, i, start_U + drho, &buf)
                         drho += 1
-                if s + ds - (rho + drho) * (1 + gamma / 2 * b[pivot])\
-                        * b[pivot] < radius * (1 + gamma * b[pivot]) ** 2:
+                if s + ds - (rho + drho) * (1 + gamma / 2 * out[pivot])\
+                        * out[pivot] < radius * (1 + gamma * out[pivot]) ** 2:
                     # U <- L : [<]
                     start_U += drho
                     size_U -= drho
@@ -118,7 +118,7 @@ cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
             else:
                 l = (s - radius) / rho
             for i in range(m):
-                b[i] = sign(v[i]) * positive(fabs(v[i]) - l) / (1 + l * gamma)
+                out[i] = sign(v[i]) * positive(fabs(v[i]) - l) / (1 + l * gamma)
     return
 
 

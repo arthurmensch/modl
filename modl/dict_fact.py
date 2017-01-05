@@ -1,6 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from math import log, ceil
+from tempfile import TemporaryFile
 
+import atexit
 import numpy as np
 import scipy
 from modl.utils.randomkit import RandomState
@@ -139,10 +141,11 @@ class DictFact(BaseEstimator):
         return perm
 
     def prepare(self, n_samples=None, n_features=None,
-                dtype=np.float64, X=None):
+                dtype=None, X=None):
         if X is not None:
             X = check_array(X, order='C', dtype=[np.float32, np.float64])
-            dtype = X.dtype
+            if dtype is None:
+                dtype = X.dtype
             # Transpose to fit usual column streaming
             this_n_samples = X.shape[0]
             if n_samples is None:
@@ -156,14 +159,21 @@ class DictFact(BaseEstimator):
             if n_features is None or n_samples is None:
                 raise ValueError('Either provide'
                                  'shape or data to function prepare.')
+            if dtype is None:
+                dtype = np.float64
+            elif dtype not in [np.float32, np.float64]:
+                return ValueError('dtype should be float32 or float64')
 
         # Regression statistics
         if self.G_agg == 'average':
-            self.G_average_ = np.memmap('G_average', mode='w+',
-                                        shape=(n_samples,
-                                               self.n_components,
-                                               self.n_components),
-                                        dtype=dtype)
+            with TemporaryFile() as self.G_average_mmap_:
+                self.G_average_mmap_ = TemporaryFile()
+                self.G_average_ = np.memmap(self.G_average_mmap_, mode='w+',
+                                            shape=(n_samples,
+                                                   self.n_components,
+                                                   self.n_components),
+                                            dtype=dtype)
+            atexit.register(self._exit)
         self.Dx_average_ = np.zeros((n_samples, self.n_components),
                                     dtype=dtype)
         # Dictionary statistics
@@ -174,12 +184,16 @@ class DictFact(BaseEstimator):
 
         self.random_state = check_random_state(self.random_state)
         if X is None:
-            self.components_ = self.random_state.randn(self.n_components,
-                                                        n_features)
+            self.components_ = np.empty((self.n_components,
+                                                       n_features),
+                                        dtype=dtype)
+            self.components_[:, :] = self.random_state.randn(self.n_components,
+                                                       n_features)
         else:
             random_idx = self.random_state.permutation(this_n_samples)[
                          :self.n_components]
-            self.components_ = X[random_idx].copy()
+            self.components_ = check_array(X[random_idx], dtype=dtype.type,
+                                           copy=True)
         if self.comp_pos:
             self.components_[self.components_ <= 0] = \
                 - self.components_[self.components_ <= 0]
@@ -248,12 +262,16 @@ class DictFact(BaseEstimator):
                                    + (1 - self.code_l1_ratio) * norm2_code / 2)
         return (loss + regul) / X.shape[0]
 
+    def _callback(self):
+        if self.callback is not None:
+            self.callback(self)
+
     def _single_batch_fit(self, X, sample_indices):
-        if self.verbose_iter_ and self.n_iter_ >= self.verbose_iter_[0]:
+        if (self.verbose and self.verbose_iter_
+                and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
-            if self.callback is not None:
-                self.callback(self)
             self.verbose_iter_ = self.verbose_iter_[1:]
+            self._callback()
 
         subset = self.feature_sampler_.yield_subset(self.reduction)
         batch_size = X.shape[0]
@@ -341,14 +359,15 @@ class DictFact(BaseEstimator):
                 G_average = np.array(self.G_average_[sample_indices],
                                      copy=True)
                 if self.n_threads > 1:
-                    par_func = lambda batch: _update_G_average(G_average[batch],
-                                                               G,
-                                                               w_sample[batch],
-                                                               None)
+                    par_func = lambda batch: _update_G_average(
+                        G_average[batch],
+                        G,
+                        w_sample[batch],
+                        )
                     res = self.pool_.map(par_func, batches)
                     _ = list(res)
                 else:
-                    _update_G_average(G_average, G, w_sample, None)
+                    _update_G_average(G_average, G, w_sample)
                 self.G_average_[sample_indices] = G_average
         else:
             G = self.G_
@@ -358,7 +377,7 @@ class DictFact(BaseEstimator):
                     G_average[batch], Dx[batch], X[batch], self.code_,
                     get_sub_slice(sample_indices, batch),
                     self.code_l1_ratio, self.code_alpha, self.code_pos,
-                    self.tol, self.max_iter, False)
+                    self.tol, self.max_iter)
             else:
                 par_func = lambda batch: _enet_regression_single_gram(
                     G, Dx[batch], X[batch], self.code_,
@@ -373,7 +392,7 @@ class DictFact(BaseEstimator):
                     G_average, Dx, X, self.code_,
                     sample_indices,
                     self.code_l1_ratio, self.code_alpha, self.code_pos,
-                    self.tol, self.max_iter, False)
+                    self.tol, self.max_iter)
             else:
                 _enet_regression_single_gram(
                     G, Dx, X, self.code_,
@@ -424,3 +443,7 @@ class DictFact(BaseEstimator):
                 self.G_ += components_subset.dot(components_subset.T)
             else:
                 self.G_[:] = self.components_.dot(self.components_.T)
+
+    def _exit(self):
+        if hasattr(self, 'G_average_mmap_'):
+            self.G_average_mmap_.close()

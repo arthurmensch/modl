@@ -9,7 +9,7 @@ from cython cimport floating
 
 cpdef floating enet_norm(floating[:] v, floating l1_ratio) nogil
 
-cpdef void enet_projection(floating[:] v, floating[:] b, floating radius,
+cpdef void enet_projection(floating[:] v, floating[:] out, floating radius,
                              floating l1_ratio) nogil
 
 cpdef void enet_scale(floating[:] X,
