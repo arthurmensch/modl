@@ -33,7 +33,7 @@ print_conda_requirements() {
     # if yes which version to install. For example:
     #   - for numpy, NUMPY_VERSION is used
     #   - for scikit-learn, SCIKIT_LEARN_VERSION is used
-    TO_INSTALL_ALWAYS="pip pytest"
+    TO_INSTALL_ALWAYS="pip pytest cython"
     REQUIREMENTS="$TO_INSTALL_ALWAYS"
     TO_INSTALL_MAYBE="python numpy scipy matplotlib scikit-learn flake8"
     for PACKAGE in $TO_INSTALL_MAYBE; do
@@ -68,16 +68,15 @@ create_new_conda_env() {
     # provided versions
     REQUIREMENTS=$(print_conda_requirements)
     echo "conda requirements string: $REQUIREMENTS"
-    conda create -n testenv --yes $REQUIREMENTS
-    source activate testenv
-
     if [[ "$INSTALL_MKL" == "true" ]]; then
         # Make sure that MKL is used
-        conda install --yes mkl
+        conda create -n testenv --yes $REQUIREMENTS libgfortran mkl
     else
         # Make sure that MKL is not used
-        conda remove --yes --features mkl || echo "MKL not installed"
+        conda create -n testenv --yes $REQUIREMENTS libgfortran=1.0 nomkl
     fi
+    source activate testenv
+
 }
 
 create_new_conda_env
@@ -86,7 +85,11 @@ if [[ "$COVERAGE" == "true" ]]; then
     pip install coverage coveralls pytest-cov
 fi
 
-pip install nilearn==$NILEARN_VERSION
+if [[ "$NILEARN_VERSION" == "*" ]]; then
+    pip install nilearn
+else
+    pip install nilearn==$NILEARN_VERSION
+fi
 
 # numpy not installed when skipping the tests so we do not want to run
 # setup.py install
