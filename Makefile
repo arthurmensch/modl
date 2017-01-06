@@ -1,33 +1,33 @@
 PYTHON ?= python
-CYTHON ?= cython
 PYTEST ?= py.test --pyargs
 DATADIR=$(HOME)/modl_data
 
 # Compilation...
 
-CYTHONSRC= $(wildcard modl/*.pyx)
-CSRC= $(CYTHONSRC:.pyx=.c)
-
-inplace:
-	$(PYTHON) setup.py build_ext -i
-
 in: inplace
 
-install-coverage:
+inplace: clean-obj
+	$(PYTHON) setup.py build_ext -i
+
+inplace-coverage: clean-obj
+	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
+
+install-coverage: clean-obj
 	$(PYTHON) setup.py build_ext -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL install
 
-all: cython inplace
+install: clean-obj
+	$(PYTHON) setup.py install
 
-cython: $(CSRC)
+# Flush objects when macro change
+clean-obj:
+	rm -rf dist
+	rm -f `find modl -name "*.so"`
 
 clean:
-	rm -f modl/impl/*.html
-	rm -f `find modl -name "*.pyc"`
 	rm -f `find modl -name "*.so"`
-	rm -f $(CSRC)
-	rm -f `find modl -name "*.cpp"`
 	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.html/g`
 	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.c/g`
+	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.cpp/g`
 	rm -rf htmlcov
 	rm -rf build
 	rm -rf coverage .coverage
@@ -35,17 +35,19 @@ clean:
 	rm -rf modl.egg-info
 	rm -rf dist
 
-# Tests...
+clean: clean-obj clean-c clean-art
+
+# Tests
 #
-test-code:
+test:
 	$(PYTEST) --pyargs modl
 
 test-coverage:
 	rm -rf coverage .coverage
 	$(PYTEST) --pyargs --cov=modl modl
 
-test: test-code
-
+# Data
+#
 datadir:
 	mkdir -p $(DATADIR)
 
