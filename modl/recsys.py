@@ -87,6 +87,8 @@ class RecsysDictFact(BaseEstimator):
             Datset to learn the dictionary from
 
         """
+        if not sp.issparse(X):
+            X = sp.csr_matrix(X)
         X = check_array(X, accept_sparse='csr',
                         dtype=[np.float32, np.float64], copy=True)
         dtype = X.dtype
@@ -223,6 +225,8 @@ class RecsysDictFact(BaseEstimator):
         X_pred: csr-matrix (n_samples, n_features)
             Matrix with the same sparsity structure as X, with predicted values
         """
+        if not sp.issparse(X):
+            X = sp.csr_matrix(X)
         X = check_array(X, accept_sparse='csr')
         out = np.zeros_like(X.data)
         _predict(out, X.indices, X.indptr, self.code_,
@@ -241,6 +245,8 @@ class RecsysDictFact(BaseEstimator):
 
     def score(self, X):
         """Score prediction based on root mean squared error"""
+        if not sp.issparse(X):
+            X = sp.csr_matrix(X)
         X = check_array(X, accept_sparse='csr')
         X_pred = self.predict(X)
         return rmse(X, X_pred)

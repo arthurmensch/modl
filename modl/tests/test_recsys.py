@@ -5,26 +5,23 @@ import pytest
 import scipy.sparse as sp
 from numpy.testing import assert_almost_equal
 from numpy.testing import assert_array_almost_equal
+from sklearn.utils import check_array
 
-from modl._utils.cross_validation import train_test_split
-from modl.dict_completion import DictCompleter, csr_center_data
-
-backends = ['c', 'python']
+from modl.utils.recsys.cross_validation import train_test_split
+from modl.recsys import RecsysDictFact, compute_biases
 
 
-@pytest.mark.parametrize("backend", backends)
-def test_dict_completion(backend):
+def test_dict_completion():
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(50, 3)
     V = rng.rand(3, 20)
     X = np.dot(U, V)
 
-    mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
-                       random_state=0,
-                       detrend=False,
-                       backend=backend,
-                       verbose=0, )
+    mf = RecsysDictFact(n_components=3, n_epochs=1, alpha=1e-3,
+                        random_state=0,
+                        detrend=False,
+                        verbose=0, )
 
     mf.fit(X)
 
@@ -39,18 +36,16 @@ def test_dict_completion(backend):
     assert_almost_equal(rmse, rmse2)
 
 
-@pytest.mark.parametrize("backend", backends)
-def test_dict_completion_normalise(backend):
+def test_dict_completion_normalise():
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(50, 3)
     V = rng.rand(3, 20)
     X = np.dot(U, V)
 
-    mf = DictCompleter(n_components=3, max_n_iter=100, alpha=1e-3,
-                       random_state=0,
-                       backend=backend,
-                       verbose=0, detrend=True)
+    mf = RecsysDictFact(n_components=3, n_epochs=1, alpha=1e-3,
+                        random_state=0,
+                        verbose=0, detrend=True)
 
     mf.fit(X)
 
@@ -67,8 +62,7 @@ def test_dict_completion_normalise(backend):
     assert_almost_equal(rmse, rmse2)
 
 
-@pytest.mark.parametrize("backend", backends)
-def test_dict_completion_missing(backend):
+def test_dict_completion_missing():
     # Generate some toy data.
     rng = np.random.RandomState(0)
     U = rng.rand(100, 4)
@@ -79,16 +73,16 @@ def test_dict_completion_missing(backend):
     X_tr = sp.csr_matrix(X_tr)
     X_te = sp.csr_matrix(X_te)
 
-    mf = DictCompleter(n_components=4, max_n_iter=400, alpha=1,
-                       random_state=0,
-                       backend=backend,
-                       detrend=True,
-                       verbose=0, )
+    mf = RecsysDictFact(n_components=4, n_epochs=1, alpha=1,
+                        random_state=0,
+                        detrend=True,
+                        verbose=0, )
 
     mf.fit(X_tr)
     X_pred = mf.predict(X_te)
     rmse = sqrt(np.sum((X_te.data - X_pred.data) ** 2) / X_te.data.shape[0])
-    X_te_c, _, _ = csr_center_data(X_te)
-    rmse_c = sqrt(np.sum((X_te.data - X_te_c.data) ** 2) / X_te.data.shape[0])
+    X_te_centered = check_array(X_te, accept_sparse='csr', copy=True)
+    compute_biases(X_te_centered, inplace=True)
+    rmse_c = sqrt(np.sum((X_te.data
+                          - X_te_centered.data) ** 2) / X_te.data.shape[0])
     assert (rmse < rmse_c)
-    # assert_array_almost_equal(X_te.data, X_pred.data)
