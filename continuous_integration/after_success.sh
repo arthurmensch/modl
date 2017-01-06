@@ -7,7 +7,6 @@ set -e
 # because the coverage report failed to be published.
 # coveralls need to be run from the git checkout
 # so we need to copy the coverage results from TEST_RUN_FOLDER
-if [[ "$SKIP_TESTS" != "true" && "$COVERAGE" == "true" ]]; then
-    cp "$TEST_RUN_FOLDER/.coverage" .
+if [[ "$COVERAGE" == "true" ]]; then
     coveralls || echo "Coveralls upload failed"
 fi
