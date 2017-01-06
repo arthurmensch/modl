@@ -35,8 +35,6 @@ clean:
 	rm -rf modl.egg-info
 	rm -rf dist
 
-clean: clean-obj clean-c clean-art
-
 # Tests
 #
 test:
