@@ -1,7 +1,7 @@
 include *.rst
-recursive-include examples *
+recursive-include examples *.py
 recursive-include modl *.c *.h *.pyx *.pxd
-recursive-include misc
+recursive-include misc *
 include LICENSE
 include README.rst
 include requirements.txt

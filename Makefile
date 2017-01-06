@@ -2,7 +2,6 @@ PYTHON ?= python
 CYTHON ?= cython
 PYTEST ?= py.test --pyargs
 DATADIR=$(HOME)/modl_data
-MRIDATADIR=$(HOME)/data
 
 # Compilation...
 
@@ -13,6 +12,9 @@ inplace:
 	$(PYTHON) setup.py build_ext -i
 
 in: inplace
+
+inplace_coverage:
+	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
 
 all: cython inplace
 
@@ -45,9 +47,8 @@ test: test-code
 
 datadir:
 	mkdir -p $(DATADIR)
-	mkdir -p $(MRIDATADIR)
 
 download-hcp-extra: datadir
-	./misc/download.sh http://www.amensch.fr/data/hcp_extra.tar.bz2
-	tar xvfj netflix.tar.bz2
-	mv movielens10m $(MRIDATADIR)
+	./misc/download.sh http://www.amensch.fr/data/HCP_extra.tar.bz2
+	tar xvfj modl_data.tar.bz2
+	mv modl_data $(DATADIR)

@@ -8,14 +8,17 @@ import sys
 from setuptools import find_packages
 
 DISTNAME = 'modl'
-DESCRIPTION = "Masked Online Dictionary Learning in Python"
+DESCRIPTION = "Subsampled Online Matrix Factorization in Python"
 LONG_DESCRIPTION = open('README.rst').read()
 MAINTAINER = 'Arthur Mensch'
 MAINTAINER_EMAIL = 'arthur.mensch@m4x.org'
 URL = 'https://github.com/arthurmensch/modl'
 LICENSE = 'new BSD'
 DOWNLOAD_URL = 'https://github.com/arthurmensch/modl'
-VERSION = '0.4'
+VERSION = '0.5'
+
+define_macros = [('CYTHON_TRACE', 1), ('CYTHON_TRACE_NOGIL', 1)]
+compiler_directives = {'linetrace': True}
 
 
 def configuration(parent_package='', top_path=None):
@@ -25,14 +28,17 @@ def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
     config = Configuration(None, parent_package, top_path)
 
+    config.set_options(ignore_setup_xxx_py=True,
+                       assume_default_configuration=True,
+                       delegate_options_to_subpackages=True,
+                       quiet=True)
+
     config.add_subpackage('modl')
-    config.set_options(quiet=True)
 
     return config
 
 
 def setup_package():
-    old_path = os.getcwd()
     local_path = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     os.chdir(local_path)
@@ -41,7 +47,6 @@ def setup_package():
     from numpy.distutils.core import setup
 
     setup(configuration=configuration,
-          packages=find_packages(),
           name=DISTNAME,
           maintainer=MAINTAINER,
           include_package_data=True,
@@ -66,8 +71,9 @@ def setup_package():
               'Operating System :: Unix',
               'Operating System :: MacOS',
               'Programming Language :: Python :: 3.5'
-             ],
+          ],
           )
+
 
 if __name__ == "__main__":
     setup_package()

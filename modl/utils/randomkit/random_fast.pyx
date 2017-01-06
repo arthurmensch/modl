@@ -1,5 +1,10 @@
 # Copyright 2005 Robert Kern (robert.kern@gmail.com)
 # Adapted from lightning (github.com/lightning/lightning)
+# encoding: utf-8
+# cython: linetrace=True
+# cython: cdivision=True
+# cython: boundscheck=False
+# cython: wraparound=False
 
 from libc cimport stdlib
 

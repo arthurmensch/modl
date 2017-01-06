@@ -18,7 +18,6 @@ def configuration(parent_package='', top_path=None):
                             sources=['modl/utils/randomkit/random_fast.pyx',
                                      'modl/utils/randomkit/randomkit.c',
                                      'modl/utils/randomkit/distributions.c',
-                                     'modl/utils/randomkit/distributions.h',
                                      ],
                             include_dirs=[numpy.get_include(),
                                           'modl/utils/randomkit'],
@@ -30,8 +29,6 @@ def configuration(parent_package='', top_path=None):
     config.ext_modules += cythonize(extensions)
 
     config.add_subpackage('tests')
-    config.add_data_files('distribution.h')
-    config.add_data_files('randomkit.h')
 
     return config
 

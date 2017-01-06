@@ -91,9 +91,9 @@ else
     pip install nilearn==$NILEARN_VERSION
 fi
 
-# numpy not installed when skipping the tests so we do not want to run
-# setup.py install
-if [[ "$SKIP_TESTS" != "true" ]]; then
+if [[ "$COVERAGE" == "true" ]]; then
+    make inplace_coverage
+    python setup.py develop
+else
     python setup.py install
 fi
-

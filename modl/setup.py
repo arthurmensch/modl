@@ -12,11 +12,10 @@ def configuration(parent_package='', top_path=None):
     extensions = [
         Extension('modl.dict_fact_fast',
                   sources=['modl/dict_fact_fast.pyx'],
-                  include_dirs=[numpy.get_include()]
+                  include_dirs=[numpy.get_include()],
                   ),
     ]
-    config.ext_modules += cythonize(extensions,
-                                    )
+    config.ext_modules += cythonize(extensions,)
 
     config.add_subpackage('tests')
     config.add_subpackage('utils')
