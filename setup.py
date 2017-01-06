@@ -8,14 +8,14 @@ import sys
 from setuptools import find_packages
 
 DISTNAME = 'modl'
-DESCRIPTION = "Masked Online Dictionary Learning in Python"
-LONG_DESCRIPTION = open('README.md').read()
+DESCRIPTION = "Subsampled Online Matrix Factorization in Python"
+LONG_DESCRIPTION = open('README.rst').read()
 MAINTAINER = 'Arthur Mensch'
 MAINTAINER_EMAIL = 'arthur.mensch@m4x.org'
 URL = 'https://github.com/arthurmensch/modl'
 LICENSE = 'new BSD'
 DOWNLOAD_URL = 'https://github.com/arthurmensch/modl'
-VERSION = '0.3'
+VERSION = '0.5'
 
 
 def configuration(parent_package='', top_path=None):
@@ -25,13 +25,17 @@ def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
     config = Configuration(None, parent_package, top_path)
 
+    config.set_options(ignore_setup_xxx_py=True,
+                       assume_default_configuration=True,
+                       delegate_options_to_subpackages=True,
+                       quiet=True)
+
     config.add_subpackage('modl')
 
     return config
 
 
 def setup_package():
-    old_path = os.getcwd()
     local_path = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     os.chdir(local_path)
@@ -65,13 +69,9 @@ def setup_package():
               'Operating System :: Unix',
               'Operating System :: MacOS',
               'Programming Language :: Python :: 3.5'
-             ],
-          # requires=['nilearn(>=0.2.1)',
-          #           'scikit_learn(>=0.17)', 'numpy(>=1.10)',
-          #           'scipy(>=0.16.1)',
-          #           'spira(>=0.1)',
-          #           'pytest(>=2.8.7)]
+          ],
           )
+
 
 if __name__ == "__main__":
     setup_package()

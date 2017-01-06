@@ -6,7 +6,7 @@ from Cython.Build import cythonize
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
-    config = Configuration('datasets', parent_package, top_path)
+    config = Configuration('feature_extraction', parent_package, top_path)
 
     config.add_subpackage('tests')
 

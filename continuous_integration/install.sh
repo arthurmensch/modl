@@ -62,7 +62,6 @@ create_new_conda_env() {
         -O miniconda.sh
     chmod +x miniconda.sh && ./miniconda.sh -b
     export PATH=/home/travis/miniconda2/bin:$PATH
-    conda update --yes conda
 
     # Configure the conda environment and put it in the path using the
     # provided versions
@@ -91,9 +90,8 @@ else
     pip install nilearn==$NILEARN_VERSION
 fi
 
-# numpy not installed when skipping the tests so we do not want to run
-# setup.py install
-if [[ "$SKIP_TESTS" != "true" ]]; then
+if [[ "$COVERAGE" == "true" ]]; then
+    make install-coverage
+else
     python setup.py install
 fi
-

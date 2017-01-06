@@ -1,73 +1,59 @@
 PYTHON ?= python
-CYTHON ?= cython
 PYTEST ?= py.test --pyargs
 DATADIR=$(HOME)/modl_data
-HCPLOCATION=/storage/data/HCP
 
 # Compilation...
 
-CYTHONSRC= $(wildcard modl/*.pyx)
-CSRC= $(CYTHONSRC:.pyx=.c)
-
-inplace:
-	$(PYTHON) setup.py build_ext -i
-
 in: inplace
 
-all: cython inplace
+inplace: clean-obj
+	$(PYTHON) setup.py build_ext -i
 
-cython: $(CSRC)
+inplace-coverage: clean-obj
+	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
+
+install-coverage: clean-obj
+	$(PYTHON) setup.py build_ext -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL install
+
+install: clean-obj
+	$(PYTHON) setup.py install
+
+# Flush objects when macro change
+clean-obj:
+	rm -rf dist
+	rm -f `find modl -name "*.so"`
 
 clean:
-	rm -f modl/impl/*.html
-	rm -f `find modl -name "*.pyc"`
 	rm -f `find modl -name "*.so"`
+	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.html/g`
+	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.c/g`
+	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.cpp/g`
 	rm -rf htmlcov
 	rm -rf build
 	rm -rf coverage .coverage
 	rm -rf .cache
+	rm -rf modl.egg-info
+	rm -rf dist
 
-%.c: %.pyx
-	$(CYTHON) $<
+clean: clean-obj clean-c clean-art
 
-# Tests...
+# Tests
 #
-test-code:
+test:
 	$(PYTEST) --pyargs modl
 
 test-coverage:
 	rm -rf coverage .coverage
 	$(PYTEST) --pyargs --cov=modl modl
 
-test: test-code
-
-# Datasets...
-# from Mathieu Blondel
+# Data
+#
 datadir:
 	mkdir -p $(DATADIR)
 
-download-movielens100k: datadir
-	./download.sh http://www.mblondel.org/data/movielens100k.tar.bz2
-	tar xvfj movielens100k.tar.bz2
-	mv movielens100k $(DATADIR)
-
-download-movielens1m: datadir
-	./download.sh http://www.mblondel.org/data/movielens1m.tar.bz2
-	tar xvfj movielens1m.tar.bz2
-	mv movielens1m $(DATADIR)
-
-download-movielens10m: datadir
-	./download.sh http://www.mblondel.org/data/movielens10m.tar.bz2
-	tar xvfj movielens10m.tar.bz2
-	mv movielens10m $(DATADIR)
-
-download-netflix: datadir
-	./download.sh http://www.amensch.fr/data/nf_prize.tar.bz2
-	tar xvfj nf_prize.tar.bz2
-	mv nf_prize $(DATADIR)
-
-hcp: datadir
-	./download.sh http://www.amensch.fr/data/HCP_extra.tar.bz2
-	tar xvfj HCP_extra.tar.bz2
-	mv HCP_extra $(DATADIR)
-	ln -s $(HCPLOCATION) $(DATADIR)/HCP
+download-data: datadir
+	./misc/download.sh http://www.amensch.fr/data/modl_data.tar.bz2
+	tar xvfj modl_data.tar.bz2
+	mv modl_data/* $(DATADIR)
+	rmdir modl_data
+	rm modl_data.tar.bz2

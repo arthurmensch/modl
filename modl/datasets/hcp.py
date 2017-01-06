@@ -3,15 +3,40 @@ import json
 import os
 from os.path import join
 
+from modl.utils.system import get_data_dirs
+
 import numpy as np
 from nilearn.input_data import NiftiMasker
 from sklearn.datasets.base import Bunch
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
-from modl.datasets import get_data_home
 
-data_home = get_data_home()
+def _fetch_hcp_behavioral_data(resource_dir):
+    import pandas as pd
+    exc_vars_file = os.path.join(resource_dir, 'excluded_scores.txt')
+    vars_file = os.path.join(resource_dir, 'hcp_scores.txt')
+    csv = os.path.join(resource_dir, 'unrestricted_hcp_s500.csv')
+
+    # Smith's excluded scores
+    exc_ind = np.loadtxt(exc_vars_file, dtype=np.int)
+    vars_list = np.loadtxt(vars_file, dtype=bytes, delimiter='\n').astype(str)
+
+    # unrestricted scores
+    df = pd.read_csv(csv)
+    vars_csv = df.columns.values
+
+    # intersection
+    vars_remaining = np.intersect1d(vars_csv, vars_list[~exc_ind]).tolist()
+    df.set_index('Subject', inplace=True)
+
+    vars_remaining.append('Age')
+    df['Age'] = df['Age'].map({'26-30': 28,
+                               '31-35': 33,
+                               '22-25': 23.5,
+                               '36+': 36})
+
+    return df[vars_remaining]
 
 
 def _gather(dest_data_dir):
@@ -43,7 +68,9 @@ def _single_mask(masker, img, dest_data_dir, data_dir):
         json.dump(origin, f)
 
 
-def fetch_hcp_rest(data_dir=data_home, n_subjects=40):
+def fetch_hcp_rest(data_dir=None, n_subjects=40):
+    """Nilearn like fetcher"""
+    data_dir = get_data_dirs(data_dir)[0]
     source_dir = join(data_dir, 'HCP')
     extra_dir = join(data_dir, 'HCP_extra')
     mask = join(extra_dir, 'mask_img.nii.gz')
@@ -83,13 +110,17 @@ def fetch_hcp_rest(data_dir=data_home, n_subjects=40):
     return Bunch(**results)
 
 
-def prepare_hcp_raw_data(n_jobs=1, data_dir=data_home):
+def prepare_hcp_raw_data(data_dir=None):
+    data_dir = get_data_dirs(data_dir)[0]
     dataset = fetch_hcp_rest(data_dir=data_dir, n_subjects=500)
 
-    imgs = [img for subject_imgs in dataset.func for img in subject_imgs]
-
-    dest_data_dir = join(data_dir, 'HCP_unmasked')
-    mask = dataset.mask
+    dest_data_dir = 'HCP_unmasked'
+    try:
+        os.mkdir(dest_data_dir)
+    except OSError:
+        raise ValueError('HCP_unmasked already exist,'
+                         'please delete manually before proceeding')
+    mask_img = join(data_dir, 'HCP_extra', 'mask_img.nii.gz')
 
     masker = NiftiMasker(mask_img=mask,
                          smoothing_fwhm=3, standardize=True).fit()
@@ -99,10 +130,11 @@ def prepare_hcp_raw_data(n_jobs=1, data_dir=data_home):
     _gather(dest_data_dir)
 
 
-def get_hcp_data(data_dir=data_home, raw=False):
+def get_hcp_data(raw=False, data_dir=None):
+    data_dir = get_data_dirs(data_dir)[0]
     if not os.path.exists(join(data_dir, 'HCP_extra')):
-        raise IOError(
-            'Please download HCP_extra folder using make hcp'
+        raise ValueError(
+            'Please download HCP_extra folder using make download-hcp_extra'
             ' first.')
     if raw:
         mask = join(data_dir, 'HCP_extra/mask_img.nii.gz')
@@ -115,7 +147,7 @@ def get_hcp_data(data_dir=data_home, raw=False):
         func_filenames = sorted(list(mapping.values()))
     else:
         hcp_dataset = fetch_hcp_rest(data_dir=data_dir,
-                                     n_subjects=2000)
+                                              n_subjects=2000)
         mask = hcp_dataset.mask
         # list of 4D nifti files for each subject
         func_filenames = hcp_dataset.func

@@ -12,12 +12,6 @@ matrix:
   # setting the status
   fast_finish: true
   include:
-    # Ubuntu 14.04 versions
-    - env: DISTRIB="conda" PYTHON_VERSION="3.4"
-           NUMPY_VERSION="1.10" SCIPY_VERSION="0.16"
-           SCIKIT_LEARN_VERSION="0.16" MATPLOTLIB_VERSION="1.4"
-           NILEARN_VERSION="0.2.0"
-           INSTALL_MKL="false"
     # Most recent versions
     - env: DISTRIB="conda" PYTHON_VERSION="3.5"
            NUMPY_VERSION="*" SCIPY_VERSION="*"

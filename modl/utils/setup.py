@@ -1,14 +1,11 @@
-from distutils.extension import Extension
-
-import numpy
-from Cython.Build import cythonize
-
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
-    config = Configuration('datasets', parent_package, top_path)
+    config = Configuration('utils', parent_package, top_path)
 
+    config.add_subpackage('math')
     config.add_subpackage('tests')
+    config.add_subpackage('randomkit')
 
     return config
 
