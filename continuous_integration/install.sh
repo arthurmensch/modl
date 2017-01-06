@@ -91,7 +91,7 @@ else
 fi
 
 if [[ "$COVERAGE" == "true" ]]; then
-    make inplace-coverage
+    make develop-coverage
 else
     make install
 fi

@@ -12,6 +12,9 @@ inplace: clean-obj
 inplace-coverage: clean-obj
 	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
 
+develop-coverage: clean-obj
+	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL develop
+
 install: clean-obj
 	$(PYTHON) setup.py install
 
