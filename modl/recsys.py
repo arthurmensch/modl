@@ -184,6 +184,7 @@ class RecsysDictFact(BaseEstimator):
 
         order = self.random_state.permutation(n_components)
         subset_norm = np.sum(components_subset ** 2, axis=1)
+        print(np.sum(self.components_ ** 2, axis=1))
         self.comp_norm_ += subset_norm
         for k in order:
             gradient_subset = ger(1.0, self.C_[k], components_subset[k],
@@ -191,7 +192,7 @@ class RecsysDictFact(BaseEstimator):
             if self.C_[k, k] > 1e-20:
                 components_subset[k] = gradient_subset[k] / self.C_[k, k]
             # Else do not update
-            norm = np.sqrt(np.sum(components_subset[k] ** 2))
+            norm = sqrt(np.sum(components_subset[k] ** 2))
             lim_norm = sqrt(self.comp_norm_[k])
             if norm > lim_norm:
                 components_subset[k] /= norm / lim_norm
