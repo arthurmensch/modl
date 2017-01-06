@@ -143,6 +143,7 @@ class RecsysDictFact(BaseEstimator):
     def _single_batch_fit(self, X, batch):
         if (self.verbose and self.verbose_iter_
             and self.n_iter_ >= self.verbose_iter_[0]):
+            self._refit(X)
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
             self._callback()
@@ -163,7 +164,7 @@ class RecsysDictFact(BaseEstimator):
             G.flat[::self.n_components + 1] += self.alpha / reduction
             self.code_[i] = linalg.solve(G, Dx)
             code = self.code_[i]
-            w_B = np.minimum(1, w / self.feature_freq_[subset])
+            w_B = np.power(self.feature_n_iter_[subset], -self.learning_rate)
             self.B_[:, subset] *= 1 - w_B
             self.B_[:, subset] += np.outer(code, X_subset * w_B)
         self.C_ *= 1 - w
@@ -184,7 +185,6 @@ class RecsysDictFact(BaseEstimator):
 
         order = self.random_state.permutation(n_components)
         subset_norm = np.sum(components_subset ** 2, axis=1)
-        print(np.sum(self.components_ ** 2, axis=1))
         self.comp_norm_ += subset_norm
         for k in order:
             gradient_subset = ger(1.0, self.C_[k], components_subset[k],
