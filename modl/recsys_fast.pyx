@@ -37,20 +37,3 @@ cpdef void _predict(double[:] X_data,
                 dot += P[u, k] * Q[k, i]
 
             data[ii] = dot
-
-def _subset_weights(int[:] subset, long n_iter, long[:] feature_n_iter,
-                        long batch_size, double learning_rate, double offset):
-    cdef int len_subset = subset.shape[0]
-    cdef int feature_count
-    cdef int i, jj, j
-    w = view.array((len_subset,), sizeof(double), format='d')
-    w[:] = 1
-    for jj in range(len_subset):
-        j = subset[jj]
-        feature_count = feature_n_iter[j]
-        w[jj] = 1
-        for i in range(1, 1 + batch_size):
-            w[jj] *= (1 - (n_iter + i) / (feature_count + i) * pow(
-                (1 + offset) / (offset + n_iter + i), learning_rate))
-        w[jj] = 1 - w[jj]
-    return np.asarray(w)

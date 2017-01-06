@@ -7,10 +7,10 @@ from sklearn.utils import check_array
 from sklearn.utils import check_random_state
 from sklearn.utils import gen_batches
 
-from .recsys_fast import _predict, _subset_weights
+from .recsys_fast import _predict
 from .dict_fact_fast import _batch_weight
 
-from math import log, sqrt
+from math import log, sqrt, ceil
 
 
 class RecsysDictFact(BaseEstimator):
@@ -88,7 +88,7 @@ class RecsysDictFact(BaseEstimator):
 
         """
         X = check_array(X, accept_sparse='csr',
-                        dtype=[np.float32, np.float64])
+                        dtype=[np.float32, np.float64], copy=True)
         dtype = X.dtype
         n_samples, n_features = X.shape
 
@@ -102,19 +102,21 @@ class RecsysDictFact(BaseEstimator):
                 X.data[X.indptr[i]:X.indptr[i + 1]] -= self.row_mean_[i]
             X.data -= self.col_mean_.take(X.indices, mode='clip')
 
-        self.components_ = np.zeros((self.n_components, n_features),
-                                    dtype=dtype)
-        self.components_[:] = self.random_state.randn(self.n_components,
-                                                      n_features)
+        self.components_ = self.random_state.randn(self.n_components,
+                                                      n_features).astype(dtype)
+        S = np.sqrt(np.sum(self.components_ ** 2, axis=1))
+        self.components_ /= S[:, np.newaxis]
         self.code_ = np.zeros((n_samples, self.n_components), dtype=dtype)
+        self._refit(X)
 
         self.feature_freq_ = np.bincount(X.indices) / n_samples
         self.feature_n_iter_ = np.zeros(n_features, dtype=int)
 
-        self._refit(X)
-
-        S = np.sqrt(np.sum(self.components_ ** 2, axis=1))
-        self.components_ /= S[:, np.newaxis]
+        sparsity = X.nnz / n_samples / n_features
+        if self.batch_size is None:
+            batch_size = int(ceil(1. / sparsity))
+        else:
+            batch_size = self.batch_size
 
         self.comp_norm_ = np.zeros(self.n_components, dtype=dtype)
         self.C_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
@@ -123,14 +125,14 @@ class RecsysDictFact(BaseEstimator):
         self.n_iter_ = 0
 
         if self.verbose:
-            log_lim = log(n_samples * self.n_epochs / self.batch_size, 10)
+            log_lim = log(n_samples * self.n_epochs / batch_size, 10)
             self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
-                                              base=10) - 1) * self.batch_size
+                                              base=10) - 1) * batch_size
             self.verbose_iter_ = self.verbose_iter_.tolist()
 
         for i in range(self.n_epochs):
             permutation = self.random_state.permutation(n_samples)
-            batches = gen_batches(n_samples, self.batch_size)
+            batches = gen_batches(n_samples, batch_size)
             for batch in batches:
                 self._single_batch_fit(X, permutation[batch])
         self._refit(X)
@@ -142,17 +144,27 @@ class RecsysDictFact(BaseEstimator):
 
     def _single_batch_fit(self, X, batch):
         if (self.verbose and self.verbose_iter_
-            and self.n_iter_ >= self.verbose_iter_[0]):
-            self._refit(X)
+                and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
             self._callback()
 
-        n_samples, n_features = X.shape
         batch_size = batch.shape[0]
         self.n_iter_ += batch_size
         w = _batch_weight(self.n_iter_, batch_size, self.learning_rate, 0)
         for i in batch:
+            self._single_sample_update(X, i, w)
+        self.C_ *= 1 - w
+        self.C_ += w / batch_size * self.code_[batch].T.dot(self.code_[batch])
+
+        subset = np.concatenate([X.indices[X.indptr[i]:X.indptr[i+1]] for i in batch])
+        subset = np.unique(subset)
+        self._update_dict(subset)
+
+    # Could be made into Cython
+    def _single_sample_update(self, X, i, w):
+        n_features = X.shape[1]
+        if X.indptr[i + 1] - X.indptr[i] != 0:
             X_subset = X.data[X.indptr[i]:X.indptr[i + 1]]
             subset = X.indices[X.indptr[i]:X.indptr[i + 1]]
             len_subset = subset.shape[0]
@@ -164,15 +176,10 @@ class RecsysDictFact(BaseEstimator):
             G.flat[::self.n_components + 1] += self.alpha / reduction
             self.code_[i] = linalg.solve(G, Dx)
             code = self.code_[i]
-            w_B = np.power(self.feature_n_iter_[subset], -self.learning_rate)
+            w_B = np.minimum(1,
+                             w * self.n_iter_ / self.feature_n_iter_[subset])
             self.B_[:, subset] *= 1 - w_B
             self.B_[:, subset] += np.outer(code, X_subset * w_B)
-        self.C_ *= 1 - w
-        self.C_ += w / batch_size * self.code_[batch].T.dot(self.code_[batch])
-
-        subset = np.concatenate([X.indices[X.indptr[i]:X.indptr[i+1]] for i in batch])
-        subset = np.unique(subset)
-        self._update_dict(subset)
 
     def _update_dict(self, subset):
         ger, = scipy.linalg.get_blas_funcs(('ger',), (self.C_,
@@ -215,7 +222,7 @@ class RecsysDictFact(BaseEstimator):
         X_pred: csr-matrix (n_samples, n_features)
             Matrix with the same sparsity structure as X, with predicted values
         """
-        X = sp.csr_matrix(X)
+        X = check_array(X, accept_sparse='csr')
         out = np.zeros_like(X.data)
         _predict(out, X.indices, X.indptr, self.code_,
                  self.components_)
@@ -233,19 +240,21 @@ class RecsysDictFact(BaseEstimator):
 
     def score(self, X):
         """Score prediction based on root mean squared error"""
-        X = sp.csr_matrix(X)
+        X = check_array(X, accept_sparse='csr')
         X_pred = self.predict(X)
         return rmse(X, X_pred)
 
     def _refit(self, X):
-        n_samples = X.shape[0]
+        n_samples, n_features = X.shape
         for i in range(n_samples):
             X_subset = X.data[X.indptr[i]:X.indptr[i + 1]]
             subset = X.indices[X.indptr[i]:X.indptr[i + 1]]
+            len_subset = subset.shape[0]
+            reduction = n_features / len_subset
             components_subset = self.components_[:, subset]
             Dx = components_subset.dot(X_subset)
             G = components_subset.dot(components_subset.T)
-            G.flat[::self.n_components + 1] += self.alpha
+            G.flat[::self.n_components + 1] += self.alpha / reduction
             self.code_[i] = linalg.solve(G, Dx)
 
 
@@ -290,19 +299,9 @@ def compute_biases(X, beta=0, inplace=False):
     return acc_u, acc_m
 
 
-def _check(X_true, X_pred):
-    """Adapted from spira. Input check before scoring"""
-    if X_true.shape != X_pred.shape:
-        raise ValueError("X_true and X_pred should have the same shape.")
-
-    X_true = sp.csr_matrix(X_true)
-    X_pred = sp.csr_matrix(X_pred)
-
-    return X_true, X_pred
-
-
 def rmse(X_true, X_pred):
     """Root mean squared error for two sparse matrices"""
-    X_true, X_pred = _check(X_true, X_pred)
+    X_true = check_array(X_true, accept_sparse='csr')
+    X_pred = check_array(X_pred, accept_sparse='csr')
     mse = np.mean((X_true.data - X_pred.data) ** 2)
     return np.sqrt(mse)
