@@ -93,5 +93,5 @@ fi
 if [[ "$COVERAGE" == "true" ]]; then
     make install-coverage
 else
-    python setup.py install
+    make install
 fi

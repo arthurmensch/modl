@@ -3,7 +3,6 @@ numpy>=1.11
 scipy>=0.18
 matplotlib>=2.0.0b3
 pytest>=3.0.1
-pytest-cov
 nibabel>=0.2.1
 nilearn>=0.2.6
 scikit_learn>=0.18

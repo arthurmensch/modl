@@ -9,6 +9,7 @@ python continuous_integration/show-python-packages-versions.py;
 # Parentheses (run in a subshell) are used to leave
 # the current directory unchanged
 if [[ "$COVERAGE" == "true" ]]; then
+    cp $OLDPWD/.coveragerc "$TEST_RUN_FOLDER"
     (cd "$TEST_RUN_FOLDER" && make -f $OLDPWD/Makefile test-coverage)
 else
     (cd "$TEST_RUN_FOLDER" && make -f $OLDPWD/Makefile test)
