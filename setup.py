@@ -9,7 +9,7 @@ from setuptools import find_packages
 
 DISTNAME = 'modl'
 DESCRIPTION = "Subsampled Online Matrix Factorization in Python"
-LONG_DESCRIPTION = open('README.rst').read()
+LONG_DESCRIPTION = open('README.md').read()
 MAINTAINER = 'Arthur Mensch'
 MAINTAINER_EMAIL = 'arthur.mensch@m4x.org'
 URL = 'https://github.com/arthurmensch/modl'
