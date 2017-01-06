@@ -157,7 +157,8 @@ class RecsysDictFact(BaseEstimator):
         self.C_ *= 1 - w
         self.C_ += w / batch_size * self.code_[batch].T.dot(self.code_[batch])
 
-        subset = np.concatenate([X.indices[X.indptr[i]:X.indptr[i+1]] for i in batch])
+        subset = np.concatenate([X.indices[X.indptr[i]:X.indptr[i+1]]
+                                 for i in batch])
         subset = np.unique(subset)
         self._update_dict(subset)
 

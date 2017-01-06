@@ -1,4 +1,5 @@
 # Author: Mathieu Blondel
+# From spira
 # License: BSD
 import os
 
