@@ -21,6 +21,8 @@ matrix:
 
 install: source continuous_integration/install.sh
 
+before_script: msource continuous_integration/before_script.sh
+
 script: source continuous_integration/test_script.sh
 
 after_success: source continuous_integration/after_success.sh
