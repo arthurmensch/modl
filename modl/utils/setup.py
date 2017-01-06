@@ -6,6 +6,7 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('math')
     config.add_subpackage('tests')
     config.add_subpackage('randomkit')
+    config.add_subpackage('recsys')
 
     return config
 

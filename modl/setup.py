@@ -14,6 +14,10 @@ def configuration(parent_package='', top_path=None):
                   sources=['modl/dict_fact_fast.pyx'],
                   include_dirs=[numpy.get_include()],
                   ),
+        Extension('modl.recsys_fast',
+                  sources=['modl/recsys_fast.pyx'],
+                  include_dirs=[numpy.get_include()],
+                  ),
     ]
     config.ext_modules += cythonize(extensions,)
 
