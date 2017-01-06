@@ -2,13 +2,18 @@ import numpy as np
 import scipy
 import scipy.sparse as sp
 from numpy import linalg
+from sklearn.base import BaseEstimator
+from sklearn.utils import check_array
+from sklearn.utils import check_random_state
 from sklearn.utils import gen_batches
 
-from .recsys_fast import _predict
-from dict_fact_fast import _batch_weight
+from .recsys_fast import _predict, _subset_weights
+from .dict_fact_fast import _batch_weight
+
+from math import log, sqrt
 
 
-class RecsysDictFact:
+class RecsysDictFact(BaseEstimator):
     """Matrix factorization estimator based on masked online dictionary
      learning.
 
@@ -18,34 +23,19 @@ class RecsysDictFact:
         Regularization of the code (ridge penalty)
     n_components: int,
         Number of components for the dictionary
+    n_epochs:
+        Number of epochs to perform over data
     learning_rate: float in [0.5, 1],
         Controls the sequence of weights in
          the update of the surrogate function
     batch_size: int,
         Number of samples to consider between each dictionary update
-    offset: float,
-        Offset in the
-    reduction: float,
-        Sets how much the data is masked during the algorithm
-    fit_intercept: boolean,
-        Fixes the first dictionary atom to [1, .., 1]
     dict_init: ndarray (n_components, n_cols),
         Initial dictionary
-    l1_ratio: float in [0, 1]:
-        Controls the sparsity of the dictionary
-    impute: boolean,
-        Updates the Gram matrix online (Experimental, non tested)
-    max_n_iter: int,
-        Number of samples to visit before stopping. If None, fit performs
-         a single epoch on data
     random_state: int or RandomState
         Pseudo number generator state used for random sampling.
     verbose: boolean,
         Degree of output the procedure will print.
-    backend: str in {'c', 'python'},
-        Code base to use: 'c' is faster, but 'python' is easier to hack
-    debug: boolean,
-        Keep tracks of the surrogate loss during the procedure
     callback: callable,
         Function to be called when printing information
     detrend: boolean,
@@ -97,9 +87,12 @@ class RecsysDictFact:
             Datset to learn the dictionary from
 
         """
-        X = sp.csr_matrix(X, dtype=[np.float32, np.float64])
+        X = check_array(X, accept_sparse='csr',
+                        dtype=[np.float32, np.float64])
         dtype = X.dtype
         n_samples, n_features = X.shape
+
+        self.random_state = check_random_state(self.random_state)
 
         if self.detrend:
             self.row_mean_, self.col_mean_ = compute_biases(X,
@@ -113,45 +106,71 @@ class RecsysDictFact:
                                     dtype=dtype)
         self.components_[:] = self.random_state.randn(self.n_components,
                                                       n_features)
+        self.code_ = np.zeros((n_samples, self.n_components), dtype=dtype)
+
+        self.feature_freq_ = np.bincount(X.indices) / n_samples
+        self.feature_n_iter_ = np.zeros(n_features, dtype=int)
+
+        self._refit(X)
+
         S = np.sqrt(np.sum(self.components_ ** 2, axis=1))
         self.components_ /= S[:, np.newaxis]
+
         self.comp_norm_ = np.zeros(self.n_components, dtype=dtype)
-        self.code_ = np.zeros((n_samples, self.n_components), dtype=dtype)
         self.C_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
-        self.B_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
+        self.B_ = np.zeros((self.n_components, n_features), dtype=dtype)
 
         self.n_iter_ = 0
-        self.sample_n_iter_ = np.zeros(n_samples, dtype='int')
+
+        if self.verbose:
+            log_lim = log(n_samples * self.n_epochs / self.batch_size, 10)
+            self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
+                                              base=10) - 1) * self.batch_size
+            self.verbose_iter_ = self.verbose_iter_.tolist()
 
         for i in range(self.n_epochs):
+            permutation = self.random_state.permutation(n_samples)
             batches = gen_batches(n_samples, self.batch_size)
             for batch in batches:
-                self._single_batch_fit(X, batch)
+                self._single_batch_fit(X, permutation[batch])
+        self._refit(X)
         return self
 
+    def _callback(self):
+        if self.callback is not None:
+            self.callback(self)
+
     def _single_batch_fit(self, X, batch):
-        batch_size = batch.stop - batch.start
+        if (self.verbose and self.verbose_iter_
+            and self.n_iter_ >= self.verbose_iter_[0]):
+            print('Iteration %i' % self.n_iter_)
+            self.verbose_iter_ = self.verbose_iter_[1:]
+            self._callback()
+
+        n_samples, n_features = X.shape
+        batch_size = batch.shape[0]
         self.n_iter_ += batch_size
         w = _batch_weight(self.n_iter_, batch_size, self.learning_rate, 0)
-        for i in range(batch):
-            X_subset = X.data[X.indptr[i]:X.indptr[i+1]]
-            subset = X.indices[X.indptr[i]:X.indptr[i+1]]
-            self.sample_n_iter_[subset] += 1
+        for i in batch:
+            X_subset = X.data[X.indptr[i]:X.indptr[i + 1]]
+            subset = X.indices[X.indptr[i]:X.indptr[i + 1]]
+            len_subset = subset.shape[0]
+            reduction = n_features / len_subset
+            self.feature_n_iter_[subset] += 1
             components_subset = self.components_[:, subset]
-            Dx = self.components_.dot(X_subset)
+            Dx = components_subset.dot(X_subset)
             G = components_subset.dot(components_subset.T)
-            G.flat[::self.n_components + 1] += self.alpha
+            G.flat[::self.n_components + 1] += self.alpha / reduction
             self.code_[i] = linalg.solve(G, Dx)
             code = self.code_[i]
-            w_B = np.min(1., w * self.n_iter_ / self.sample_n_iter_[subset])
-            X_subset *= w_B
+            w_B = np.minimum(1, w / self.feature_freq_[subset])
             self.B_[:, subset] *= 1 - w_B
-            self.B_[:, subset] += w_B * np.outer(code, X_subset)
-
+            self.B_[:, subset] += np.outer(code, X_subset * w_B)
         self.C_ *= 1 - w
         self.C_ += w / batch_size * self.code_[batch].T.dot(self.code_[batch])
 
-        subset = np.unique(X.indices[X.indptr[batch.start]:X.indptr[batch.stop]])
+        subset = np.concatenate([X.indices[X.indptr[i]:X.indptr[i+1]] for i in batch])
+        subset = np.unique(subset)
         self._update_dict(subset)
 
     def _update_dict(self, subset):
@@ -164,7 +183,7 @@ class RecsysDictFact:
         gradient_subset -= self.C_.dot(components_subset)
 
         order = self.random_state.permutation(n_components)
-        subset_norm = np.sqrt(np.sum(components_subset ** 2, axis=1))
+        subset_norm = np.sum(components_subset ** 2, axis=1)
         self.comp_norm_ += subset_norm
         for k in order:
             gradient_subset = ger(1.0, self.C_[k], components_subset[k],
@@ -173,11 +192,12 @@ class RecsysDictFact:
                 components_subset[k] = gradient_subset[k] / self.C_[k, k]
             # Else do not update
             norm = np.sqrt(np.sum(components_subset[k] ** 2))
-            if norm > self.comp_norm_[k]:
-                components_subset[k] /= norm * self.comp_norm_[k]
+            lim_norm = sqrt(self.comp_norm_[k])
+            if norm > lim_norm:
+                components_subset[k] /= norm / lim_norm
             gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
                                   a=gradient_subset, overwrite_a=True)
-        subset_norm = np.sqrt(np.sum(components_subset ** 2, axis=1))
+        subset_norm = np.sum(components_subset ** 2, axis=1)
         self.comp_norm_ -= subset_norm
         self.components_[:, subset] = components_subset
 
@@ -217,10 +237,15 @@ class RecsysDictFact:
         return rmse(X, X_pred)
 
     def _refit(self, X):
-        for i in range(X.shape[0]):
-            X.data[X.indptr[i]:X.indptr[i + 1]] -= self.row_mean_[i]
-        X.data -= self.col_mean_.take(X.indices, mode='clip')
-        DictMF._refit(self, X)
+        n_samples = X.shape[0]
+        for i in range(n_samples):
+            X_subset = X.data[X.indptr[i]:X.indptr[i + 1]]
+            subset = X.indices[X.indptr[i]:X.indptr[i + 1]]
+            components_subset = self.components_[:, subset]
+            Dx = components_subset.dot(X_subset)
+            G = components_subset.dot(components_subset.T)
+            G.flat[::self.n_components + 1] += self.alpha
+            self.code_[i] = linalg.solve(G, Dx)
 
 
 def compute_biases(X, beta=0, inplace=False):

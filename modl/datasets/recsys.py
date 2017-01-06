@@ -4,13 +4,13 @@ import os
 
 import joblib
 import sklearn.externals.joblib as skjoblib
-from recsys.cross_validation import train_test_split
+from modl.utils.recsys.cross_validation import train_test_split
 
-from modl.datasets import get_data_home
+from modl.utils.system import get_data_dirs
 
 
 def load_movielens(version):
-    data_home = get_data_home()
+    data_home = get_data_dirs()[0]
 
     if version == "100k":
         path = os.path.join(data_home, "movielens100k", "movielens100k.pkl")

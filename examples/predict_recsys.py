@@ -1,52 +1,74 @@
-# Author: Mathieu Blondel
+# Author: Arthur Mensch
+# Inspired from spira
 # License: BSD
-import os
+import time
 
-import joblib
-import sklearn.externals.joblib as skjoblib
-from recsys.cross_validation import train_test_split
+import numpy as np
 
-from modl.datasets import get_data_home
-
-
-def load_movielens(version):
-    data_home = get_data_home()
-
-    if version == "100k":
-        path = os.path.join(data_home, "movielens100k", "movielens100k.pkl")
-    elif version == "1m":
-        path = os.path.join(data_home, "movielens1m", "movielens1m.pkl")
-    elif version == "10m":
-        path = os.path.join(data_home, "movielens10m", "movielens10m.pkl")
-    else:
-        raise ValueError("Invalid version of movielens.")
-
-    # FIXME: make downloader
-    if not os.path.exists(path):
-        raise ValueError("Dowload dataset using 'make download-movielens%s' at"
-                         " project root." % version)
-
-    X = skjoblib.load(path)
-    return X
+from modl.utils.recsys.cross_validation import train_test_split
+from modl.datasets.recsys import load_movielens
+from modl.recsys import RecsysDictFact
 
 
-def load_netflix():
-    data_home = get_data_home()
-    path = os.path.join(data_home, "nf_prize", "X_tr.pkl")
-    X_tr = joblib.load(path)
-    path = os.path.join(data_home, "nf_prize", "X_te.pkl")
-    X_te = joblib.load(path)
-    return X_tr, X_te
+def sqnorm(M):
+    m = M.ravel()
+    return np.dot(m, m)
 
 
-def get_recsys_data(dataset, random_state):
-    if dataset in ['100k', '1m', '10m']:
-        X = load_movielens(dataset)
-        X_tr, X_te = train_test_split(X, train_size=0.75,
-                                      random_state=random_state)
-        X_tr = X_tr.tocsr()
-        X_te = X_te.tocsr()
-        return X_tr, X_te
-    if dataset is 'netflix':
-        return load_netflix()
+class Callback(object):
+    """Utility class for plotting RMSE"""
 
+    def __init__(self, X_tr, X_te):
+        self.X_tr = X_tr
+        self.X_te = X_te
+        self.obj = []
+        self.rmse = []
+        self.times = []
+        self.start_time = time.clock()
+        self.test_time = 0
+
+    def __call__(self, mf):
+        test_time = time.clock()
+
+        X_pred = mf.predict(self.X_te)
+        rmse = np.sqrt(np.mean((X_pred.data - self.X_te.data) ** 2))
+        self.rmse.append(rmse)
+        print('Test RMSE: ', rmse)
+        self.test_time += time.clock() - test_time
+        self.times.append(time.clock() - self.start_time - self.test_time)
+
+
+random_state = 0
+
+mf = RecsysDictFact(n_components=30, alpha=.001, beta=0, verbose=30,
+                    batch_size=1, detrend=True,
+                    random_state=0,
+                    learning_rate=1.,
+                    n_epochs=10)
+
+# Need to download from spira
+X = load_movielens('100k')
+X_tr, X_te = train_test_split(X, train_size=0.75,
+                              random_state=random_state)
+
+X_tr = X_tr.tocsr()
+X_te = X_te.tocsr()
+cb = Callback(X_tr, X_te)
+mf.set_params(callback=cb)
+t0 = time.time()
+mf.fit(X_tr)
+print('Final test RMSE:', mf.score(X_te))
+print('Time : %.2f s' % (time.time() - t0))
+
+import matplotlib.pyplot as plt
+
+plt.figure()
+plt.plot(cb.times, cb.rmse, label='Test')
+
+plt.legend()
+plt.xlabel("CPU time")
+plt.xscale("log")
+plt.ylabel("RMSE")
+plt.title('Prediction scores')
+
+plt.show()
