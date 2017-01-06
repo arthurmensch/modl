@@ -5,11 +5,11 @@ from tempfile import TemporaryFile
 import atexit
 import numpy as np
 import scipy
-from modl.utils.randomkit import RandomState
+from .utils.randomkit import RandomState
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array, check_random_state, gen_batches
 
-from modl.utils import get_sub_slice
+from .utils import get_sub_slice
 from .dict_fact_fast import _enet_regression_multi_gram, \
     _enet_regression_single_gram, _update_G_average, _batch_weight
 from .utils.math.enet import enet_norm, enet_projection, enet_scale
