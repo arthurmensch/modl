@@ -17,9 +17,6 @@ LICENSE = 'new BSD'
 DOWNLOAD_URL = 'https://github.com/arthurmensch/modl'
 VERSION = '0.5'
 
-define_macros = [('CYTHON_TRACE', 1), ('CYTHON_TRACE_NOGIL', 1)]
-compiler_directives = {'linetrace': True}
-
 
 def configuration(parent_package='', top_path=None):
     if os.path.exists('MANIFEST'):
@@ -47,6 +44,7 @@ def setup_package():
     from numpy.distutils.core import setup
 
     setup(configuration=configuration,
+          packages=find_packages(),
           name=DISTNAME,
           maintainer=MAINTAINER,
           include_package_data=True,

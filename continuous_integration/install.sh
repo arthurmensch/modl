@@ -92,8 +92,7 @@ else
 fi
 
 if [[ "$COVERAGE" == "true" ]]; then
-    make inplace_coverage
-    python setup.py develop
+    make install-coverage
 else
     python setup.py install
 fi

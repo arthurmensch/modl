@@ -13,8 +13,8 @@ inplace:
 
 in: inplace
 
-inplace_coverage:
-	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
+install-coverage:
+	$(PYTHON) setup.py build_ext -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL install
 
 all: cython inplace
 
@@ -27,6 +27,7 @@ clean:
 	rm -f $(CSRC)
 	rm -f `find modl -name "*.cpp"`
 	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.html/g`
+	rm -f `find modl -name "*.pyx"  | sed s/.pyx/.c/g`
 	rm -rf htmlcov
 	rm -rf build
 	rm -rf coverage .coverage
@@ -48,7 +49,9 @@ test: test-code
 datadir:
 	mkdir -p $(DATADIR)
 
-download-hcp-extra: datadir
-	./misc/download.sh http://www.amensch.fr/data/HCP_extra.tar.bz2
+download-data: datadir
+	./misc/download.sh http://www.amensch.fr/data/modl_data.tar.bz2
 	tar xvfj modl_data.tar.bz2
-	mv modl_data $(DATADIR)
+	mv modl_data/* $(DATADIR)
+	rmdir modl_data
+	rm modl_data.tar.bz2
