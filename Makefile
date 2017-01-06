@@ -12,9 +12,6 @@ inplace: clean-obj
 inplace-coverage: clean-obj
 	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
 
-install-coverage: clean-obj
-	$(PYTHON) setup.py build_ext -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL install
-
 install: clean-obj
 	$(PYTHON) setup.py install
 
@@ -42,7 +39,7 @@ test:
 
 test-coverage:
 	rm -rf coverage .coverage
-	$(PYTEST) --pyargs --cov=modl modl
+	$(PYTEST) --pyargs --cov=modl modl --cov-config=.coveragerc
 
 # Data
 #
