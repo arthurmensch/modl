@@ -586,13 +586,13 @@ class DictFact(BaseEstimator):
             Subset of features to update.
 
         """
+        ger, = scipy.linalg.get_blas_funcs(('ger',), (self.C_,
+                                                      self.components_))
         len_subset = subset.shape[0]
         n_components, n_features = self.components_.shape
         components_subset = self.components_[:, subset]
         atom_temp = np.zeros(len_subset, dtype=self.components_.dtype)
         gradient_subset = self.gradient_[:, subset]
-        ger, = scipy.linalg.get_blas_funcs(('ger',), (self.C_,
-                                                      components_subset))
 
         if self.G_agg == 'full' and len_subset < n_features / 2.:
             self.G_ -= components_subset.dot(components_subset.T)

@@ -1,11 +1,14 @@
 import numpy as np
+import scipy
 import scipy.sparse as sp
+from numpy import linalg
+from sklearn.utils import gen_batches
 
-from .dict_fact import DictMF
-from .dict_fact_fast import _predict
+from .recsys_fast import _predict
+from dict_fact_fast import _batch_weight
 
 
-class DictCompleter(DictMF):
+class RecsysDictFact:
     """Matrix factorization estimator based on masked online dictionary
      learning.
 
@@ -58,40 +61,29 @@ class DictCompleter(DictMF):
             Learned dictionary
     """
 
-    def __init__(self, alpha=1.0, beta=.0,
-                 n_components=30, learning_rate=1.,
-                 batch_size=1, offset=0,
-                 projection='partial',
-                 fit_intercept=False, dict_init=None, l1_ratio=0,
-                 max_n_iter=0,
+    def __init__(self,
+                 alpha=1.0, beta=.0,
+                 n_components=30,
+                 learning_rate=1.,
+                 batch_size=1,
+                 dict_init=None,
+                 l1_ratio=0,
                  n_epochs=1,
-                 random_state=None, verbose=0, backend='c', debug=False,
+                 random_state=None,
+                 verbose=0,
                  detrend=False,
                  crop=None,
                  callback=None):
-        super().__init__(alpha=alpha,
-                         n_components=n_components,
-                         # Hyper-parameters
-                         learning_rate=learning_rate,
-                         batch_size=batch_size,
-                         offset=offset,
-                         # Reduction parameter
-                         reduction=1,
-                         projection=projection,
-                         fit_intercept=fit_intercept,
-                         # Dict parameter
-                         dict_init=dict_init,
-                         l1_ratio=l1_ratio,
-                         # For variance reduction
-                         n_samples=None,
-                         # Generic parameters
-                         max_n_iter=max_n_iter,
-                         n_epochs=n_epochs,
-                         random_state=random_state,
-                         verbose=verbose,
-                         backend=backend,
-                         debug=debug,
-                         callback=callback)
+        self.callback = callback
+        self.verbose = verbose
+        self.random_state = random_state
+        self.n_epochs = n_epochs
+        self.l1_ratio = l1_ratio
+        self.dict_init = dict_init
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.n_components = n_components
+        self.alpha = alpha
         self.beta = beta
         self.detrend = detrend
         self.crop = crop
@@ -105,7 +97,9 @@ class DictCompleter(DictMF):
             Datset to learn the dictionary from
 
         """
-        X = sp.csr_matrix(X, dtype='float')
+        X = sp.csr_matrix(X, dtype=[np.float32, np.float64])
+        dtype = X.dtype
+        n_samples, n_features = X.shape
 
         if self.detrend:
             self.row_mean_, self.col_mean_ = compute_biases(X,
@@ -114,7 +108,78 @@ class DictCompleter(DictMF):
             for i in range(X.shape[0]):
                 X.data[X.indptr[i]:X.indptr[i + 1]] -= self.row_mean_[i]
             X.data -= self.col_mean_.take(X.indices, mode='clip')
-        DictMF.fit(self, X)
+
+        self.components_ = np.zeros((self.n_components, n_features),
+                                    dtype=dtype)
+        self.components_[:] = self.random_state.randn(self.n_components,
+                                                      n_features)
+        S = np.sqrt(np.sum(self.components_ ** 2, axis=1))
+        self.components_ /= S[:, np.newaxis]
+        self.comp_norm_ = np.zeros(self.n_components, dtype=dtype)
+        self.code_ = np.zeros((n_samples, self.n_components), dtype=dtype)
+        self.C_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
+        self.B_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
+
+        self.n_iter_ = 0
+        self.sample_n_iter_ = np.zeros(n_samples, dtype='int')
+
+        for i in range(self.n_epochs):
+            batches = gen_batches(n_samples, self.batch_size)
+            for batch in batches:
+                self._single_batch_fit(X, batch)
+        return self
+
+    def _single_batch_fit(self, X, batch):
+        batch_size = batch.stop - batch.start
+        self.n_iter_ += batch_size
+        w = _batch_weight(self.n_iter_, batch_size, self.learning_rate, 0)
+        for i in range(batch):
+            X_subset = X.data[X.indptr[i]:X.indptr[i+1]]
+            subset = X.indices[X.indptr[i]:X.indptr[i+1]]
+            self.sample_n_iter_[subset] += 1
+            components_subset = self.components_[:, subset]
+            Dx = self.components_.dot(X_subset)
+            G = components_subset.dot(components_subset.T)
+            G.flat[::self.n_components + 1] += self.alpha
+            self.code_[i] = linalg.solve(G, Dx)
+            code = self.code_[i]
+            w_B = np.min(1., w * self.n_iter_ / self.sample_n_iter_[subset])
+            X_subset *= w_B
+            self.B_[:, subset] *= 1 - w_B
+            self.B_[:, subset] += w_B * np.outer(code, X_subset)
+
+        self.C_ *= 1 - w
+        self.C_ += w / batch_size * self.code_[batch].T.dot(self.code_[batch])
+
+        subset = np.unique(X.indices[X.indptr[batch.start]:X.indptr[batch.stop]])
+        self._update_dict(subset)
+
+    def _update_dict(self, subset):
+        ger, = scipy.linalg.get_blas_funcs(('ger',), (self.C_,
+                                                      self.components_))
+
+        n_components, n_features = self.components_.shape
+        components_subset = self.components_[:, subset]
+        gradient_subset = self.B_[:, subset]
+        gradient_subset -= self.C_.dot(components_subset)
+
+        order = self.random_state.permutation(n_components)
+        subset_norm = np.sqrt(np.sum(components_subset ** 2, axis=1))
+        self.comp_norm_ += subset_norm
+        for k in order:
+            gradient_subset = ger(1.0, self.C_[k], components_subset[k],
+                                  a=gradient_subset, overwrite_a=True)
+            if self.C_[k, k] > 1e-20:
+                components_subset[k] = gradient_subset[k] / self.C_[k, k]
+            # Else do not update
+            norm = np.sqrt(np.sum(components_subset[k] ** 2))
+            if norm > self.comp_norm_[k]:
+                components_subset[k] /= norm * self.comp_norm_[k]
+            gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
+                                  a=gradient_subset, overwrite_a=True)
+        subset_norm = np.sqrt(np.sum(components_subset ** 2, axis=1))
+        self.comp_norm_ -= subset_norm
+        self.components_[:, subset] = components_subset
 
     def predict(self, X):
         """ Predict values of X from internal dictionary and intercepts
