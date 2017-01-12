@@ -35,7 +35,6 @@ test-coverage:
 	rm -f `find modl -name "*.so"`
 	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
 	$(PYTEST) --pyargs --cov=modl modl --cov-config=.coveragerc
-	make clean-obj
 
 # Data
 #
