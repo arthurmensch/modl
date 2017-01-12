@@ -1,6 +1,8 @@
 import sys
 import numpy
 
+from distutils.extension import Extension
+
 
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
