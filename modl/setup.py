@@ -19,7 +19,7 @@ def configuration(parent_package='', top_path=None):
                   include_dirs=[numpy.get_include()],
                   ),
     ]
-    config.ext_modules += cythonize(extensions,)
+    config.ext_modules += extensions
 
     config.add_subpackage('tests')
     config.add_subpackage('utils')
@@ -27,6 +27,8 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('plotting')
     config.add_subpackage('feature_extraction')
     config.add_subpackage('preprocessing')
+
+    config.ext_modules = cythonize(config.ext_modules)
 
     return config
 

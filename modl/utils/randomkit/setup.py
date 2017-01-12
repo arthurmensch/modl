@@ -1,10 +1,6 @@
 import sys
 import numpy
 
-from distutils.extension import Extension
-
-from Cython.Build import cythonize
-
 
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
@@ -26,7 +22,7 @@ def configuration(parent_package='', top_path=None):
                             sources=['modl/utils/randomkit/sampler.pyx'],
                             include_dirs=[numpy.get_include()]
                             )]
-    config.ext_modules += cythonize(extensions)
+    config.ext_modules += extensions
 
     config.add_subpackage('tests')
 
