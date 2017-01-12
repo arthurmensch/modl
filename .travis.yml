@@ -15,6 +15,17 @@ matrix:
     # Most recent versions
     - env: DISTRIB="conda" PYTHON_VERSION="3.5"
            NUMPY_VERSION="*" SCIPY_VERSION="*"
+           SCIKIT_LEARN_VERSION="*" MATPLOTLIB_VERSION="*"
+           NILEARN_VERSION="*"
+           INSTALL_MKL="true"
+    - env: DISTRIB="conda" PYTHON_VERSION="3.5"
+           NUMPY_VERSION="*" SCIPY_VERSION="*"
+           SCIKIT_LEARN_VERSION="*" MATPLOTLIB_VERSION="*" COVERAGE="false"
+           NILEARN_VERSION="*"
+           INSTALL_MKL="true"
+  allow_failures:
+      - env: DISTRIB="conda" PYTHON_VERSION="3.5"
+           NUMPY_VERSION="*" SCIPY_VERSION="*"
            SCIKIT_LEARN_VERSION="*" MATPLOTLIB_VERSION="*" COVERAGE="true"
            NILEARN_VERSION="*"
            INSTALL_MKL="true"

@@ -8,9 +8,10 @@ python continuous_integration/show-python-packages-versions.py;
 # than the one from the current working directory
 # Parentheses (run in a subshell) are used to leave
 # the current directory unchanged
-cd "$TEST_RUN_FOLDER" && make -f $OLDPWD/Makefile test
 
 if [[ "$COVERAGE" == "true" ]]; then
     # Cython coverage needs to be run within folder
-    cd "$OLDPWD" && make test-coverage
+    make test-coverage
+else
+    cd "$TEST_RUN_FOLDER" && make -f $OLDPWD/Makefile test
 fi
