@@ -6,22 +6,11 @@ DATADIR=$(HOME)/modl_data
 
 in: inplace
 
-inplace: clean-obj
+inplace:
 	$(PYTHON) setup.py build_ext -i
 
-inplace-coverage: clean-obj
-	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
-
-develop-coverage: clean-obj
-	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL develop
-
-install: clean-obj
+install:
 	$(PYTHON) setup.py install
-
-# Flush objects when macro change
-clean-obj:
-	rm -rf dist
-	rm -f `find modl -name "*.so"`
 
 clean:
 	rm -f `find modl -name "*.so"`
@@ -42,7 +31,11 @@ test:
 
 test-coverage:
 	rm -rf coverage .coverage
+	rm -rf dist
+	rm -f `find modl -name "*.so"`
+	$(PYTHON) setup.py build_ext -i -D CYTHON_TRACE -D CYTHON_TRACE_NOGIL
 	$(PYTEST) --pyargs --cov=modl modl --cov-config=.coveragerc
+	make clean-obj
 
 # Data
 #

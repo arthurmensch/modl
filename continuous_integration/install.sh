@@ -89,9 +89,4 @@ if [[ "$NILEARN_VERSION" == "*" ]]; then
 else
     pip install nilearn==$NILEARN_VERSION
 fi
-
-if [[ "$COVERAGE" == "true" ]]; then
-    make develop-coverage
-else
     make install
-fi
