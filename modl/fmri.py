@@ -203,6 +203,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             BaseDecomposition.fit(self)
         else:
             BaseDecomposition.fit(self, imgs)
+
         shelving = self.memory is not None and self.memory.cachedir is not None
         self.masker_._shelving = shelving
         # Avoid cache trashing due to nibabel bad design
@@ -235,7 +236,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 data_list = list(zip(imgs, confounds))
                 n_samples_list, dtype = _lazy_scan(imgs)
 
-
         indices_list = np.zeros(len(imgs) + 1, dtype='int')
         indices_list[1:] = np.cumsum(n_samples_list)
         n_samples = indices_list[-1] + 1
@@ -248,6 +248,9 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             masker = NiftiMasker(smoothing_fwhm=0,
                                  mask_img=self.mask_img_).fit()
             dict_init = masker.transform(self.dict_init)
+            if self.n_components is not None:
+                dict_init = dict_init[self.n_components]
+            n_components = dict_init.shape[0]
         else:
             dict_init = None
 
