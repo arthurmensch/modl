@@ -3,6 +3,11 @@ language: python
 virtualenv:
   system_site_packages: true
 
+cache:
+  apt: true
+  directories:
+  - $HOME/.cache/pip
+
 env:
   global:
     - TEST_RUN_FOLDER="/tmp" # folder where the tests are run from
