@@ -177,7 +177,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         self.buffer_size = buffer_size
         self.callback = callback
 
-    def fit(self, imgs, y=None, confounds=None, raw=False):
+    def fit(self, imgs=None, y=None, confounds=None, raw=False):
         """Compute the mask and the dictionary maps across subjects
 
         Parameters
@@ -195,12 +195,48 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         -------
         self
         """
-        if not isinstance(imgs, (list, tuple)):
+        if imgs is None or self.n_epochs == 0:
+            # Will raise error is mask has not been provided
+            if self.mask is None:
+                raise ValueError('Please provide a mask if not'
+                                 ' providing data.')
+            BaseDecomposition.fit(self, None)
+            if self.dict_init is not None:
+                if self.verbose:
+                    print("Preloading initial dictionary")
+                masker = NiftiMasker(smoothing_fwhm=0,
+                                     mask_img=self.mask_img_).fit()
+                dict_init = masker.transform(self.dict_init)
+                if self.n_components is not None:
+                    dict_init = dict_init[:self.n_components]
+                n_components, n_voxels = dict_init.shape
+                dtype = dict_init.dtype
+                n_samples = 0
+                self.dict_fact_ = DictFact(n_components=n_components,
+                                           code_alpha=self.alpha,
+                                           code_l1_ratio=0,
+                                           comp_l1_ratio=1,
+                                           reduction=self.reduction,
+                                           Dx_agg='masked',
+                                           G_agg='masked',
+                                           learning_rate=self.learning_rate,
+                                           batch_size=self.batch_size,
+                                           random_state=self.random_state,
+                                           n_threads=self.n_jobs,
+                                           verbose=0)
+                self.dict_fact_.prepare(n_samples=n_samples,
+                                        n_features=n_voxels,
+                                        X=dict_init, dtype=dtype)
+                return self
+            else:
+                raise ValueError
+
+        if isinstance(imgs, str) or not hasattr(imgs, '__iter__'):
             imgs = [imgs]
         raw = isinstance(imgs[0], np.ndarray)
         # Base logic for decomposition estimators
         if raw:
-            BaseDecomposition.fit(self)
+            BaseDecomposition.fit(self, None)
         else:
             BaseDecomposition.fit(self, imgs)
 
@@ -241,7 +277,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         n_samples = indices_list[-1] + 1
 
         n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
-
         if self.dict_init is not None:
             if self.verbose:
                 print("Preloading initial dictionary")
@@ -249,15 +284,16 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                  mask_img=self.mask_img_).fit()
             dict_init = masker.transform(self.dict_init)
             if self.n_components is not None:
-                dict_init = dict_init[self.n_components]
+                dict_init = dict_init[:self.n_components]
             n_components = dict_init.shape[0]
         else:
             dict_init = None
+            n_components = self.n_components
 
         if self.verbose:
             print("Learning decomposition")
 
-        self.dict_fact_ = DictFact(n_components=self.n_components,
+        self.dict_fact_ = DictFact(n_components=n_components,
                                    code_alpha=self.alpha,
                                    code_l1_ratio=0,
                                    comp_l1_ratio=1,
@@ -284,7 +320,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             record_list = self.random_state.permutation(n_records)
             for record in record_list:
                 if (self.verbose and self.verbose_iter_ and
-                            current_n_records >= self.verbose_iter_[0]):
+                        current_n_records >= self.verbose_iter_[0]):
                     print('Record %i' % current_n_records)
                     if self.callback is not None:
                         self.callback(self)
