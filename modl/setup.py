@@ -28,7 +28,7 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('feature_extraction')
     config.add_subpackage('preprocessing')
 
-    config.ext_modules = cythonize(config.ext_modules)
+    config.ext_modules = cythonize(config.ext_modules, nthreads=4)
 
     return config
 
