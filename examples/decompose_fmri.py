@@ -39,7 +39,6 @@ def config():
 def config():
     batch_size = 200
     learning_rate = 0.92
-    offset = 0
     method = 'masked'
     reduction = 10
     alpha = 1e-3
@@ -47,8 +46,6 @@ def config():
     verbose = 15
     n_jobs = 3
     smoothing_fwhm = 6
-    buffer_size = 1200
-    subset_sampling = 'random'
 
 
 @data_ing.capture
@@ -85,6 +82,7 @@ class rfMRIDictionaryScorer:
 
 @decompose_ex.automain
 def decompose_run(smoothing_fwhm,
+                  method,
                   batch_size,
                   learning_rate,
                   verbose,
@@ -92,7 +90,6 @@ def decompose_run(smoothing_fwhm,
                   alpha,
                   n_jobs,
                   n_epochs,
-                  buffer_size,
                   init,
                   _seed,
                   ):
@@ -105,6 +102,7 @@ def decompose_run(smoothing_fwhm,
 
     cb = rfMRIDictionaryScorer(test_data)
     dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
+                             method=method,
                              mask=mask,
                              memory=memory,
                              memory_level=2,
@@ -118,7 +116,6 @@ def decompose_run(smoothing_fwhm,
                              batch_size=batch_size,
                              reduction=reduction,
                              alpha=alpha,
-                             buffer_size=buffer_size,
                              callback=cb,
                              )
     dict_fact.fit(train_data)
