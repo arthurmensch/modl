@@ -145,7 +145,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  target_affine=None, target_shape=None,
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=2,
-                 buffer_size=None,
                  n_jobs=1, verbose=0,
                  callback=None):
         BaseDecomposition.__init__(self, n_components=n_components,
@@ -174,7 +173,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
         self.learning_rate = learning_rate
 
-        self.buffer_size = buffer_size
         self.callback = callback
 
     def fit(self, imgs=None, y=None, confounds=None, raw=False):
@@ -342,8 +340,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 self.dict_fact_.partial_fit(data,
                                             sample_indices=sample_indices)
                 current_n_records += 1
-
-        self.masker_._shelving = False
 
         return self
 

@@ -27,7 +27,7 @@ clean:
 # Tests
 #
 test:
-	$(PYTEST) --pyargs modl
+	$(PYTEST) modl
 
 test-coverage:
 	rm -rf coverage .coverage

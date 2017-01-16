@@ -243,9 +243,9 @@ def fetch_hcp_task(data_dir=None, n_subjects=500):
             if os.path.exists(this_func):
                 subject_contrasts.append(contrast)
                 subject_func.append(this_func)
-            meta.append(kwargs)
-            contrasts.append(subject_contrasts)
-            func.append(subject_func)
+        meta.append(kwargs)
+        contrasts.append(subject_contrasts)
+        func.append(subject_func)
 
     results = {'func': func, 'contrast': contrasts,
                'meta': meta,
