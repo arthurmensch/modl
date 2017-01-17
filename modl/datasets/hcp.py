@@ -1,13 +1,97 @@
 import glob
-import json
 import os
 from os.path import join
 
-import numpy as np
-from nilearn.datasets.utils import _fetch_file
-
 from modl.utils.system import get_data_dirs
+from nilearn.datasets.utils import _fetch_file
 from sklearn.datasets.base import Bunch
+
+tasks = [["WM", 1, "2BK_BODY"],
+         ["WM", 2, "2BK_FACE"],
+         ["WM", 3, "2BK_PLACE"],
+         ["WM", 4, "2BK_TOOL"],
+         ["WM", 5, "0BK_BODY"],
+         ["WM", 6, "0BK_FACE"],
+         ["WM", 7, "0BK_PLACE"],
+         ["WM", 8, "0BK_TOOL"],
+         ["WM", 9, "2BK"],
+         ["WM", 10, "0BK"],
+         ["WM", 11, "2BK-0BK"],
+         ["WM", 12, "neg_2BK"],
+         ["WM", 13, "neg_0BK"],
+         ["WM", 14, "0BK-2BK"],
+         ["WM", 15, "BODY"],
+         ["WM", 16, "FACE"],
+         ["WM", 17, "PLACE"],
+         ["WM", 18, "TOOL"],
+         ["WM", 19, "BODY-AVG"],
+         ["WM", 20, "FACE-AVG"],
+         ["WM", 21, "PLACE-AVG"],
+         ["WM", 22, "TOOL-AVG"],
+         ["WM", 23, "neg_BODY"],
+         ["WM", 24, "neg_FACE"],
+         ["WM", 25, "neg_PLACE"],
+         ["WM", 26, "neg_TOOL"],
+         ["WM", 27, "AVG-BODY"],
+         ["WM", 28, "AVG-FACE"],
+         ["WM", 29, "AVG-PLACE"],
+         ["WM", 30, "AVG-TOOL"],
+         ["GAMBLING", 1, "PUNISH"],
+         ["GAMBLING", 2, "REWARD"],
+         ["GAMBLING", 3, "PUNISH-REWARD"],
+         ["GAMBLING", 4, "neg_PUNISH"],
+         ["GAMBLING", 5, "neg_REWARD"],
+         ["GAMBLING", 6, "REWARD-PUNISH"],
+         ["MOTOR", 1, "CUE"],
+         ["MOTOR", 2, "LF"],
+         ["MOTOR", 3, "LH"],
+         ["MOTOR", 4, "RF"],
+         ["MOTOR", 5, "RH"],
+         ["MOTOR", 6, "T"],
+         ["MOTOR", 7, "AVG"],
+         ["MOTOR", 8, "CUE-AVG"],
+         ["MOTOR", 9, "LF-AVG"],
+         ["MOTOR", 10, "LH-AVG"],
+         ["MOTOR", 11, "RF-AVG"],
+         ["MOTOR", 12, "RH-AVG"],
+         ["MOTOR", 13, "T-AVG"],
+         ["MOTOR", 14, "neg_CUE"],
+         ["MOTOR", 15, "neg_LF"],
+         ["MOTOR", 16, "neg_LH"],
+         ["MOTOR", 17, "neg_RF"],
+         ["MOTOR", 18, "neg_RH"],
+         ["MOTOR", 19, "neg_T"],
+         ["MOTOR", 20, "neg_AVG"],
+         ["MOTOR", 21, "AVG-CUE"],
+         ["MOTOR", 22, "AVG-LF"],
+         ["MOTOR", 23, "AVG-LH"],
+         ["MOTOR", 24, "AVG-RF"],
+         ["MOTOR", 25, "AVG-RH"],
+         ["MOTOR", 26, "AVG-T"],
+         ["LANGUAGE", 1, "MATH"],
+         ["LANGUAGE", 2, "STORY"],
+         ["LANGUAGE", 3, "MATH-STORY"],
+         ["LANGUAGE", 4, "STORY-MATH"],
+         ["LANGUAGE", 5, "neg_MATH"],
+         ["LANGUAGE", 6, "neg_STORY"],
+         ["SOCIAL", 1, "RANDOM"],
+         ["SOCIAL", 2, "TOM"],
+         ["SOCIAL", 3, "RANDOM-TOM"],
+         ["SOCIAL", 4, "neg_RANDOM"],
+         ["SOCIAL", 5, "neg_TOM"],
+         ["SOCIAL", 6, "TOM-RANDOM"],
+         ["RELATIONAL", 1, "MATCH"],
+         ["RELATIONAL", 2, "REL"],
+         ["RELATIONAL", 3, "MATCH-REL"],
+         ["RELATIONAL", 4, "REL-MATCH"],
+         ["RELATIONAL", 5, "neg_MATCH"],
+         ["RELATIONAL", 6, "neg_REL"],
+         ["EMOTION", 1, "FACES"],
+         ["EMOTION", 2, "SHAPES"],
+         ["EMOTION", 3, "FACES-SHAPES"],
+         ["EMOTION", 4, "neg_FACES"],
+         ["EMOTION", 5, "neg_SHAPES"],
+         ["EMOTION", 6, "SHAPES-FACES"]]
 
 
 def fetch_hcp_behavioral(data_dir=None, n_subjects=500):
@@ -29,93 +113,6 @@ def fetch_hcp_behavioral(data_dir=None, n_subjects=500):
 
 def fetch_hcp_task(data_dir=None, n_subjects=500, mask_url=None, resume=True):
     """Nilearn like fetcher"""
-    tasks = [["WM", 1, "2BK_BODY"],
-             ["WM", 2, "2BK_FACE"],
-             ["WM", 3, "2BK_PLACE"],
-             ["WM", 4, "2BK_TOOL"],
-             ["WM", 5, "0BK_BODY"],
-             ["WM", 6, "0BK_FACE"],
-             ["WM", 7, "0BK_PLACE"],
-             ["WM", 8, "0BK_TOOL"],
-             ["WM", 9, "2BK"],
-             ["WM", 10, "0BK"],
-             ["WM", 11, "2BK-0BK"],
-             ["WM", 12, "neg_2BK"],
-             ["WM", 13, "neg_0BK"],
-             ["WM", 14, "0BK-2BK"],
-             ["WM", 15, "BODY"],
-             ["WM", 16, "FACE"],
-             ["WM", 17, "PLACE"],
-             ["WM", 18, "TOOL"],
-             ["WM", 19, "BODY-AVG"],
-             ["WM", 20, "FACE-AVG"],
-             ["WM", 21, "PLACE-AVG"],
-             ["WM", 22, "TOOL-AVG"],
-             ["WM", 23, "neg_BODY"],
-             ["WM", 24, "neg_FACE"],
-             ["WM", 25, "neg_PLACE"],
-             ["WM", 26, "neg_TOOL"],
-             ["WM", 27, "AVG-BODY"],
-             ["WM", 28, "AVG-FACE"],
-             ["WM", 29, "AVG-PLACE"],
-             ["WM", 30, "AVG-TOOL"],
-             ["GAMBLING", 1, "PUNISH"],
-             ["GAMBLING", 2, "REWARD"],
-             ["GAMBLING", 3, "PUNISH-REWARD"],
-             ["GAMBLING", 4, "neg_PUNISH"],
-             ["GAMBLING", 5, "neg_REWARD"],
-             ["GAMBLING", 6, "REWARD-PUNISH"],
-             ["MOTOR", 1, "CUE"],
-             ["MOTOR", 2, "LF"],
-             ["MOTOR", 3, "LH"],
-             ["MOTOR", 4, "RF"],
-             ["MOTOR", 5, "RH"],
-             ["MOTOR", 6, "T"],
-             ["MOTOR", 7, "AVG"],
-             ["MOTOR", 8, "CUE-AVG"],
-             ["MOTOR", 9, "LF-AVG"],
-             ["MOTOR", 10, "LH-AVG"],
-             ["MOTOR", 11, "RF-AVG"],
-             ["MOTOR", 12, "RH-AVG"],
-             ["MOTOR", 13, "T-AVG"],
-             ["MOTOR", 14, "neg_CUE"],
-             ["MOTOR", 15, "neg_LF"],
-             ["MOTOR", 16, "neg_LH"],
-             ["MOTOR", 17, "neg_RF"],
-             ["MOTOR", 18, "neg_RH"],
-             ["MOTOR", 19, "neg_T"],
-             ["MOTOR", 20, "neg_AVG"],
-             ["MOTOR", 21, "AVG-CUE"],
-             ["MOTOR", 22, "AVG-LF"],
-             ["MOTOR", 23, "AVG-LH"],
-             ["MOTOR", 24, "AVG-RF"],
-             ["MOTOR", 25, "AVG-RH"],
-             ["MOTOR", 26, "AVG-T"],
-             ["LANGUAGE", 1, "MATH"],
-             ["LANGUAGE", 2, "STORY"],
-             ["LANGUAGE", 3, "MATH-STORY"],
-             ["LANGUAGE", 4, "STORY-MATH"],
-             ["LANGUAGE", 5, "neg_MATH"],
-             ["LANGUAGE", 6, "neg_STORY"],
-             ["SOCIAL", 1, "RANDOM"],
-             ["SOCIAL", 2, "TOM"],
-             ["SOCIAL", 3, "RANDOM-TOM"],
-             ["SOCIAL", 4, "neg_RANDOM"],
-             ["SOCIAL", 5, "neg_TOM"],
-             ["SOCIAL", 6, "TOM-RANDOM"],
-             ["RELATIONAL", 1, "MATCH"],
-             ["RELATIONAL", 2, "REL"],
-             ["RELATIONAL", 3, "MATCH-REL"],
-             ["RELATIONAL", 4, "REL-MATCH"],
-             ["RELATIONAL", 5, "neg_MATCH"],
-             ["RELATIONAL", 6, "neg_REL"],
-             ["EMOTION", 1, "FACES"],
-             ["EMOTION", 2, "SHAPES"],
-             ["EMOTION", 3, "FACES-SHAPES"],
-             ["EMOTION", 4, "neg_FACES"],
-             ["EMOTION", 5, "neg_SHAPES"],
-             ["EMOTION", 6, "SHAPES-FACES"]]
-
     mask = fetch_hcp_mask(data_dir, url=mask_url, resume=resume)
     data_dir = get_data_dirs(data_dir)[0]
     source_dir = join(data_dir, 'HCP')
@@ -201,3 +198,37 @@ def fetch_hcp_rest(data_dir=None, n_subjects=500, mask_url=None, resume=True):
                'description': "The Human Connectome Project resting-state "
                               "data."}
     return Bunch(**results)
+
+
+def get_fmri_path(subject,
+                       data_dir=None):
+    """Utility to download from s3"""
+    subject = str(subject)
+    data_dir = get_data_dirs(data_dir)[0]
+    out = []
+    subject_dir = join('HCP_900', subject, 'MNINonLinear', 'Results')
+    for run_index in [1, 2]:
+        for run_direction in ['LR', 'RL']:
+            filename = 'rfMRI_REST%i_%s' % (run_index, run_direction)
+            rest_dir = join(subject_dir, filename)
+            rest_func = join(rest_dir, filename, filename + '.nii.gz')
+            rest_confounds = ['Movement_AbsoluteRMS_mean.txt',
+                              'Movement_AbsoluteRMS.txt',
+                              'Movement_Regressors_dt.txt',
+                              'Movement_Regressors.txt',
+                              'Movement_RelativeRMS_mean.txt',
+                              'Movement_RelativeRMS.txt']
+            rest_confounds = [join(rest_dir, confound)
+                              for confound in rest_confounds]
+            out.append(rest_func)
+            out.append(rest_confounds)
+    for i, task in enumerate(tasks):
+        task_name = task[0]
+        contrast_idx = task[1]
+        this_func = join(subject_dir, "tfMRI_%s/tfMRI_%s_hp200_s4_"
+                                      "level2vol.feat/cope%i.feat/"
+                                      "stats/zstat1.nii.gz" % (
+                             task_name, task_name,
+                             contrast_idx))
+        out.append(this_func)
+    return out
