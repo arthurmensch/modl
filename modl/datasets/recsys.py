@@ -32,7 +32,7 @@ def load_movielens(version):
 
 
 def load_netflix():
-    data_home = get_data_home()
+    data_home = get_data_dirs()[0]
     path = os.path.join(data_home, "nf_prize", "X_tr.pkl")
     X_tr = joblib.load(path)
     path = os.path.join(data_home, "nf_prize", "X_te.pkl")

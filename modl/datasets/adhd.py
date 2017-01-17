@@ -1,3 +1,12 @@
+from os.path import join
+
+from modl.utils.system import get_data_dirs
+from nilearn.datasets.utils import _fetch_file
+from sklearn.datasets.base import Bunch
+
+from nilearn.datasets import fetch_adhd as nilearn_fetch_adhd
+
+
 def fetch_adhd(n_subjects=30, data_dir=None, url=None, resume=True,
                modl_data_dir=None,
                mask_url=None,

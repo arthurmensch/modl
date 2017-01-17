@@ -2,24 +2,20 @@ import json
 import os
 from os.path import join
 
-from nilearn import datasets
 from nilearn.datasets import fetch_atlas_smith_2009
-from nilearn.datasets import fetch_adhd as nilearn_fetch_adhd
-from nilearn.datasets.utils import _fetch_file
-from sklearn.datasets.base import Bunch
 from sklearn.model_selection import train_test_split
 
 from modl.utils.system import get_data_dirs
-from .hcp import fetch_hcp_rest
+from . import fetch_hcp_rest, fetch_adhd
 
-
+# XXX: this should be trashed
 def load_rest_func(dataset='adhd',
                    n_subjects=40, test_size=0.1, raw=False, random_state=None):
     data_dir = get_data_dirs()[0]
     if dataset == 'adhd':
-        adhd_dataset = datasets.fetch_adhd(n_subjects=n_subjects)
-        mask = join(data_dir, 'ADHD_mask', 'mask_img.nii.gz')
-        data = adhd_dataset.func  # list of 4D nifti files for each subject
+        adhd_dataset = fetch_adhd(n_subjects=n_subjects)
+        data = adhd_dataset.func
+        mask = adhd_dataset.mask
     elif dataset == 'hcp':
         if not os.path.exists(join(data_dir, 'HCP_extra')):
             raise ValueError(

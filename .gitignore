@@ -67,5 +67,6 @@ MANIFEST
 
 .html
 *.c
+*.cpp
 !modl/utils/randomkit/randomkit.c
 !modl/utils/randomkit/distributions.c
