@@ -4,6 +4,9 @@ from os.path import join
 
 from nilearn import datasets
 from nilearn.datasets import fetch_atlas_smith_2009
+from nilearn.datasets import fetch_adhd as nilearn_fetch_adhd
+from nilearn.datasets.utils import _fetch_file
+from sklearn.datasets.base import Bunch
 from sklearn.model_selection import train_test_split
 
 from modl.utils.system import get_data_dirs
