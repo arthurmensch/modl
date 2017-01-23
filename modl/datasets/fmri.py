@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from modl.utils.system import get_data_dirs
 from . import fetch_hcp_rest, fetch_adhd
 
+
 # XXX: this should be trashed
 def load_rest_func(dataset='adhd',
                    n_subjects=40, test_size=0.1, raw=False, random_state=None):

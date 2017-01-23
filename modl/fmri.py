@@ -20,8 +20,16 @@ from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
 from sklearn.utils import check_random_state
 
+from modl.input_data import RawMasker
 from .dict_fact import DictFact
 from math import log
+
+warnings.filterwarnings('ignore', module='scipy.ndimage.interpolation',
+                        category=UserWarning,
+                        )
+warnings.filterwarnings('ignore', module='sklearn.cross_validation',
+                        category=DeprecationWarning,
+                        )
 
 
 class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
@@ -146,6 +154,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=2,
                  n_jobs=1, verbose=0,
+                 warmup=True,
                  callback=None):
         BaseDecomposition.__init__(self, n_components=n_components,
                                    random_state=random_state,
@@ -173,9 +182,11 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
         self.learning_rate = learning_rate
 
+        self.warmup = warmup
+
         self.callback = callback
 
-    def fit(self, imgs=None, y=None, confounds=None, raw=False):
+    def fit(self, imgs=None, y=None, confounds=None):
         """Compute the mask and the dictionary maps across subjects
 
         Parameters
@@ -232,16 +243,24 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if isinstance(imgs, str) or not hasattr(imgs, '__iter__'):
             imgs = [imgs]
         raw = isinstance(imgs[0], np.ndarray)
+
         # Base logic for decomposition estimators
         if raw:
             BaseDecomposition.fit(self, None)
+            self.masker_ = RawMasker(**self.masker_.get_params())
         else:
             BaseDecomposition.fit(self, imgs)
 
-        shelving = self.memory is not None and self.memory.cachedir is not None
+        if self.warmup:
+            if self.memory is None or self.memory.cachedir is None:
+                warnings.warn('Estimator will not premask data as no memory'
+                              ' has been provided.')
+
+        shelving = self.warmup
         self.masker_._shelving = shelving
+
         # Avoid cache trashing due to nibabel bad design
-        _ = self.masker_.mask_img_.get_data()
+        # _ = self.masker_.mask_img_.get_data()
 
         self.random_state = check_random_state(self.random_state)
 
@@ -254,21 +273,15 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if self.verbose:
             print("Preloading data")
 
-        if raw:  # Hack
-            data_list = imgs
-            dtype = np.load(imgs[0], mmap_mode='r').dtype
-            n_samples_list = [np.load(img, mmap_mode='r').shape[0] for img in
-                              imgs]
+        if confounds is None:
+            confounds = itertools.repeat(None)
+        if shelving:
+            data_list = self.masker_.transform(imgs, confounds)
+            n_samples_list = [data.get().shape[0] for data in data_list]
+            dtype = data_list[0].get().dtype
         else:
-            if confounds is None:
-                confounds = itertools.repeat(None)
-            if shelving:
-                data_list = self.masker_.transform(imgs, confounds)
-                n_samples_list = [data.get().shape[0] for data in data_list]
-                dtype = data_list[0].get().dtype
-            else:
-                data_list = list(zip(imgs, confounds))
-                n_samples_list, dtype = _lazy_scan(imgs)
+            data_list = list(zip(imgs, confounds))
+            n_samples_list, dtype = _lazy_scan(imgs)
 
         indices_list = np.zeros(len(imgs) + 1, dtype='int')
         indices_list[1:] = np.cumsum(n_samples_list)
@@ -326,14 +339,11 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 data = data_list[record]
                 sample_indices = np.arange(indices_list[record],
                                            indices_list[record + 1])
-                if raw:
-                    data = np.load(data, mmap_mode='r')
+                if shelving:
+                    data = data.get()
                 else:
-                    if shelving:
-                        data = data.get()
-                    else:
-                        img, confound = data
-                        data = self.masker_.transform(img, confound)
+                    img, confound = data
+                    data = self.masker_.transform(img, confound)
                 permutation = self.random_state.permutation(n_records)
                 data = data[permutation]
                 sample_indices = sample_indices[permutation]
@@ -367,23 +377,16 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         """
         if not isinstance(imgs, (list, tuple)):
             imgs = [imgs]
-        raw = isinstance(imgs[0], np.ndarray)
-
+        # In case fit is not finished
         shelving = self.masker_._shelving
 
         score = 0.
-        if raw:
-            data_list = imgs
-        else:
-            if confounds is None:
-                confounds = itertools.repeat(None)
-            data_list = self.masker_.transform(imgs, confounds)  # shelved
+        if confounds is None:
+            confounds = itertools.repeat(None)
+        data_list = self.masker_.transform(imgs, confounds)  # shelved
         for idx, data in enumerate(data_list):
-            if raw:
-                data = np.load(data)
-            else:
-                if shelving:
-                    data = data.get()
+            if shelving:
+                data = data.get()
             score += self.dict_fact_.score(data)
         score /= len(data_list)
         return score
@@ -409,23 +412,16 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         """
         if not isinstance(imgs, (list, tuple)):
             imgs = [imgs]
-        raw = isinstance(imgs[0], np.ndarray)
-
+        # In case fit is not finished
         shelving = self.masker_._shelving
 
         codes = []
-        if raw:
-            data_list = imgs
-        else:
-            if confounds is None:
-                confounds = itertools.repeat(None)
-            data_list = self.masker_.transform(imgs, confounds)  # shelved
+        if confounds is None:
+            confounds = itertools.repeat(None)
+        data_list = self.masker_.transform(imgs, confounds)  # shelved
         for idx, data in enumerate(data_list):
-            if raw:
-                data = np.load(data)
-            else:
-                if shelving:
-                    data = data.get()
+            if shelving:
+                data = data.get()
             codes.append(self.dict_fact_.transform(data))
         return codes
 
@@ -461,7 +457,6 @@ def _lazy_scan(imgs):
     n_samples_list = []
     for img in imgs:
         if isinstance(img, str):
-            warnings.warn('Provide a cachedir for efficiency')
             this_n_samples = nibabel.load(img).shape[3]
         else:
             this_n_samples = img.shape[3]

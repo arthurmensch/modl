@@ -1,5 +1,4 @@
 import itertools
-import json
 
 from nilearn import _utils
 from nilearn._utils.class_inspect import get_params
@@ -7,11 +6,11 @@ from nilearn._utils.compat import izip, _basestring
 from nilearn._utils.niimg_conversions import _iter_check_niimg
 from nilearn.input_data import MultiNiftiMasker
 from nilearn.input_data.nifti_masker import filter_and_mask
-from os.path import join
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 import numpy as np
+import os
 
 
 class RawMasker(MultiNiftiMasker):
@@ -32,7 +31,7 @@ class RawMasker(MultiNiftiMasker):
 
     def fit(self, imgs=None, y=None):
         if self.mask_img is None:
-            raise ValueError("Raw Masker shoudl be provided with a"
+            raise ValueError("Raw Masker should be provided with a"
                              "mask image.")
         else:
             self.mask_img_ = _utils.check_niimg_3d(self.mask_img)
@@ -85,7 +84,10 @@ class RawMasker(MultiNiftiMasker):
 
 
 def load_and_check(imgs, expected_n_voxels):
-    imgs = np.load(imgs)
+    if isinstance(imgs, np.ndarray):
+        return imgs
+    elif isinstance(imgs, str):
+        imgs = np.load(imgs)
     n_samples, n_voxels = imgs.shape
     if n_voxels != expected_n_voxels:
         raise ValueError('imgs has wrong dimension')
@@ -152,38 +154,39 @@ def unmask_dataset(masker, imgs_list, base_dir, dest_dir,
                          ignore=['verbose', 'memory', 'memory_level',
                                  'copy'],
                          shelve=masker._shelving)
+    dest_files = [imgs.replace(base_dir, dest_dir).replace('.nii.gz', '.npy')
+                  for imgs in imgs_list]
+
     data = Parallel(n_jobs=n_jobs, verbose=10)(
         delayed(func)(imgs, masker.mask_img_, params,
-                      base_dir, dest_dir,
+                      dest_file,
                       memory_level=masker.memory_level,
                       memory=masker.memory,
                       verbose=masker.verbose,
                       confounds=cfs,
                       copy=copy,
                       )
-        for imgs, cfs in izip(niimg_iter, confounds))
+        for imgs, cfs, dest_file in izip(niimg_iter, confounds, dest_files))
     mapping = {}
-    for imgs, dest_file in zip(data):
+    for imgs, dest_file in data:
         mapping[imgs] = dest_file
     return mapping
 
 
 def filter_mask_and_save(imgs, mask_img_, parameters,
-                         base_dir, dest_dir,
+                         dest_file,
                          memory_level=0, memory=Memory(cachedir=None),
                          verbose=0,
                          confounds=None,
                          copy=True,
                          ):
-    if not isinstance(imgs, _basestring):
-        raise ValueError('Images should be provided as strings')
     data = filter_and_mask(imgs, mask_img_, parameters,
                            memory_level=memory_level, memory=memory,
                            verbose=verbose,
                            confounds=confounds,
                            copy=copy)
-    dest_file = imgs.replace(base_dir, dest_dir)
-    dest_file = imgs.replace('.nii.gz', '')
-    np.save(data, dest_file)
-    dest_file += '.npy'
+    parentdir = os.path.dirname(dest_file)
+    if not os.path.exists(parentdir):
+        os.makedirs(parentdir)
+    np.save(dest_file, data)
     return imgs, dest_file

@@ -1,4 +1,3 @@
-from matplotlib import pyplot as plt
 from nilearn._utils import check_niimg
 from nilearn.image import index_img
 from nilearn.plotting import plot_prob_atlas, plot_stat_map

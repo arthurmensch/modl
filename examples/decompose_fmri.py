@@ -1,64 +1,17 @@
 # Author: Arthur Mensch
 # License: BSD
-# Adapted from nilearn example
-
-# Load ADDH
 import time
+import warnings
 
 import matplotlib.pyplot as plt
-from sacred import Experiment
-from sacred import Ingredient
 from sklearn.externals.joblib import Memory
+from sklearn.model_selection import train_test_split
 
-from modl.datasets.fmri import load_rest_func, load_atlas_init
+from modl.datasets import fetch_adhd
+from modl.datasets.fmri import load_atlas_init
 from modl.fmri import fMRIDictFact
 from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
-
-data_ing = Ingredient('data')
-init_ing = Ingredient('init')
-
-decompose_ex = Experiment('decompose_fmri', ingredients=[data_ing, init_ing])
-
-
-@init_ing.config
-def config():
-    n_components = 20
-    source = None
-
-
-@data_ing.config
-def config():
-    dataset = 'adhd'
-    raw = False
-    n_subjects = 40
-    test_size = 2
-
-
-@decompose_ex.config
-def config():
-    batch_size = 200
-    learning_rate = 0.92
-    method = 'masked'
-    reduction = 10
-    alpha = 1e-3
-    n_epochs = 3
-    verbose = 15
-    n_jobs = 3
-    smoothing_fwhm = 6
-
-
-@data_ing.capture
-def load_data(dataset, n_subjects, test_size, raw, _seed):
-    return load_rest_func(dataset, n_subjects=n_subjects,
-                          test_size=test_size,
-                          raw=raw,
-                          random_state=_seed)
-
-
-@init_ing.capture
-def load_init(source, n_components):
-    return load_atlas_init(source, n_components=n_components)
 
 
 class rfMRIDictionaryScorer:
@@ -72,7 +25,8 @@ class rfMRIDictionaryScorer:
 
     def __call__(self, dict_fact):
         test_time = time.perf_counter()
-        score = dict_fact.score(self.test_data)
+        test_imgs, test_confounds = zip(*self.test_data)
+        score = dict_fact.score(test_imgs, confounds=test_confounds)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
         self.score.append(score)
@@ -80,27 +34,29 @@ class rfMRIDictionaryScorer:
         self.iter.append(dict_fact.n_iter_)
 
 
-@decompose_ex.automain
-def decompose_run(smoothing_fwhm,
-                  method,
-                  batch_size,
-                  learning_rate,
-                  verbose,
-                  reduction,
-                  alpha,
-                  n_jobs,
-                  n_epochs,
-                  init,
-                  _seed,
-                  ):
-    n_components = init['n_components']
-    dict_init = load_init()
-    train_data, test_data, mask = load_data()
+def main():
+    n_components = 20
+    batch_size = 200
+    learning_rate = 0.92
+    method = 'masked'
+    reduction = 10
+    alpha = 1e-3
+    n_epochs = 1
+    verbose = 15
+    n_jobs = 2
+    smoothing_fwhm = 6
 
+    dict_init = load_atlas_init('smith', n_components=n_components)
+
+    dataset = fetch_adhd(n_subjects=4)
+    data = list(zip(dataset.func, dataset.confounds))
+    train_data, test_data = train_test_split(data, test_size=1, random_state=0)
+    train_imgs, train_confounds = zip(*train_data)
+    mask = dataset.mask
     memory = Memory(cachedir=get_cache_dirs()[0],
-                    verbose=2)
+                    verbose=12)
 
-    cb = rfMRIDictionaryScorer(test_data)
+    cb = None  # rfMRIDictionaryScorer(test_data)
     dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                              method=method,
                              mask=mask,
@@ -109,7 +65,7 @@ def decompose_run(smoothing_fwhm,
                              verbose=verbose,
                              n_epochs=n_epochs,
                              n_jobs=n_jobs,
-                             random_state=_seed,
+                             random_state=1,
                              n_components=n_components,
                              dict_init=dict_init,
                              learning_rate=learning_rate,
@@ -117,12 +73,16 @@ def decompose_run(smoothing_fwhm,
                              reduction=reduction,
                              alpha=alpha,
                              callback=cb,
+                             warmup=True,
                              )
-    dict_fact.fit(train_data)
+    dict_fact.fit(train_imgs, train_confounds)
 
     dict_fact.components_.to_filename('components.nii.gz')
     fig = plt.figure()
     display_maps(fig, dict_fact.components_)
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.time, cb.score, marker='o')
+    # fig, ax = plt.subplots(1, 1)
+    # ax.plot(cb.time, cb.score, marker='o')
     plt.show()
+
+if __name__ == '__main__':
+    main()

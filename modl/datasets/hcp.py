@@ -198,37 +198,3 @@ def fetch_hcp_rest(data_dir=None, n_subjects=500, mask_url=None, resume=True):
                'description': "The Human Connectome Project resting-state "
                               "data."}
     return Bunch(**results)
-
-
-def get_fmri_path(subject,
-                       data_dir=None):
-    """Utility to download from s3"""
-    subject = str(subject)
-    data_dir = get_data_dirs(data_dir)[0]
-    out = []
-    subject_dir = join('HCP_900', subject, 'MNINonLinear', 'Results')
-    for run_index in [1, 2]:
-        for run_direction in ['LR', 'RL']:
-            filename = 'rfMRI_REST%i_%s' % (run_index, run_direction)
-            rest_dir = join(subject_dir, filename)
-            rest_func = join(rest_dir, filename, filename + '.nii.gz')
-            rest_confounds = ['Movement_AbsoluteRMS_mean.txt',
-                              'Movement_AbsoluteRMS.txt',
-                              'Movement_Regressors_dt.txt',
-                              'Movement_Regressors.txt',
-                              'Movement_RelativeRMS_mean.txt',
-                              'Movement_RelativeRMS.txt']
-            rest_confounds = [join(rest_dir, confound)
-                              for confound in rest_confounds]
-            out.append(rest_func)
-            out.append(rest_confounds)
-    for i, task in enumerate(tasks):
-        task_name = task[0]
-        contrast_idx = task[1]
-        this_func = join(subject_dir, "tfMRI_%s/tfMRI_%s_hp200_s4_"
-                                      "level2vol.feat/cope%i.feat/"
-                                      "stats/zstat1.nii.gz" % (
-                             task_name, task_name,
-                             contrast_idx))
-        out.append(this_func)
-    return out
