@@ -1,7 +1,6 @@
 # Author: Arthur Mensch
 # License: BSD
 import time
-import warnings
 
 import matplotlib.pyplot as plt
 from sklearn.externals.joblib import Memory
@@ -25,7 +24,7 @@ class rfMRIDictionaryScorer:
 
     def __call__(self, dict_fact):
         test_time = time.perf_counter()
-        test_imgs, test_confounds = zip(*self.test_data)
+        test_imgs, test_confounds = zip(*self.teytst_data)
         score = dict_fact.score(test_imgs, confounds=test_confounds)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
@@ -43,18 +42,19 @@ def main():
     alpha = 1e-3
     n_epochs = 1
     verbose = 15
-    n_jobs = 2
+    n_jobs = 3
+    warmup = True
     smoothing_fwhm = 6
 
     dict_init = load_atlas_init('smith', n_components=n_components)
 
-    dataset = fetch_adhd(n_subjects=4)
+    dataset = fetch_adhd(n_subjects=40)
     data = list(zip(dataset.func, dataset.confounds))
     train_data, test_data = train_test_split(data, test_size=1, random_state=0)
     train_imgs, train_confounds = zip(*train_data)
     mask = dataset.mask
     memory = Memory(cachedir=get_cache_dirs()[0],
-                    verbose=12)
+                    verbose=2)
 
     cb = None  # rfMRIDictionaryScorer(test_data)
     dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
@@ -73,7 +73,7 @@ def main():
                              reduction=reduction,
                              alpha=alpha,
                              callback=cb,
-                             warmup=True,
+                             warmup=warmup,
                              )
     dict_fact.fit(train_imgs, train_confounds)
 

@@ -10,6 +10,10 @@ from __future__ import division
 import itertools
 import warnings
 
+from modl.utils.io import monkey_patch_nifti_image
+
+monkey_patch_nifti_image(safe=False)
+
 import nibabel
 import numpy as np
 from nilearn._utils import check_niimg
@@ -20,7 +24,6 @@ from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
 from sklearn.utils import check_random_state
 
-from modl.input_data import RawMasker
 from .dict_fact import DictFact
 from math import log
 
@@ -30,7 +33,6 @@ warnings.filterwarnings('ignore', module='scipy.ndimage.interpolation',
 warnings.filterwarnings('ignore', module='sklearn.cross_validation',
                         category=DeprecationWarning,
                         )
-
 
 class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
     """Perform a map learning algorithm based on component sparsity,
@@ -242,14 +244,8 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
         if isinstance(imgs, str) or not hasattr(imgs, '__iter__'):
             imgs = [imgs]
-        raw = isinstance(imgs[0], np.ndarray)
-
         # Base logic for decomposition estimators
-        if raw:
-            BaseDecomposition.fit(self, None)
-            self.masker_ = RawMasker(**self.masker_.get_params())
-        else:
-            BaseDecomposition.fit(self, imgs)
+        BaseDecomposition.fit(self, imgs)
 
         if self.warmup:
             if self.memory is None or self.memory.cachedir is None:
@@ -258,9 +254,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
         shelving = self.warmup
         self.masker_._shelving = shelving
-
-        # Avoid cache trashing due to nibabel bad design
-        # _ = self.masker_.mask_img_.get_data()
 
         self.random_state = check_random_state(self.random_state)
 
@@ -343,6 +336,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                     data = data.get()
                 else:
                     img, confound = data
+                    img = check_niimg(img)
                     data = self.masker_.transform(img, confound)
                 permutation = self.random_state.permutation(n_records)
                 data = data[permutation]
