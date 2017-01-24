@@ -46,13 +46,13 @@ def main():
     alpha = 1e-3
     n_epochs = 1
     verbose = 15
-    n_jobs = 1
+    n_jobs = 4
     warmup = True
     smoothing_fwhm = 6
 
     dict_init = load_atlas_init('smith', n_components=n_components)
 
-    dataset = fetch_adhd(n_subjects=10)
+    dataset = fetch_adhd(n_subjects=40)
     data = list(zip(dataset.func, dataset.confounds))
     train_data, test_data = train_test_split(data, test_size=1, random_state=0)
     train_imgs, train_confounds = zip(*train_data)

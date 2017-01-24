@@ -1,5 +1,4 @@
 import os
-import sys
 
 import nibabel
 import numpy as np
@@ -18,29 +17,22 @@ def load(filename, **kwargs):
 
 class Nifti1Image(NibabelNifti1Image):
     def __getstate__(self):
-        # if self.get_filename() is not None:
-        #     filename = self.get_filename()
-        #     stat = os.stat(filename)
-        #     last_modified = stat.st_mtime
-        #     state = {'filename': filename,
-        #              'last_modified': last_modified}
-        # else:
         state = {'dataobj': np.asarray(self._dataobj),
                  'header': self.header,
+                 'filename': self.get_filename(),
                  'affine': self.affine,
                  'extra': self.extra}
         return state
 
     def __setstate__(self, state):
-        # if 'filename' in state:
-        #     print('unpickling %s' % state['filename'])
-        #     new_self = Nifti1Image.from_filename(state['filename'])
-        # else:
         new_self = Nifti1Image(dataobj=state['dataobj'],
                                affine=state['affine'],
                                header=state['header'],
-                               extra=state['extra'])
+                               extra=state['extra'],
+                               )
         self.__dict__ = new_self.__dict__
+        if state['filename'] is not None:
+            self.set_filename(state['filename'])
 
 
 class NibabelHasher(NumpyHasher):
@@ -62,11 +54,11 @@ class NibabelHasher(NumpyHasher):
     def save(self, obj):
         if isinstance(obj, Nifti1Image):
             filename = obj.get_filename()
-            print('filename %s' % filename)
             if filename is not None:
                 stat = os.stat(filename)
                 last_modified = stat.st_mtime
-                obj = (Nifti1Image, ('HASHED', str(filename)))
+                klass = obj.__class__
+                obj = (klass, ('HASHED', str(filename), last_modified))
         NumpyHasher.save(self, obj)
 
 
@@ -88,10 +80,10 @@ def our_hash(obj, hash_name='md5', coerce_mmap=False):
 
 
 def our_get_argument_hash(self, *args, **kwargs):
-    print('our argument hash')
     return our_hash(filter_args(self.func, self.ignore,
                                 args, kwargs),
                     coerce_mmap=(self.mmap_mode is not None))
+
 
 def monkey_patch_nifti_image():
     nibabel.load = load
