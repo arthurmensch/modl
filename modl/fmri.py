@@ -10,10 +10,6 @@ from __future__ import division
 import itertools
 import warnings
 
-from modl.utils.io import monkey_patch_nifti_image
-
-monkey_patch_nifti_image(safe=False)
-
 import nibabel
 import numpy as np
 from nilearn._utils import check_niimg
@@ -33,6 +29,7 @@ warnings.filterwarnings('ignore', module='scipy.ndimage.interpolation',
 warnings.filterwarnings('ignore', module='sklearn.cross_validation',
                         category=DeprecationWarning,
                         )
+
 
 class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
     """Perform a map learning algorithm based on component sparsity,
