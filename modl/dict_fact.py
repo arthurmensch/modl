@@ -1,8 +1,10 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from math import log, ceil
 from tempfile import TemporaryFile
 
 import atexit
+
+import functools
 import numpy as np
 import scipy
 from .utils.randomkit import RandomState
@@ -329,10 +331,10 @@ class DictFact(BaseEstimator):
         self.random_state = check_random_state(self.random_state)
         if X is None:
             self.components_ = np.empty((self.n_components,
-                                                       n_features),
+                                         n_features),
                                         dtype=dtype)
             self.components_[:, :] = self.random_state.randn(self.n_components,
-                                                       n_features)
+                                                             n_features)
         else:
             random_idx = self.random_state.permutation(this_n_samples)[
                          :self.n_components]
@@ -394,14 +396,16 @@ class DictFact(BaseEstimator):
         code = np.ones((n_samples, self.n_components), dtype=dtype)
         sample_indices = np.arange(n_samples)
         if self.n_threads > 1:
+            pool = ProcessPoolExecutor(self.n_threads)
             size_job = ceil(n_samples / self.n_threads)
             batches = list(gen_batches(n_samples, size_job))
-            par_func = lambda batch: _enet_regression_single_gram(
-                G, Dx[batch], X[batch], code,
-                get_sub_slice(sample_indices, batch),
-                self.code_l1_ratio, self.code_alpha, self.code_pos,
-                self.tol, self.max_iter)
-            res = self.pool_.map(par_func, batches)
+
+            par_func = functools.partial(_enet_regression_single_gram_batch,
+                                         Dx, G, X, code, sample_indices,
+                                         self.code_l1_ratio, self.code_alpha,
+                                         self.code_pos, self.tol,
+                                         self.max_iter)
+            res = pool.map(par_func, batches)
             _ = list(res)
         else:
             _enet_regression_single_gram(
@@ -438,7 +442,7 @@ class DictFact(BaseEstimator):
         """Fit a single batch X: compute code, update statistics, update the
         dictionary"""
         if (self.verbose and self.verbose_iter_
-                and self.n_iter_ >= self.verbose_iter_[0]):
+            and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
             self._callback()
@@ -540,7 +544,7 @@ class DictFact(BaseEstimator):
                         G_average[batch],
                         G,
                         w_sample[batch],
-                        )
+                    )
                     res = self.pool_.map(par_func, batches)
                     _ = list(res)
                 else:
@@ -634,3 +638,13 @@ class DictFact(BaseEstimator):
          interrupted/completed"""
         if hasattr(self, 'G_average_mmap_'):
             self.G_average_mmap_.close()
+
+
+def _enet_regression_single_gram_batch(Dx, G, X, code, sample_indices,
+                                       code_l1_ratio, code_alpha, code_pos,
+                                       tol, max_iter, batch):
+    _enet_regression_single_gram(
+        G, Dx[batch], X[batch], code,
+        get_sub_slice(sample_indices, batch),
+        code_l1_ratio, code_alpha, code_pos,
+        tol, max_iter)

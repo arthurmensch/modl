@@ -24,7 +24,7 @@ def fetch_hcp_behavioral(data_dir=None, release='HCP900'):
     df_unrestricted.set_index('Subject', inplace=True)
     df_restricted.set_index('Subject', inplace=True)
     df = df_unrestricted.join(df_restricted, how='outer')
-    df.sort_index(ascending=True)
+    df.sort_index(ascending=True, inplace=True)
     return df
 
 
@@ -197,7 +197,7 @@ def fetch_hcp_task(data_dir=None, release='HCP900',
                          ' got %s' % release)
     z_maps = pd.DataFrame(res)
     z_maps.set_index(['subject', 'task', 'contrast', 'direction'], inplace=True)
-    z_maps.sort_index(ascending=True)
+    z_maps.sort_index(ascending=True, inplace=True)
     return z_maps
 
 
@@ -244,7 +244,7 @@ def fetch_hcp_rest(data_dir=None, release='HCP900', n_subjects=500):
 
     rest = pd.DataFrame(res)
     rest.set_index(['subject', 'series', 'direction'], inplace=True)
-    rest.sort_index(ascending=True)
+    rest.sort_index(ascending=True, inplace=True)
     return rest
 
 

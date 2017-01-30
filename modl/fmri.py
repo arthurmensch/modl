@@ -18,6 +18,8 @@ from nilearn.decomposition.base import BaseDecomposition
 from nilearn.input_data import NiftiMasker
 from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
+from sklearn.externals.joblib import Parallel
+from sklearn.externals.joblib import delayed
 from sklearn.utils import check_random_state
 
 from .dict_fact import DictFact
