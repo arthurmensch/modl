@@ -1,14 +1,17 @@
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from math import log, ceil
 from tempfile import TemporaryFile
 
 import atexit
 
-import functools
 import numpy as np
 import scipy
+from sklearn.externals.joblib import Parallel
+from sklearn.externals.joblib import delayed
+from sklearn.utils.validation import check_is_fitted
+
 from .utils.randomkit import RandomState
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils import check_array, check_random_state, gen_batches
 
 from .utils import get_sub_slice
@@ -20,28 +23,109 @@ from .utils.randomkit import Sampler
 MAX_INT = np.iinfo(np.int64).max
 
 
-class DictFact(BaseEstimator):
+class CodingMixin(TransformerMixin):
+    def _set_coding_params(self,
+                           code_alpha=1,
+                           code_l1_ratio=1,
+                           tol=1e-2,
+                           max_iter=100,
+                           comp_l1_ratio=0,
+                           code_pos=False,
+                           comp_pos=False,
+                           random_state=None,
+                           n_threads=1
+                           ):
+        self.comp_l1_ratio = comp_l1_ratio
+        self.code_l1_ratio = code_l1_ratio
+        self.code_alpha = code_alpha
+        self.comp_pos = comp_pos
+        self.code_pos = code_pos
+        self.random_state = random_state
+        self.tol = tol
+        self.max_iter = max_iter
+
+        self.n_threads = n_threads
+
+    def transform(self, X):
+        """
+        Compute the codes associated to input matrix X, decomposing it onto
+        the dictionary
+
+        Parameters
+        ----------
+        X: ndarray, shape = (n_samples, n_features)
+
+        Returns
+        -------
+        code: ndarray, shape = (n_samples, n_components)
+        """
+        check_is_fitted(self, 'components_')
+
+        dtype = self.components_.dtype
+        X = check_array(X, order='C', dtype=dtype.type)
+        n_samples, n_features = X.shape
+        if not hasattr(self, 'G_agg') or self.G_agg != 'full':
+            G = self.components_.dot(self.components_.T)
+        else:
+            G = self.G_
+        Dx = X.dot(self.components_.T)
+        code = np.ones((n_samples, self.n_components), dtype=dtype)
+        sample_indices = np.arange(n_samples)
+        size_job = ceil(n_samples / self.n_threads)
+        batches = list(gen_batches(n_samples, size_job))
+
+        Parallel(n_jobs=self.n_threads)(delayed(_enet_regression_single_gram)(
+            G, Dx[batch], X[batch], code,
+            get_sub_slice(sample_indices, batch),
+            self.code_l1_ratio, self.code_alpha, self.code_pos,
+            self.tol, self.max_iter) for batch in batches)
+        return code
+
+    def score(self, X):
+        """
+        Objective function value on test data X
+
+        Parameters
+        ----------
+        X: ndarray, shape=(n_samples, n_features)
+            Input matrix
+        Returns
+        -------
+        score: float, positive
+        """
+        check_is_fitted(self, 'components_')
+
+        code = self.transform(X)
+        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
+        norm1_code = np.sum(np.abs(code))
+        norm2_code = np.sum(code ** 2)
+        regul = self.code_alpha * (norm1_code * self.code_l1_ratio
+                                   + (1 - self.code_l1_ratio) * norm2_code / 2)
+        return (loss + regul) / X.shape[0]
+
+
+class DictFact(BaseEstimator, CodingMixin):
     def __init__(self,
                  reduction=1,
                  learning_rate=1,
                  sample_learning_rate=0.76,
                  Dx_agg='masked',
                  G_agg='masked',
+                 dict_init=None,
                  code_alpha=1,
                  code_l1_ratio=1,
-                 dict_init=None,
-                 n_epochs=1,
-                 n_components=10,
-                 batch_size=10,
+                 comp_l1_ratio=0,
+                 tol=1e-2,
+                 max_iter=100,
                  code_pos=False,
                  comp_pos=False,
                  random_state=None,
-                 comp_l1_ratio=0,
+                 n_epochs=1,
+                 n_components=10,
+                 batch_size=10,
                  verbose=0,
                  callback=None,
                  n_threads=1,
-                 tol=1e-2,
-                 max_iter=100,
                  rand_size=True,
                  replacement=True,
                  ):
@@ -148,27 +232,27 @@ class DictFact(BaseEstimator):
         self.sample_learning_rate = sample_learning_rate
         self.Dx_agg = Dx_agg
         self.G_agg = G_agg
-        self.code_l1_ratio = code_l1_ratio
-        self.code_alpha = code_alpha
         self.reduction = reduction
-        self.comp_l1_ratio = comp_l1_ratio
 
-        self.comp_pos = comp_pos
-        self.code_pos = code_pos
+        self.dict_init = dict_init
+
+        self._set_coding_params(comp_l1_ratio=comp_l1_ratio,
+                                code_l1_ratio=code_l1_ratio,
+                                code_alpha=code_alpha,
+                                comp_pos=comp_pos,
+                                code_pos=code_pos,
+                                random_state=random_state,
+                                tol=tol,
+                                max_iter=max_iter,
+                                n_threads=n_threads)
 
         self.n_components = n_components
         self.n_epochs = n_epochs
-
-        self.dict_init = dict_init
-        self.random_state = random_state
 
         self.verbose = verbose
         self.callback = callback
 
         self.n_threads = n_threads
-
-        self.tol = tol
-        self.max_iter = max_iter
 
         self.rand_size = rand_size
         self.replacement = replacement
@@ -371,68 +455,6 @@ class DictFact(BaseEstimator):
         if self.n_threads > 1:
             self.pool_ = ThreadPoolExecutor(self.n_threads)
         return self
-
-    def transform(self, X):
-        """
-        Compute the codes associated to input matrix X, decomposing it onto
-        the dictionary
-
-        Parameters
-        ----------
-        X: ndarray, shape = (n_samples, n_features)
-
-        Returns
-        -------
-        code: ndarray, shape = (n_samples, n_components)
-        """
-        dtype = self.components_.dtype
-        X = check_array(X, order='C', dtype=dtype.type)
-        n_samples, n_features = X.shape
-        if self.G_agg != 'full':
-            G = self.components_.dot(self.components_.T)
-        else:
-            G = self.G_
-        Dx = X.dot(self.components_.T)
-        code = np.ones((n_samples, self.n_components), dtype=dtype)
-        sample_indices = np.arange(n_samples)
-        if self.n_threads > 1:
-            pool = ProcessPoolExecutor(self.n_threads)
-            size_job = ceil(n_samples / self.n_threads)
-            batches = list(gen_batches(n_samples, size_job))
-
-            par_func = functools.partial(_enet_regression_single_gram_batch,
-                                         Dx, G, X, code, sample_indices,
-                                         self.code_l1_ratio, self.code_alpha,
-                                         self.code_pos, self.tol,
-                                         self.max_iter)
-            res = pool.map(par_func, batches)
-            _ = list(res)
-        else:
-            _enet_regression_single_gram(
-                G, Dx, X, code, sample_indices,
-                self.code_l1_ratio, self.code_alpha,
-                self.code_pos, self.tol, self.max_iter)
-        return code
-
-    def score(self, X):
-        """
-        Objective function value on test data X
-
-        Parameters
-        ----------
-        X: ndarray, shape=(n_samples, n_features)
-            Input matrix
-        Returns
-        -------
-        score: float, positive
-        """
-        code = self.transform(X)
-        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
-        norm1_code = np.sum(np.abs(code))
-        norm2_code = np.sum(code ** 2)
-        regul = self.code_alpha * (norm1_code * self.code_l1_ratio
-                                   + (1 - self.code_l1_ratio) * norm2_code / 2)
-        return (loss + regul) / X.shape[0]
 
     def _callback(self):
         if self.callback is not None:
@@ -640,11 +662,28 @@ class DictFact(BaseEstimator):
             self.G_average_mmap_.close()
 
 
-def _enet_regression_single_gram_batch(Dx, G, X, code, sample_indices,
-                                       code_l1_ratio, code_alpha, code_pos,
-                                       tol, max_iter, batch):
-    _enet_regression_single_gram(
-        G, Dx[batch], X[batch], code,
-        get_sub_slice(sample_indices, batch),
-        code_l1_ratio, code_alpha, code_pos,
-        tol, max_iter)
+class Coder(CodingMixin, BaseEstimator):
+    def __init__(self, dictionary,
+                 code_alpha=1,
+                 code_l1_ratio=1,
+                 tol=1e-2,
+                 max_iter=100,
+                 comp_l1_ratio=0,
+                 code_pos=False,
+                 comp_pos=False,
+                 random_state=None,
+                 n_threads=1
+                 ):
+        self._set_coding_params(comp_l1_ratio=comp_l1_ratio,
+                                code_l1_ratio=code_l1_ratio,
+                                code_alpha=code_alpha,
+                                comp_pos=comp_pos,
+                                code_pos=code_pos,
+                                random_state=random_state,
+                                tol=tol,
+                                max_iter=max_iter,
+                                n_threads=n_threads)
+        self.components_ = dictionary
+
+    def fit(self, X):
+        return self

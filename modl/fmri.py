@@ -155,7 +155,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=2,
                  n_jobs=1, verbose=0,
-                 warmup=True,
+                 warmup=False,
                  callback=None):
         BaseDecomposition.__init__(self, n_components=n_components,
                                    random_state=random_state,
@@ -237,8 +237,9 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
             if self.warmup:
                 if self.memory is None or self.memory.cachedir is None:
+                    self.warmup = False
                     warnings.warn(
-                        'Estimator will not premask data as no memory'
+                        'warmup has been set to False as no memory'
                         ' has been provided.')
 
             shelving = self.warmup
@@ -351,16 +352,15 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             imgs = [imgs]
         # In case fit is not finished
         shelving = self.masker_._shelving
-
+        self.masker_._shelving = False
         score = 0.
         if confounds is None:
             confounds = itertools.repeat(None)
-        data_list = self.masker_.transform(imgs, confounds)  # shelved
-        for idx, data in enumerate(data_list):
-            if shelving:
-                data = data.get()
+        for img, confound in zip(imgs, confounds):
+            data = self.masker_.transform(img, confound)
             score += self.dict_fact_.score(data)
-        score /= len(data_list)
+        score /= len(imgs)
+        self.masker_._shelving = shelving
         return score
 
     def transform(self, imgs, confounds=None):
@@ -386,15 +386,15 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             imgs = [imgs]
         # In case fit is not finished
         shelving = self.masker_._shelving
-
+        self.masker_._shelving = False
         codes = []
         if confounds is None:
             confounds = itertools.repeat(None)
-        data_list = self.masker_.transform(imgs, confounds)  # shelved
-        for idx, data in enumerate(data_list):
-            if shelving:
-                data = data.get()
+        for img, confound in zip(imgs, confounds):
+            data = self.masker_.transform(img, confound)
             codes.append(self.dict_fact_.transform(data))
+        self.masker_._shelving = shelving
+
         return codes
 
     @property
