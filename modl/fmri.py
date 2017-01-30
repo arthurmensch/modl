@@ -203,54 +203,11 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         -------
         self
         """
-        if imgs is None or self.n_epochs == 0:
-            # Will raise error is mask has not been provided
-            if self.mask is None:
-                raise ValueError('Please provide a mask if not'
-                                 ' providing data.')
-            BaseDecomposition.fit(self, None)
-            if self.dict_init is not None:
-                if self.verbose:
-                    print("Preloading initial dictionary")
-                masker = NiftiMasker(smoothing_fwhm=0,
-                                     mask_img=self.mask_img_).fit()
-                dict_init = masker.transform(self.dict_init)
-                if self.n_components is not None:
-                    dict_init = dict_init[:self.n_components]
-                n_components, n_voxels = dict_init.shape
-                dtype = dict_init.dtype
-                n_samples = 0
-                self.dict_fact_ = DictFact(n_components=n_components,
-                                           code_alpha=self.alpha,
-                                           code_l1_ratio=0,
-                                           comp_l1_ratio=1,
-                                           reduction=self.reduction,
-                                           Dx_agg='masked',
-                                           G_agg='masked',
-                                           learning_rate=self.learning_rate,
-                                           batch_size=self.batch_size,
-                                           random_state=self.random_state,
-                                           n_threads=self.n_jobs,
-                                           verbose=0)
-                self.dict_fact_.prepare(n_samples=n_samples,
-                                        n_features=n_voxels,
-                                        X=dict_init, dtype=dtype)
-                return self
-            else:
-                raise ValueError
-
-        if isinstance(imgs, str) or not hasattr(imgs, '__iter__'):
+        if imgs is not None and (isinstance(imgs, str)
+                                 or not hasattr(imgs, '__iter__')):
             imgs = [imgs]
         # Base logic for decomposition estimators
         BaseDecomposition.fit(self, imgs)
-
-        if self.warmup:
-            if self.memory is None or self.memory.cachedir is None:
-                warnings.warn('Estimator will not premask data as no memory'
-                              ' has been provided.')
-
-        shelving = self.warmup
-        self.masker_._shelving = shelving
 
         self.random_state = check_random_state(self.random_state)
 
@@ -258,38 +215,59 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         G_agg = method['G_agg']
         Dx_agg = method['Dx_agg']
 
-        n_records = len(imgs)
-
-        if self.verbose:
-            print("Preloading data")
-
-        if confounds is None:
-            confounds = itertools.repeat(None)
-        if shelving:
-            data_list = self.masker_.transform(imgs, confounds)
-            n_samples_list = [data.get().shape[0] for data in data_list]
-            dtype = data_list[0].get().dtype
-        else:
-            data_list = list(zip(imgs, confounds))
-            n_samples_list, dtype = _lazy_scan(imgs)
-
-        indices_list = np.zeros(len(imgs) + 1, dtype='int')
-        indices_list[1:] = np.cumsum(n_samples_list)
-        n_samples = indices_list[-1] + 1
-
-        n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
         if self.dict_init is not None:
             if self.verbose:
-                print("Preloading initial dictionary")
+                print("Loading initial dictionary")
             masker = NiftiMasker(smoothing_fwhm=0,
                                  mask_img=self.mask_img_).fit()
             dict_init = masker.transform(self.dict_init)
             if self.n_components is not None:
                 dict_init = dict_init[:self.n_components]
             n_components = dict_init.shape[0]
+            if self.verbose:
+                print("Done loading initial dictionary")
         else:
             dict_init = None
             n_components = self.n_components
+
+        if imgs is not None:
+            n_records = len(imgs)
+
+            if self.warmup:
+                if self.memory is None or self.memory.cachedir is None:
+                    warnings.warn(
+                        'Estimator will not premask data as no memory'
+                        ' has been provided.')
+
+            shelving = self.warmup
+            self.masker_._shelving = shelving
+
+            if self.verbose:
+                print("Preloading data")
+
+            if confounds is None:
+                confounds = itertools.repeat(None)
+            if shelving:
+                data_list = self.masker_.transform(imgs, confounds)
+                n_samples_list = [data.get().shape[0] for data in data_list]
+                dtype = data_list[0].get().dtype
+            else:
+                data_list = list(zip(imgs, confounds))
+                n_samples_list, dtype = _lazy_scan(imgs)
+
+            indices_list = np.zeros(len(imgs) + 1, dtype='int')
+            indices_list[1:] = np.cumsum(n_samples_list)
+            n_samples = indices_list[-1] + 1
+
+            n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
+
+            if self.verbose:
+                print("Done preloading data")
+        else:
+            n_samples = 0
+            n_voxels = dict_init.shape[1]
+            dtype = dict_init.dtype
+            n_records = 0
 
         if self.verbose:
             print("Learning decomposition")
@@ -308,40 +286,41 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    verbose=0)
         self.dict_fact_.prepare(n_samples=n_samples, n_features=n_voxels,
                                 X=dict_init, dtype=dtype)
-
-        if self.verbose:
-            log_lim = log(n_records * self.n_epochs, 10)
-            self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
-                                             base=10) - 1
-            self.verbose_iter_ = self.verbose_iter_.tolist()
-        current_n_records = 0
-        for i in range(self.n_epochs):
+        if n_records > 0:
             if self.verbose:
-                print('Epoch %i' % (i + 1))
-            record_list = self.random_state.permutation(n_records)
-            for record in record_list:
-                if (self.verbose and self.verbose_iter_ and
-                        current_n_records >= self.verbose_iter_[0]):
-                    print('Record %i' % current_n_records)
-                    if self.callback is not None:
-                        self.callback(self)
-                    self.verbose_iter_ = self.verbose_iter_[1:]
-                data = data_list[record]
-                sample_indices = np.arange(indices_list[record],
-                                           indices_list[record + 1])
-                if shelving:
-                    data = data.get()
-                else:
-                    img, confound = data
-                    img = check_niimg(img)
-                    data = self.masker_.transform(img, confound)
-                permutation = self.random_state.permutation(n_records)
-                data = data[permutation]
-                sample_indices = sample_indices[permutation]
-                self.dict_fact_.partial_fit(data,
-                                            sample_indices=sample_indices)
-                current_n_records += 1
-
+                log_lim = log(n_records * self.n_epochs, 10)
+                self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
+                                                 base=10) - 1
+                self.verbose_iter_ = self.verbose_iter_.tolist()
+            current_n_records = 0
+            for i in range(self.n_epochs):
+                if self.verbose:
+                    print('Epoch %i' % (i + 1))
+                record_list = self.random_state.permutation(n_records)
+                for record in record_list:
+                    if (self.verbose and self.verbose_iter_ and
+                            current_n_records >= self.verbose_iter_[0]):
+                        print('Record %i' % current_n_records)
+                        if self.callback is not None:
+                            self.callback(self)
+                        self.verbose_iter_ = self.verbose_iter_[1:]
+                    data = data_list[record]
+                    sample_indices = np.arange(indices_list[record],
+                                               indices_list[record + 1])
+                    if shelving:
+                        data = data.get()
+                    else:
+                        img, confound = data
+                        img = check_niimg(img)
+                        data = self.masker_.transform(img, confound)
+                    permutation = self.random_state.permutation(n_records)
+                    data = data[permutation]
+                    sample_indices = sample_indices[permutation]
+                    self.dict_fact_.partial_fit(data,
+                                                sample_indices=sample_indices)
+                    current_n_records += 1
+        if self.verbose:
+            print("Done learning decomposition")
         return self
 
     def score(self, imgs, confounds=None):
@@ -366,7 +345,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         scores: float
             Average score on all input data
         """
-        if not isinstance(imgs, (list, tuple)):
+        if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
             imgs = [imgs]
         # In case fit is not finished
         shelving = self.masker_._shelving
@@ -401,7 +380,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         codes, list of ndarray, shape = n_images * (n_samples, n_components)
             Loadings for each of the images, and each of the time steps
         """
-        if not isinstance(imgs, (list, tuple)):
+        if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
             imgs = [imgs]
         # In case fit is not finished
         shelving = self.masker_._shelving

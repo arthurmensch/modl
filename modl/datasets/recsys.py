@@ -7,7 +7,7 @@ import joblib
 import sklearn.externals.joblib as skjoblib
 from modl.utils.recsys.cross_validation import train_test_split
 
-from modl.utils.system import get_data_dirs
+from modl.datasets import get_data_dirs
 
 
 def load_movielens(version):

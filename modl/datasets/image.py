@@ -1,5 +1,5 @@
-from joblib import Memory
-from modl.utils.system import get_data_dirs
+from sklearn.externals.joblib import Memory
+from modl.datasets import get_data_dirs
 from os.path import join
 
 from scipy.misc import face

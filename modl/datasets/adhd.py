@@ -1,6 +1,6 @@
 from os.path import join
 
-from modl.utils.system import get_data_dirs
+from modl.datasets import get_data_dirs
 from nilearn.datasets.utils import _fetch_file
 from sklearn.datasets.base import Bunch
 

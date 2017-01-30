@@ -5,7 +5,7 @@ from os.path import join
 from nilearn.datasets import fetch_atlas_smith_2009
 from sklearn.model_selection import train_test_split
 
-from modl.utils.system import get_data_dirs
+from modl.datasets import get_data_dirs
 from . import fetch_hcp_rest, fetch_adhd
 
 

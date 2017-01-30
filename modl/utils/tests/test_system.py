@@ -6,7 +6,8 @@ from tempfile import mkdtemp
 import pytest
 from numpy.testing import assert_equal
 
-from modl.utils.system import get_data_dirs, get_cache_dirs
+from modl.utils.system import get_cache_dirs
+from modl.datasets import get_data_dirs
 
 
 @pytest.fixture(scope="module")

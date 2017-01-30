@@ -7,31 +7,19 @@ from os.path import expanduser
 import matplotlib.pyplot as plt
 from modl.feature_extraction.image import LazyCleanPatchExtractor
 from modl.image import ImageDictFact
+from sacred import Experiment
 
 from modl.datasets.image import load_image
 from modl.plotting.image import plot_patches
+from sacred.observers import TinyDbObserver
+
+decompose_ex = Experiment('decompose_images')
+observer = TinyDbObserver.create(expanduser('~/runs'))
+decompose_ex.observers.append(observer)
 
 
-class DictionaryScorer:
-    def __init__(self, test_data):
-        self.start_time = time.clock()
-        self.test_data = test_data
-        self.test_time = 0
-        self.time = []
-        self.score = []
-        self.iter = []
-
-    def __call__(self, dict_fact):
-        test_time = time.clock()
-        score = dict_fact.score(self.test_data)
-        self.test_time += time.clock() - test_time
-        this_time = time.clock() - self.start_time - self.test_time
-        self.time.append(this_time)
-        self.score.append(score)
-        self.iter.append(dict_fact.n_iter_)
-
-
-def main():
+@decompose_ex.config
+def config():
     batch_size = 400
     learning_rate = 0.92
     reduction = 10
@@ -49,20 +37,63 @@ def main():
     gray = False
     scale = 1
 
+
+class DictionaryScorer:
+    def __init__(self, test_data):
+        self.start_time = time.clock()
+        self.test_data = test_data
+        self.test_time = 0
+        self.time = []
+        self.score = []
+        self.iter = []
+
+    @decompose_ex.capture
+    def __call__(self, dict_fact, _run):
+        test_time = time.clock()
+        score = dict_fact.score(self.test_data)
+        self.test_time += time.clock() - test_time
+        this_time = time.clock() - self.start_time - self.test_time
+        self.time.append(this_time)
+        self.score.append(score)
+        self.iter.append(dict_fact.n_iter_)
+        _run.info['score'] = self.score
+        _run.info['time'] = self.time
+        _run.info['iter'] = self.iter
+
+
+@decompose_ex.automain
+def decompose_run(batch_size,
+                  learning_rate,
+                  reduction,
+                  n_components,
+                  n_epochs,
+                  patch_size,
+                  test_size,
+                  alpha,
+                  setting,
+                  n_threads,
+                  verbose,
+                  max_patches,
+                  method,
+                  source,
+                  scale, gray,
+                  _run,
+                  _seed,
+                  ):
     print('Loading data')
     image = load_image(source, scale=scale, gray=gray)
     print('Done')
     width, height, n_channel = image.shape
     patch_extractor = LazyCleanPatchExtractor(patch_size=patch_size,
                                               max_patches=test_size,
-                                              random_state=0)
+                                              random_state=_seed)
     test_data = patch_extractor.transform(image[:, :height // 2, :])
     cb = DictionaryScorer(test_data)
     dict_fact = ImageDictFact(method=method,
                               setting=setting,
                               alpha=alpha,
                               n_epochs=n_epochs,
-                              random_state=0,
+                              random_state=_seed,
                               n_components=n_components,
                               learning_rate=learning_rate,
                               max_patches=max_patches,
@@ -80,6 +111,10 @@ def main():
     patches = dict_fact.components_
     plot_patches(fig, patches)
     fig.suptitle('Dictionary components')
+    plt.savefig('components.png')
+    plt.close(fig)
+    _run.add_artifact('components.png')
+    os.unlink('components.png')
 
     fig, ax = plt.subplots(1, 1)
     ax.plot(cb.time, cb.score, marker='o')
@@ -87,11 +122,9 @@ def main():
     ax.set_xscale('log')
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Test objective value')
-
-    plt.show()
+    plt.savefig('training_curve.png')
+    plt.close(fig)
+    _run.add_artifact('training_curve.png')
+    os.unlink('training_curve.png')
 
     return score
-
-if __name__ == '__main__':
-    main()
-
