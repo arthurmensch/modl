@@ -57,7 +57,8 @@ def main():
                                               max_patches=test_size,
                                               random_state=0)
     test_data = patch_extractor.transform(image[:, :height // 2, :])
-    cb = DictionaryScorer(test_data)
+    # cb = DictionaryScorer(test_data)
+    cb = None
     dict_fact = ImageDictFact(method=method,
                               setting=setting,
                               alpha=alpha,
@@ -81,14 +82,14 @@ def main():
     plot_patches(fig, patches)
     fig.suptitle('Dictionary components')
 
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.time, cb.score, marker='o')
-    ax.legend()
-    ax.set_xscale('log')
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Test objective value')
-
-    plt.show()
+    # fig, ax = plt.subplots(1, 1)
+    # ax.plot(cb.time, cb.score, marker='o')
+    # ax.legend()
+    # ax.set_xscale('log')
+    # ax.set_xlabel('Time (s)')
+    # ax.set_ylabel('Test objective value')
+    #
+    # plt.show()
 
     return score
 

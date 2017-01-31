@@ -25,6 +25,7 @@ MAX_INT = np.iinfo(np.int64).max
 
 class CodingMixin(TransformerMixin):
     def _set_coding_params(self,
+                           n_components,
                            code_alpha=1,
                            code_l1_ratio=1,
                            tol=1e-2,
@@ -35,6 +36,7 @@ class CodingMixin(TransformerMixin):
                            random_state=None,
                            n_threads=1
                            ):
+        self.n_components = n_components
         self.comp_l1_ratio = comp_l1_ratio
         self.code_l1_ratio = code_l1_ratio
         self.code_alpha = code_alpha
@@ -74,11 +76,20 @@ class CodingMixin(TransformerMixin):
         size_job = ceil(n_samples / self.n_threads)
         batches = list(gen_batches(n_samples, size_job))
 
-        Parallel(n_jobs=self.n_threads)(delayed(_enet_regression_single_gram)(
+        par_func = lambda batch: _enet_regression_single_gram(
             G, Dx[batch], X[batch], code,
             get_sub_slice(sample_indices, batch),
             self.code_l1_ratio, self.code_alpha, self.code_pos,
-            self.tol, self.max_iter) for batch in batches)
+            self.tol, self.max_iter)
+        res = self._pool.map(par_func, batches)
+        _ = list(res)
+
+        # Parallel(n_jobs=self.n_threads)(delayed(_enet_regression_single_gram)(
+        #     G, Dx[batch], X[batch], code,
+        #     get_sub_slice(sample_indices, batch),
+        #     self.code_l1_ratio, self.code_alpha, self.code_pos,
+        #     self.tol, self.max_iter) for batch in batches)
+
         return code
 
     def score(self, X):
@@ -236,7 +247,8 @@ class DictFact(BaseEstimator, CodingMixin):
 
         self.dict_init = dict_init
 
-        self._set_coding_params(comp_l1_ratio=comp_l1_ratio,
+        self._set_coding_params(n_components,
+                                comp_l1_ratio=comp_l1_ratio,
                                 code_l1_ratio=code_l1_ratio,
                                 code_alpha=code_alpha,
                                 comp_pos=comp_pos,
@@ -246,7 +258,6 @@ class DictFact(BaseEstimator, CodingMixin):
                                 max_iter=max_iter,
                                 n_threads=n_threads)
 
-        self.n_components = n_components
         self.n_epochs = n_epochs
 
         self.verbose = verbose
@@ -453,7 +464,7 @@ class DictFact(BaseEstimator, CodingMixin):
                                               base=10) - 1) * self.batch_size
             self.verbose_iter_ = self.verbose_iter_.tolist()
         if self.n_threads > 1:
-            self.pool_ = ThreadPoolExecutor(self.n_threads)
+            self._pool = ThreadPoolExecutor(self.n_threads)
         return self
 
     def _callback(self):
@@ -500,9 +511,9 @@ class DictFact(BaseEstimator, CodingMixin):
     def _update_stat_and_dict_parallel(self, subset, X, this_code, w):
         """For multi-threading"""
         self.gradient_[:, subset] = self.B_[:, subset]
-        dict_thread = self.pool_.submit(self._update_stat_partial_and_dict,
+        dict_thread = self._pool.submit(self._update_stat_partial_and_dict,
                                         subset, X, this_code, w)
-        B_thread = self.pool_.submit(self._update_B, X,
+        B_thread = self._pool.submit(self._update_B, X,
                                      this_code, w)
         dict_thread.result()
         B_thread.result()
@@ -567,7 +578,7 @@ class DictFact(BaseEstimator, CodingMixin):
                         G,
                         w_sample[batch],
                     )
-                    res = self.pool_.map(par_func, batches)
+                    res = self._pool.map(par_func, batches)
                     _ = list(res)
                 else:
                     _update_G_average(G_average, G, w_sample)
@@ -587,7 +598,7 @@ class DictFact(BaseEstimator, CodingMixin):
                     get_sub_slice(sample_indices, batch),
                     self.code_l1_ratio, self.code_alpha, self.code_pos,
                     self.tol, self.max_iter)
-            res = self.pool_.map(par_func, batches)
+            res = self._pool.map(par_func, batches)
             _ = list(res)
         else:
             if self.G_agg == 'average':
@@ -655,6 +666,16 @@ class DictFact(BaseEstimator, CodingMixin):
             else:
                 self.G_[:] = self.components_.dot(self.components_.T)
 
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state.pop('_pool', None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        if self.n_threads > 1:
+            self._pool = ThreadPoolExecutor(self.n_threads)
+
     def _exit(self):
         """Useful to delete G_average_ memorymap when the algorithm is
          interrupted/completed"""
@@ -674,7 +695,8 @@ class Coder(CodingMixin, BaseEstimator):
                  random_state=None,
                  n_threads=1
                  ):
-        self._set_coding_params(comp_l1_ratio=comp_l1_ratio,
+        self._set_coding_params(dictionary.shape[0],
+                                comp_l1_ratio=comp_l1_ratio,
                                 code_l1_ratio=code_l1_ratio,
                                 code_alpha=code_alpha,
                                 comp_pos=comp_pos,

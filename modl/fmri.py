@@ -22,7 +22,7 @@ from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 from sklearn.utils import check_random_state
 
-from .dict_fact import DictFact
+from .dict_fact import DictFact, Coder
 from math import log
 
 warnings.filterwarnings('ignore', module='scipy.ndimage.interpolation',
@@ -262,7 +262,8 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             indices_list[1:] = np.cumsum(n_samples_list)
             n_samples = indices_list[-1] + 1
 
-            n_voxels = np.sum(check_niimg(self.masker_.mask_img_).get_data() != 0)
+            n_voxels = np.sum(
+                check_niimg(self.masker_.mask_img_).get_data() != 0)
 
             if self.verbose:
                 print("Done preloading data")
@@ -271,6 +272,13 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             n_voxels = dict_init.shape[1]
             dtype = dict_init.dtype
             n_records = 0
+            self.dict_fact_ = Coder(dictionary=dict_init,
+                                    code_alpha=self.alpha,
+                                    code_l1_ratio=0,
+                                    comp_l1_ratio=1,
+                                    random_state=self.random_state,
+                                    n_threads=self.n_jobs)
+            return self
 
         if self.verbose:
             print("Learning decomposition")
@@ -302,7 +310,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 record_list = self.random_state.permutation(n_records)
                 for record in record_list:
                     if (self.verbose and self.verbose_iter_ and
-                            current_n_records >= self.verbose_iter_[0]):
+                                current_n_records >= self.verbose_iter_[0]):
                         print('Record %i' % current_n_records)
                         if self.callback is not None:
                             self.callback(self)
@@ -353,13 +361,13 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         # In case fit is not finished
         shelving = self.masker_._shelving
         self.masker_._shelving = False
-        score = 0.
         if confounds is None:
             confounds = itertools.repeat(None)
-        for img, confound in zip(imgs, confounds):
-            data = self.masker_.transform(img, confound)
-            score += self.dict_fact_.score(data)
-        score /= len(imgs)
+        scores = Parallel(n_jobs=self.n_jobs)(
+            delayed(_transform_img)(self.dict_fact_, self.masker_, img,
+                                    confound) for img, confound in
+            zip(imgs, confounds))
+        score = sum(scores) / len(imgs)
         self.masker_._shelving = shelving
         return score
 
@@ -387,14 +395,15 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         # In case fit is not finished
         shelving = self.masker_._shelving
         self.masker_._shelving = False
-        codes = []
         if confounds is None:
             confounds = itertools.repeat(None)
-        for img, confound in zip(imgs, confounds):
-            data = self.masker_.transform(img, confound)
-            codes.append(self.dict_fact_.transform(data))
+        codes = Parallel(n_jobs=self.n_jobs)(
+            delayed(_transform_img)(self.dict_fact_,
+                                    self.masker_,
+                                    img, confound)
+            for img, confound in
+            zip(imgs, confounds))
         self.masker_._shelving = shelving
-
         return codes
 
     @property
@@ -438,3 +447,13 @@ def _lazy_scan(imgs):
     else:
         dtype = imgs[0].get_data_dtype()
     return n_samples_list, dtype
+
+
+def _transform_img(coding_mixin, masker, img, confound):
+    data = masker.transform(img, confound)
+    return coding_mixin.transform(data)
+
+
+def _score_img(coding_mixin, masker, img, confound):
+    data = masker.transform(img, confound)
+    return coding_mixin.score(data)

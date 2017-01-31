@@ -252,6 +252,8 @@ cdef void enet_coordinate_descent_gram(floating[:] w, floating alpha, floating b
                                  floating[:, ::1] Q,
                                  floating[::1] q,
                                  floating[:] y,
+                                 floating[:] H,
+                                 floating[:] XtA,
                                  int max_iter, floating tol, bint positive):
     """Cython version of the coordinate descent algorithm
         for Elastic-Net regression

@@ -1,15 +1,15 @@
 from .random_fast cimport RandomState
 
 cdef class Sampler(object):
-    cdef long range
-    cdef bint rand_size
-    cdef bint replacement
+    cdef public long range
+    cdef public bint rand_size
+    cdef public bint replacement
 
-    cdef long[:] box
-    cdef long[:] temp
-    cdef long lim_sup
-    cdef long lim_inf
+    cdef public long[:] box
+    cdef public long[:] temp
+    cdef public long lim_sup
+    cdef public long lim_inf
 
-    cdef RandomState random_state
+    cdef public RandomState random_state
 
     cpdef long[:] yield_subset(self, double reduction)
