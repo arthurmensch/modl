@@ -17,7 +17,7 @@ def load(filename, **kwargs):
 
 class Nifti1Image(NibabelNifti1Image):
     def __getstate__(self):
-        state = {'dataobj': np.asarray(self._dataobj),
+        state = {'dataobj': self._dataobj,
                  'header': self.header,
                  'filename': self.get_filename(),
                  'affine': self.affine,
@@ -58,7 +58,7 @@ class NibabelHasher(NumpyHasher):
                 stat = os.stat(filename)
                 last_modified = stat.st_mtime
                 klass = obj.__class__
-                obj = (klass, ('HASHED', str(filename), last_modified))
+                obj = (klass, ('HASHED', filename, last_modified))
         NumpyHasher.save(self, obj)
 
 
@@ -76,13 +76,14 @@ def our_hash(obj, hash_name='md5', coerce_mmap=False):
             Make no difference between np.memmap and np.ndarray
     """
     hasher = NibabelHasher(hash_name=hash_name, coerce_mmap=coerce_mmap)
-    return hasher.hash(obj)
+    hash = hasher.hash(obj)
+    return hash
 
 
 def our_get_argument_hash(self, *args, **kwargs):
     return our_hash(filter_args(self.func, self.ignore,
                                 args, kwargs),
-                    coerce_mmap=(self.mmap_mode is not None))
+                    coerce_mmap=True)
 
 
 def monkey_patch_nifti_image():

@@ -3,14 +3,16 @@
 import os
 import time
 
+from modl.utils.nifti import monkey_patch_nifti_image
+monkey_patch_nifti_image()
+
 from modl import fMRIDictFact
 from modl.datasets.fmri import load_atlas_init
 from modl.plotting.fmri import display_maps
-from modl.utils.nifti import monkey_patch_nifti_image
+
 from modl.utils.system import get_cache_dirs
 from sklearn.externals.joblib import Memory
 
-monkey_patch_nifti_image()
 
 from sklearn.model_selection import train_test_split
 from modl.datasets import fetch_adhd
@@ -34,11 +36,12 @@ def config():
     smoothing_fwhm = 6
     dataset = 'adhd'
     raw = False
-    n_subjects = 40
+    n_subjects = 4
     test_size = 2
     n_components = 20
     source = 'smith'
-    warmup=False
+    warmup = False
+    seed = 0
 
 
 class rfMRIDictionaryScorer:

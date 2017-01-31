@@ -12,6 +12,7 @@ import warnings
 
 import nibabel
 import numpy as np
+from modl.utils.nifti import NibabelHasher
 from nilearn._utils import check_niimg
 from nilearn._utils.cache_mixin import CacheMixin
 from nilearn.decomposition.base import BaseDecomposition
@@ -323,6 +324,12 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                     else:
                         img, confound = data
                         img = check_niimg(img)
+                        hasher = NibabelHasher('md5', coerce_mmap=False)
+                        hash = hasher.hash(img)
+                        print('Hash %s' % hash)
+                        hasher = NibabelHasher('md5', coerce_mmap=False)
+                        hash = hasher.hash(self.masker_.mask_img_)
+                        print('Mask hash %s' % hash)
                         data = self.masker_.transform(img, confound)
                     permutation = self.random_state.permutation(n_records)
                     data = data[permutation]
@@ -364,8 +371,8 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if confounds is None:
             confounds = itertools.repeat(None)
         scores = Parallel(n_jobs=self.n_jobs)(
-            delayed(_transform_img)(self.dict_fact_, self.masker_, img,
-                                    confound) for img, confound in
+            delayed(_score_img)(self.dict_fact_, self.masker_, img,
+                                confound) for img, confound in
             zip(imgs, confounds))
         score = sum(scores) / len(imgs)
         self.masker_._shelving = shelving
@@ -450,10 +457,12 @@ def _lazy_scan(imgs):
 
 
 def _transform_img(coding_mixin, masker, img, confound):
+    img = check_niimg(img)
     data = masker.transform(img, confound)
     return coding_mixin.transform(data)
 
 
 def _score_img(coding_mixin, masker, img, confound):
+    img = check_niimg(img)
     data = masker.transform(img, confound)
     return coding_mixin.score(data)

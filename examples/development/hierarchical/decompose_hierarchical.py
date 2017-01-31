@@ -4,9 +4,11 @@ import time
 from os.path import expanduser, join
 from tempfile import mkdtemp
 
+import shutil
 from sacred.observers import TinyDbObserver
+from sklearn.externals.joblib import Parallel
+from sklearn.externals.joblib import delayed
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import LabelEncoder
 
 import matplotlib.pyplot as plt
 
@@ -25,7 +27,7 @@ from modl import fMRIDictFact
 from modl.datasets.hcp import fetch_hcp
 from modl.utils.system import get_cache_dirs
 
-experiment = Experiment('task_predict')
+experiment = Experiment('hierachical_decomposition')
 observer = TinyDbObserver.create(expanduser('~/runs'))
 experiment.observers.append(observer)
 
@@ -60,11 +62,11 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-3
-    n_epochs = 3
+    n_epochs = 5
     verbose = 15
-    n_jobs = 2
+    n_jobs = 3
     smoothing_fwhm = 6
-    n_components = 40
+    n_components_list = [20, 40, 80, 120, 160]
     seed = 20
     n_subjects = 500
     test_size = 4
@@ -137,7 +139,7 @@ def logistic_regression(X_train, y_train):
 
 
 @experiment.automain
-def run(alpha, batch_size, learning_rate, n_components, n_epochs, n_jobs,
+def run(alpha, batch_size, learning_rate, n_components_list, n_epochs, n_jobs,
         reduction, smoothing_fwhm, method, verbose, rest_source, _run, _seed):
     # Fold preparation
 
@@ -164,8 +166,7 @@ def run(alpha, batch_size, learning_rate, n_components, n_epochs, n_jobs,
 
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=verbose)
 
-    # Unsupervised training
-    components, masker, score, cb = memory.cache(get_components)(
+    res = Parallel(n_jobs=n_jobs)(delayed(memory.cache(get_components))(
         train_rest_data,
         alpha=alpha,
         batch_size=batch_size,
@@ -173,56 +174,42 @@ def run(alpha, batch_size, learning_rate, n_components, n_epochs, n_jobs,
         mask=rest_mask,
         n_components=n_components,
         n_epochs=n_epochs,
-        n_jobs=n_jobs,
+        n_jobs=1,
         reduction=reduction,
         smoothing_fwhm=smoothing_fwhm,
         method=method,
         test_data=test_rest_data,
-        verbose=verbose)
-    # Reporting for unsupervised training
-    temp_dir = mkdtemp()
-    components.to_filename(join(temp_dir, 'components.nii.gz'))
-    _run.add_artifact(join(temp_dir, 'components.nii.gz'))
-    fig = plt.figure()
-    display_maps(fig, components)
-    plt.savefig(join(temp_dir('components.png')))
-    _run.add_artifact(join(temp_dir, 'components.png'))
-    # os.unlink('components.nii.gz')
-    # os.unlink('components.png')
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.time, cb.score, marker='o')
-    plt.savefig(join(temp_dir, 'learning_curve.png'))
-    _run.add_artifact(join(temp_dir, 'learning_curve.png'))
-    # os.unlink('learning_curve.png')
-    _run.info['unsupervised_score'] = score
-    # End reporting
+        verbose=verbose) for n_components in n_components_list)
+    # Reporting
+    _run.info['score'] = {}
+    _run.info['components'] = {}
+    _run.info['components_png'] = {}
+    _run.info['learning_curve'] = {}
+    _id = _run._id
+    artifact_dir = join(expanduser('~/runs/artifacts'), _id)
+    os.makedirs(artifact_dir)
+    for i, ((components, masker, score, cb),
+            n_components) in enumerate(zip(res, n_components_list)):
+        components_name = join(artifact_dir, 'components_%i.nii.gz' % i)
+        components_path = join(artifact_dir, components_name)
+        components.to_filename(components_path)
+        _run.add_artifact(components_path,
+                          name=components_name)
+        fig = plt.figure()
+        display_maps(fig, components)
+        components_png_name = 'components_%i.png' % i
+        components_png_path = join(artifact_dir, components_png_name)
+        plt.savefig(components_png_path)
+        _run.add_artifact(components_png_path, name=components_png_name)
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(cb.time, cb.score, marker='o')
+        lc_name = 'learning_curve_%i.png' % i
+        lc_path = join(artifact_dir, 'learning_curve_%i.png' % i)
+        plt.savefig(lc_path)
+        _run.add_artifact(lc_path, name=lc_name)
+        _run.info['score'][n_components] = score
+        _run.info['components'][n_components] = components_name
+        _run.info['components_png'][n_components] = components_png_path
+        _run.info['learning_curve'][n_components] = lc_name
 
-    # Task data
-    if rest_source == 'adhd':
-        data = fetch_hcp(n_subjects=10)
-    task_data = data.task
-    task_mask = data.mask
-    subjects = task_data.index.get_level_values(0).values
-    if rest_source == 'adhd':
-        train_subjects, test_subjects = \
-            train_test_split(subjects, random_state=_seed, test_size=2)
-    z_maps = task_data.loc[:, 'filename']
-    z_map_labels = task_data.index.get_level_values(2).values
-    z_map_labels = LabelEncoder().fit_transform(z_map_labels)
-
-    # Supervised validation
-    encoded_z_maps = memory.cache(get_encodings)(z_maps, components,
-                                                 mask=task_mask,
-                                                 n_jobs=n_jobs)
-    z_maps.loc[:, 'encoded'] = encoded_z_maps
-    X_train, y_train = encoded_z_maps[train_subjects, 'encoded'], \
-                       z_map_labels[train_subjects]
-    X_test, y_test = encoded_z_maps[test_subjects, 'encoded'], z_map_labels[
-        test_subjects]
-
-    lr_estimator = memory.cache(logistic_regression)(X_train, y_train)
-    y_pred = lr_estimator.predict(X_test)
-    score = np.sum(y_pred == y_test) / y_test.shape[0]
-
-    os.unlink(temp_dir)
     return score

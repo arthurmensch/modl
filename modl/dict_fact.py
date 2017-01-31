@@ -81,8 +81,15 @@ class CodingMixin(TransformerMixin):
             get_sub_slice(sample_indices, batch),
             self.code_l1_ratio, self.code_alpha, self.code_pos,
             self.tol, self.max_iter)
-        res = self._pool.map(par_func, batches)
-        _ = list(res)
+        if self.n_threads > 1:
+            res = self._pool.map(par_func, batches)
+            _ = list(res)
+        else:
+            _enet_regression_single_gram(
+                G, Dx, X, code,
+                sample_indices,
+                self.code_l1_ratio, self.code_alpha, self.code_pos,
+                self.tol, self.max_iter)
 
         # Parallel(n_jobs=self.n_threads)(delayed(_enet_regression_single_gram)(
         #     G, Dx[batch], X[batch], code,
