@@ -324,12 +324,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                     else:
                         img, confound = data
                         img = check_niimg(img)
-                        hasher = NibabelHasher('md5', coerce_mmap=False)
-                        hash = hasher.hash(img)
-                        print('Hash %s' % hash)
-                        hasher = NibabelHasher('md5', coerce_mmap=False)
-                        hash = hasher.hash(self.masker_.mask_img_)
-                        print('Mask hash %s' % hash)
                         data = self.masker_.transform(img, confound)
                     permutation = self.random_state.permutation(n_records)
                     data = data[permutation]

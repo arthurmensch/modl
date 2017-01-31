@@ -36,7 +36,7 @@ def config():
     smoothing_fwhm = 6
     dataset = 'adhd'
     raw = False
-    n_subjects = 4
+    n_subjects = 40
     test_size = 2
     n_components = 20
     source = 'smith'

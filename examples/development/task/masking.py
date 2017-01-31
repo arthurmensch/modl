@@ -15,20 +15,11 @@ from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
-from modl.utils.nifti import NibabelHasher
-
 
 def mask_and_dismiss(masker, index, img):
     try:
         img = check_niimg(img)
-        hasher = NibabelHasher('md5', coerce_mmap=False)
-        hash = hasher.hash(img)
         print('Masking %s ' % index)
-        print('Hash %s' % hash)
-        hasher = NibabelHasher('md5', coerce_mmap=False)
-        hash = hasher.hash(masker.mask_img_)
-        print('Mask hash %s' % hash)
-
         data = masker.transform(img, confounds=None)
         del data
     except:
@@ -56,7 +47,7 @@ def main():
         rest_mask = data.mask
         smoothing_fwhm = 4
     elif source == 'adhd':
-        data = fetch_adhd(n_subjects=4)
+        data = fetch_adhd(n_subjects=40)
         rest_imgs = pd.Series(data.func)
         rest_mask = data.mask
         smoothing_fwhm = 6
