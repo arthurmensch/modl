@@ -19,20 +19,19 @@ from sklearn.externals.joblib import delayed
 def mask_and_dismiss(masker, index, img):
     try:
         img = check_niimg(img)
-        print('Masking %s ' % index)
+        print('Masking %s %s %s' % index)
         data = masker.transform(img, confounds=None)
         del data
     except:
-        name = index
-        print('Bad record %s' % name)
+        print('Bad record %s %s %s' % index)
         failure = join(get_cache_dirs()[0], 'cache_failure')
-        with open(join(failure, 'failure_%s' % name), 'w+') as f:
+        with open(join(failure, 'failure_%s_%s_%s' % index), 'w+') as f:
             f.write('Cache failed')
 
 
 def main():
     n_jobs = 3
-    source = 'adhd'
+    source = 'hcp'
 
     mem = Memory(cachedir=get_cache_dirs()[0], verbose=10)
 
