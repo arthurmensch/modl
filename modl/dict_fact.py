@@ -48,6 +48,9 @@ class CodingMixin(TransformerMixin):
 
         self.n_threads = n_threads
 
+        if self.n_threads > 1:
+            self._pool = ThreadPoolExecutor(n_threads)
+
     def transform(self, X):
         """
         Compute the codes associated to input matrix X, decomposing it onto
@@ -91,12 +94,6 @@ class CodingMixin(TransformerMixin):
                 self.code_l1_ratio, self.code_alpha, self.code_pos,
                 self.tol, self.max_iter)
 
-        # Parallel(n_jobs=self.n_threads)(delayed(_enet_regression_single_gram)(
-        #     G, Dx[batch], X[batch], code,
-        #     get_sub_slice(sample_indices, batch),
-        #     self.code_l1_ratio, self.code_alpha, self.code_pos,
-        #     self.tol, self.max_iter) for batch in batches)
-
         return code
 
     def score(self, X):
@@ -121,8 +118,18 @@ class CodingMixin(TransformerMixin):
                                    + (1 - self.code_l1_ratio) * norm2_code / 2)
         return (loss + regul) / X.shape[0]
 
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state.pop('_pool', None)
+        return state
 
-class DictFact(BaseEstimator, CodingMixin):
+    def __setstate__(self, state):
+        self.__dict__ = state
+        if self.n_threads > 1:
+            self._pool = ThreadPoolExecutor(self.n_threads)
+
+
+class DictFact(CodingMixin, BaseEstimator):
     def __init__(self,
                  reduction=1,
                  learning_rate=1,
@@ -470,8 +477,6 @@ class DictFact(BaseEstimator, CodingMixin):
             self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
                                               base=10) - 1) * self.batch_size
             self.verbose_iter_ = self.verbose_iter_.tolist()
-        if self.n_threads > 1:
-            self._pool = ThreadPoolExecutor(self.n_threads)
         return self
 
     def _callback(self):
@@ -672,16 +677,6 @@ class DictFact(BaseEstimator, CodingMixin):
                 self.G_ += components_subset.dot(components_subset.T)
             else:
                 self.G_[:] = self.components_.dot(self.components_.T)
-
-    def __getstate__(self):
-        state = dict(self.__dict__)
-        state.pop('_pool', None)
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__ = state
-        if self.n_threads > 1:
-            self._pool = ThreadPoolExecutor(self.n_threads)
 
     def _exit(self):
         """Useful to delete G_average_ memorymap when the algorithm is

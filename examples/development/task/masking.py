@@ -9,7 +9,7 @@ import pandas as pd
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
 from modl.utils.system import get_cache_dirs
-from nilearn.input_data import MultiNiftiMasker, NiftiMasker
+from nilearn.input_data import MultiNiftiMasker
 from nilearn._utils import check_niimg
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
@@ -30,7 +30,7 @@ def mask_and_dismiss(masker, index, img):
 
 
 def main():
-    n_jobs = 3
+    n_jobs = 24
     source = 'hcp'
 
     mem = Memory(cachedir=get_cache_dirs()[0], verbose=10)
@@ -43,6 +43,8 @@ def main():
         data = fetch_hcp(n_subjects=788)
         rest_data = data.rest
         rest_imgs = rest_data.loc[:, 'filename']
+        # Restart
+        # rest_imgs = rest_imgs.loc[[173940, 285345, 820745, 176037, 330324]]
         rest_mask = data.mask
         smoothing_fwhm = 4
     elif source == 'adhd':

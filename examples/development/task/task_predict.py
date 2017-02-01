@@ -1,15 +1,17 @@
 import os
 import copy
 import time
+import warnings
 from os.path import expanduser, join
-from tempfile import mkdtemp
 
-from sacred.observers import TinyDbObserver
+import shutil
+from matplotlib.cbook import MatplotlibDeprecationWarning
+from sacred.observers import FileStorageObserver
+from sacred.observers import MongoObserver
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
 
-import matplotlib.pyplot as plt
-
+import pandas as pd
 from modl.datasets import fetch_adhd
 from modl.plotting.fmri import display_maps
 from modl.utils.nifti import monkey_patch_nifti_image
@@ -25,9 +27,40 @@ from modl import fMRIDictFact
 from modl.datasets.hcp import fetch_hcp
 from modl.utils.system import get_cache_dirs
 
+import matplotlib.pyplot as plt
+
+warnings.filterwarnings('ignore',
+                        category=UserWarning,
+                        module='matplotlib')
+warnings.filterwarnings('ignore',
+                        category=MatplotlibDeprecationWarning,
+                        module='matplotlib')
+warnings.filterwarnings('ignore',
+                        category=UserWarning,
+                        module='numpy')
+
 experiment = Experiment('task_predict')
-observer = TinyDbObserver.create(expanduser('~/runs'))
+observer = FileStorageObserver.create(expanduser('~/runs'))
 experiment.observers.append(observer)
+observer = MongoObserver.create(db_name='amensch', collection='runs')
+experiment.observers.append(observer)
+
+@experiment.config
+def config():
+    batch_size = 200
+    learning_rate = 0.92
+    method = 'masked'
+    reduction = 10
+    alpha = 1e-3
+    n_epochs = 3
+    verbose = 15
+    n_jobs = 20
+    smoothing_fwhm = 6
+    n_components = 40
+    seed = 20
+    n_subjects = 100
+    test_size = 2
+    rest_source = 'adhd'
 
 
 class rfMRIDictionaryScorer:
@@ -51,24 +84,6 @@ class rfMRIDictionaryScorer:
         _run.info['score'] = self.score
         _run.info['time'] = self.time
         _run.info['iter'] = self.iter
-
-
-@experiment.config
-def config():
-    batch_size = 200
-    learning_rate = 0.92
-    method = 'masked'
-    reduction = 10
-    alpha = 1e-3
-    n_epochs = 3
-    verbose = 15
-    n_jobs = 2
-    smoothing_fwhm = 6
-    n_components = 40
-    seed = 20
-    n_subjects = 500
-    test_size = 4
-    rest_source = 'adhd'
 
 
 def get_components(data, *,
@@ -138,12 +153,14 @@ def logistic_regression(X_train, y_train):
 
 @experiment.automain
 def run(alpha, batch_size, learning_rate, n_components, n_epochs, n_jobs,
-        reduction, smoothing_fwhm, method, verbose, rest_source, _run, _seed):
+        n_subjects, reduction, smoothing_fwhm, method, verbose, rest_source,
+        test_size,
+        _run, _seed):
     # Fold preparation
 
     # Rest data
     if rest_source == 'hcp':
-        data = fetch_hcp(n_subjects=10)
+        data = fetch_hcp(n_subjects=n_subjects)
         rest_data = data.rest
         rest_mask = data.mask
         subjects = rest_data.index.get_level_values(0).values
@@ -165,7 +182,8 @@ def run(alpha, batch_size, learning_rate, n_components, n_epochs, n_jobs,
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=verbose)
 
     # Unsupervised training
-    components, masker, score, cb = memory.cache(get_components)(
+    components, masker, unsupervised_test_score, cb = memory.cache(get_components,
+                                                 ignore=['verbose', 'n_jobs'])(
         train_rest_data,
         alpha=alpha,
         batch_size=batch_size,
@@ -180,49 +198,90 @@ def run(alpha, batch_size, learning_rate, n_components, n_epochs, n_jobs,
         test_data=test_rest_data,
         verbose=verbose)
     # Reporting for unsupervised training
-    temp_dir = mkdtemp()
-    components.to_filename(join(temp_dir, 'components.nii.gz'))
-    _run.add_artifact(join(temp_dir, 'components.nii.gz'))
+    _id = _run._id
+    artifact_dir = join(expanduser('~/runs/artifacts'), str(_id))
+    os.makedirs(artifact_dir)
+    # Avoid trashing cache
+    components_copy = copy.deepcopy(components)
+    components_copy.to_filename(join(artifact_dir, 'components.nii.gz'))
+    _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
+                      name='components.nii.gz')
     fig = plt.figure()
     display_maps(fig, components)
-    plt.savefig(join(temp_dir('components.png')))
-    _run.add_artifact(join(temp_dir, 'components.png'))
-    # os.unlink('components.nii.gz')
-    # os.unlink('components.png')
+    plt.savefig(join(artifact_dir, 'components.png'))
+    plt.close(fig)
+    _run.add_artifact(join(artifact_dir, 'components.png'),
+                      name='components.png')
     fig, ax = plt.subplots(1, 1)
     ax.plot(cb.time, cb.score, marker='o')
-    plt.savefig(join(temp_dir, 'learning_curve.png'))
-    _run.add_artifact(join(temp_dir, 'learning_curve.png'))
-    # os.unlink('learning_curve.png')
-    _run.info['unsupervised_score'] = score
+    plt.savefig(join(artifact_dir, 'learning_curve.png'))
+    plt.close(fig)
+    _run.add_artifact(join(artifact_dir, 'learning_curve.png'),
+                      name='learning_curve.png')
+    _run.info['unsupervised_test_score'] = unsupervised_test_score
     # End reporting
 
     # Task data
     if rest_source == 'adhd':
-        data = fetch_hcp(n_subjects=10)
+        data = fetch_hcp(n_subjects=n_subjects)
     task_data = data.task
     task_mask = data.mask
-    subjects = task_data.index.get_level_values(0).values
+    subjects = task_data.index.levels[0].values
     if rest_source == 'adhd':
         train_subjects, test_subjects = \
-            train_test_split(subjects, random_state=_seed, test_size=2)
+            train_test_split(subjects, random_state=_seed, test_size=test_size)
+        train_subjects = train_subjects.tolist()
+        test_subjects = test_subjects.tolist()
+    _run.info['train_subjects'] = train_subjects
+    _run.info['test_subjects'] = test_subjects
+
+    # Selection of contrasts
+    interesting_con = ['FACES', 'SHAPES', '']
+    task_data = task_data.loc[(slice(None), slice(None), interesting_con), :]
+
     z_maps = task_data.loc[:, 'filename']
-    z_map_labels = task_data.index.get_level_values(2).values
-    z_map_labels = LabelEncoder().fit_transform(z_map_labels)
-
+    z_map_labels = z_maps.index.get_level_values(2).values
+    z_maps = z_maps.values
+    label_encoder = LabelEncoder()
+    z_map_labels = label_encoder.fit_transform(z_map_labels)
+    task_data = task_data.assign(label=z_map_labels)
     # Supervised validation
-    encoded_z_maps = memory.cache(get_encodings)(z_maps, components,
-                                                 mask=task_mask,
-                                                 n_jobs=n_jobs)
-    z_maps.loc[:, 'encoded'] = encoded_z_maps
-    X_train, y_train = encoded_z_maps[train_subjects, 'encoded'], \
-                       z_map_labels[train_subjects]
-    X_test, y_test = encoded_z_maps[test_subjects, 'encoded'], z_map_labels[
-        test_subjects]
-
+    loadings = memory.cache(get_encodings, ignore=['n_jobs'])(z_maps,
+                                                              components,
+                                                              mask=task_mask,
+                                                              n_jobs=n_jobs)
+    # Ugly pandas <-> numpy
+    loadings = [loading for loading in loadings]
+    task_data = task_data.assign(loadings=loadings)
+    X = task_data.loc[:, 'loadings'].values
+    X_train = task_data.loc[train_subjects, 'loadings'].values
+    y_train = task_data.loc[train_subjects, 'label'].values
+    X_train = np.vstack(X_train)
+    X = np.vstack(X)
     lr_estimator = memory.cache(logistic_regression)(X_train, y_train)
-    y_pred = lr_estimator.predict(X_test)
-    score = np.sum(y_pred == y_test) / y_test.shape[0]
 
-    os.unlink(temp_dir)
-    return score
+    y_pred = lr_estimator.predict(X)
+    predicted_labels = label_encoder.inverse_transform(y_pred)
+    task_data = task_data.assign(predicted_labels=predicted_labels,
+                                 true_labels=task_data.index.
+                                 get_level_values(2).values)
+
+    res_df = task_data.loc[:, ['predicted_labels', 'true_labels']]
+    res_df.to_csv(join(artifact_dir, 'prediction.csv'))
+    _run.add_artifact(join(artifact_dir, 'prediction.csv'),
+                      name='prediction.csv')
+
+    train_score = np.sum(res_df.loc[train_subjects,
+                                    'predicted_labels']
+                         == res_df.loc[train_subjects,
+                                       'true_labels']) / task_data.loc[train_subjects].shape[0]
+
+    test_score = np.sum(res_df.loc[test_subjects, 'predicted_labels']
+                        == res_df.loc[
+                            test_subjects, 'true_labels']) / task_data.loc[test_subjects].shape[0]
+    _run.info['train_score'] = train_score
+    _run.info['test_score'] = test_score
+
+    shutil.rmtree(artifact_dir)
+
+    return train_score, test_score
