@@ -8,11 +8,11 @@ component sparsity
 from __future__ import division
 
 import itertools
+import time
 import warnings
 
 import nibabel
 import numpy as np
-from modl.utils.nifti import NibabelHasher
 from nilearn._utils import check_niimg
 from nilearn._utils.cache_mixin import CacheMixin
 from nilearn.decomposition.base import BaseDecomposition
@@ -460,3 +460,81 @@ def _score_img(coding_mixin, masker, img, confound):
     img = check_niimg(img)
     data = masker.transform(img, confound)
     return coding_mixin.score(data)
+
+
+def fmri_dict_learning(imgs, confounds,
+                       mask=None, *,
+                       dict_init=None,
+                       alpha=1,
+                       batch_size=20,
+                       learning_rate=1,
+                       n_components=20,
+                       n_epochs=1,
+                       n_jobs=1,
+                       reduction=1,
+                       smoothing_fwhm=4,
+                       method='masked',
+                       random_state=None,
+                       callback=None,
+                       memory=Memory(cachedir=None),
+                       memory_level=1,
+                       verbose=0):
+    dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
+                             mask=mask,
+                             memory=memory,
+                             method=method,
+                             memory_level=memory_level,
+                             verbose=verbose,
+                             n_epochs=n_epochs,
+                             n_jobs=n_jobs,
+                             random_state=random_state,
+                             n_components=n_components,
+                             dict_init=dict_init,
+                             learning_rate=learning_rate,
+                             batch_size=batch_size,
+                             reduction=reduction,
+                             alpha=alpha,
+                             callback=callback,
+                             warmup=False,
+                             )
+    dict_fact.fit(imgs, confounds)
+    if callback is not None:
+        callback(dict_fact)
+    return dict_fact.components_, dict_fact.masker_.mask_img_
+
+
+class rfMRIDictionaryScorer:
+    """Base callback to compute test score"""
+    def __init__(self, test_data):
+        self.start_time = time.perf_counter()
+        self.test_data = test_data
+        self.test_time = 0
+        self.score = []
+        self.iter = []
+        self.time = []
+
+    def __call__(self, dict_fact):
+        test_time = time.perf_counter()
+        test_imgs, test_confounds = zip(*self.test_data)
+        score = dict_fact.score(self.test_data)
+        self.test_time += time.perf_counter() - test_time
+        this_time = time.perf_counter() - self.start_time - self.test_time
+        self.score.append(score)
+        self.time.append(this_time)
+        self.iter.append(dict_fact.n_iter_)
+
+
+def compute_loadings(data, components, mask=None, n_jobs=1, verbose=0,
+                     memory=Memory(cachedir=None), memory_level=2):
+    dict_fact = fMRIDictFact(smoothing_fwhm=0,
+                             mask=mask,
+                             detrend=False,
+                             standardize=False,
+                             memory_level=memory_level,
+                             memory=memory,
+                             n_jobs=n_jobs,
+                             dict_init=components,
+                             verbose=verbose - 1,
+                             ).fit()
+    loadings = dict_fact.transform(data)
+    return loadings, dict_fact.mask_img_
