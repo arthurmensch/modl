@@ -44,10 +44,10 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-3
-    n_epochs = 7
+    n_epochs = 9
     smoothing_fwhm = 4
     n_components = 40
-    n_jobs = 20
+    n_jobs = 1
     verbose = 15
     seed = 2
 
@@ -106,7 +106,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           method,
                           verbose,
                           _run, _seed):
-    memory = Memory(cachedir=get_cache_dirs()[0], verbose=1)
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=10)
     print('Retrieve resting-state data')
     train_imgs, train_confounds,\
     test_imgs, test_confounds, mask_img = get_rest_data()

@@ -291,63 +291,72 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    learning_rate=self.learning_rate,
                                    batch_size=self.batch_size,
                                    random_state=self.random_state,
-                                   n_threads=self.n_jobs,
+                                   n_threads=min(1, self.n_jobs - 1),
                                    verbose=0)
         self.dict_fact_.prepare(n_samples=n_samples, n_features=n_voxels,
                                 X=dict_init, dtype=dtype)
-        with ProcessPoolExecutor(1) as pool:
-            if n_records > 0:
+        if self.n_jobs > 1:
+            pool = ProcessPoolExecutor(1)
+        if n_records > 0:
+            if self.verbose:
+                log_lim = log(n_records * self.n_epochs, 10)
+                self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
+                                                 base=10) - 1
+                self.verbose_iter_ = self.verbose_iter_.tolist()
+            current_n_records = 0
+            for i in range(self.n_epochs):
                 if self.verbose:
-                    log_lim = log(n_records * self.n_epochs, 10)
-                    self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
-                                                     base=10) - 1
-                    self.verbose_iter_ = self.verbose_iter_.tolist()
-                current_n_records = 0
-                for i in range(self.n_epochs):
-                    if self.verbose:
-                        print('Epoch %i' % (i + 1))
-                    record_list = self.random_state.permutation(n_records)
-                    prev_record = None
-                    prev_masked_data = None
-                    for record in itertools.chain(record_list, [None]):
-                        if record is not None and (
-                                        self.verbose and self.verbose_iter_ and
-                                        current_n_records
-                                        >= self.verbose_iter_[0]):
-                            print('Record %i' % current_n_records)
-                            if self.callback is not None:
-                                self.callback(self)
-                            self.verbose_iter_ = self.verbose_iter_[1:]
+                    print('Epoch %i' % (i + 1))
+                record_list = self.random_state.permutation(n_records)
+                prev_record = None
+                prev_masked_data = None
+                for record in itertools.chain(record_list, [None]):
+                    if record is not None and (
+                                    self.verbose and self.verbose_iter_ and
+                                    current_n_records
+                                    >= self.verbose_iter_[0]):
+                        print('Record %i' % current_n_records)
+                        if self.callback is not None:
+                            self.callback(self)
+                        self.verbose_iter_ = self.verbose_iter_[1:]
 
-                        # IO bounded
-                        if record is not None:
-                            data = data_list[record]
-                            if shelving:
-                                masked_data = data.get()
-                            else:
-                                img, confound = data
-                                img = check_niimg(img)
+                    # IO bounded
+                    if record is not None:
+                        data = data_list[record]
+                        if shelving:
+                            masked_data = data.get()
+                        else:
+                            img, confound = data
+                            img = check_niimg(img)
+                            if self.n_jobs > 1:
                                 masked_data = pool.submit(self.masker_.transform,
                                                           img, confound)
+                            else:
+                                masked_data = self.masker_.transform(img, confound)
 
-                        # CPU bounded
-                        if prev_record is not None:
-                            permutation = self.random_state.permutation(
-                                n_records)
-                            prev_masked_data = prev_masked_data[permutation]
-                            sample_indices = np.arange(
-                                indices_list[prev_record],
-                                indices_list[
-                                    prev_record + 1])
-                            sample_indices = sample_indices[permutation]
-                            self.dict_fact_.partial_fit(
-                                                 prev_masked_data,
-                                                 sample_indices=sample_indices)
-                            current_n_records += 1
-                        if record is not None:
-                            if not shelving:
+                    # CPU bounded
+                    if prev_record is not None:
+                        permutation = self.random_state.permutation(
+                            n_records)
+                        prev_masked_data = prev_masked_data[permutation]
+                        sample_indices = np.arange(
+                            indices_list[prev_record],
+                            indices_list[
+                                prev_record + 1])
+                        sample_indices = sample_indices[permutation]
+                        self.dict_fact_.partial_fit(
+                                             prev_masked_data,
+                                             sample_indices=sample_indices)
+                        current_n_records += 1
+                    if record is not None:
+                        if not shelving:
+                            if self.n_jobs > 1:
                                 prev_masked_data = masked_data.result()
-                            prev_record = record
+                            else:
+                                prev_masked_data = masked_data
+                        prev_record = record
+        if self.n_jobs > 1:
+            pool.shutdown()
         return self
 
     def score(self, imgs, confounds=None):

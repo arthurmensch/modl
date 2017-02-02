@@ -44,9 +44,9 @@ def main():
     method = 'masked'
     reduction = 10
     alpha = 1e-3
-    n_epochs = 3
+    n_epochs = 1
     verbose = 15
-    n_jobs = 1
+    n_jobs = 2
     warmup = False
     smoothing_fwhm = 6
 
