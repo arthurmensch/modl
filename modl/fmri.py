@@ -291,7 +291,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    learning_rate=self.learning_rate,
                                    batch_size=self.batch_size,
                                    random_state=self.random_state,
-                                   n_threads=min(1, self.n_jobs - 1),
+                                   n_threads=max(1, self.n_jobs - 1),
                                    verbose=0)
         self.dict_fact_.prepare(n_samples=n_samples, n_features=n_voxels,
                                 X=dict_init, dtype=dtype)
