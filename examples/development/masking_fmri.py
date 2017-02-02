@@ -2,10 +2,10 @@ import os
 from os.path import join
 
 from modl.utils.nifti import monkey_patch_nifti_image
+from sacred import Experiment
 
 monkey_patch_nifti_image()
 
-import pandas as pd
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
 from modl.utils.system import get_cache_dirs
@@ -16,22 +16,28 @@ from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
 
-def mask_and_dismiss(masker, index, img):
+masking_ex = Experiment('masking_fmri')
+
+@masking_ex.config
+def config():
+    n_jobs = 3
+    source = 'hcp'
+
+
+def mask_and_dismiss(masker, index, img, confounds):
     try:
         img = check_niimg(img)
-        print('Masking %s %s %s' % index)
-        data = masker.transform(img, confounds=None)
-        del data
-    except:
-        print('Bad record %s %s %s' % index)
+    except EOFError:
+        print('Bad record %s' % str(index))
         failure = join(get_cache_dirs()[0], 'cache_failure')
-        with open(join(failure, 'failure_%s_%s_%s' % index), 'w+') as f:
+        with open(join(failure, 'failure_%s' % str(index)), 'w+') as f:
             f.write('Cache failed')
+    print('Masking %s' % str(index))
+    data = masker.transform(img, confounds=confounds)
+    del data
 
-
-def main():
-    n_jobs = 24
-    source = 'hcp'
+@masking_ex.automain
+def main(n_jobs, source):
 
     mem = Memory(cachedir=get_cache_dirs()[0], verbose=10)
 
@@ -41,31 +47,24 @@ def main():
 
     if source == 'hcp':
         data = fetch_hcp(n_subjects=788)
-        rest_data = data.rest
-        rest_imgs = rest_data.loc[:, 'filename']
-        # Restart
-        # rest_imgs = rest_imgs.loc[[173940, 285345, 820745, 176037, 330324]]
-        rest_mask = data.mask
         smoothing_fwhm = 4
     elif source == 'adhd':
         data = fetch_adhd(n_subjects=40)
-        rest_imgs = pd.Series(data.func)
-        rest_mask = data.mask
         smoothing_fwhm = 6
     else:
         raise ValueError('Wrong source')
+    rest = data.rest
+    mask = data.mask
 
     masker = MultiNiftiMasker(smoothing_fwhm=smoothing_fwhm,
                               standardize=True,
                               detrend=True,
-                              mask_img=rest_mask,
+                              mask_img=mask,
                               memory=mem,
                               memory_level=1).fit()
+    iter_df = rest.loc[:, ['filename', 'confounds']].iterrows()
     Parallel(n_jobs=n_jobs)(delayed(mask_and_dismiss)(masker,
                                                       index,
-                                                      img)
-                            for index, img in rest_imgs.iteritems())
-
-
-if __name__ == '__main__':
-    main()
+                                                      img,
+                                                      confounds)
+                            for index, (img, confounds) in iter_df)

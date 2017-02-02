@@ -14,12 +14,9 @@ from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred import Ingredient
 from sacred.observers import FileStorageObserver
-from sacred.observers import MongoObserver
 
 monkey_patch_nifti_image()
 
-import pandas as pd
-import numpy as np
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
@@ -34,8 +31,10 @@ decomposition_ex = Experiment('decomposition', ingredients=[rest_data_ing])
 
 observer = FileStorageObserver.create(expanduser('~/runs'))
 decomposition_ex.observers.append(observer)
-observer = MongoObserver.create(db_name='amensch', collection='runs')
-decomposition_ex.observers.append(observer)
+# observer = MongoObserver.create(db_name='amensch', collection='runs')
+# decomposition_ex.observers.append(observer)
+# observer = TinyDbObserver.create(expanduser('~/runs'))
+# decomposition_ex.observers.append(observer)
 
 
 @decomposition_ex.config
@@ -65,29 +64,27 @@ def get_rest_data(source, n_subjects, test_size, _run, _seed):
     _run.info['rest_data'] = {}
     if source == 'hcp':
         data = fetch_hcp(n_subjects=n_subjects)
-        imgs = data.rest
-        mask_img = data.mask
-        subjects = imgs.index.get_level_values('subject')
     elif source == 'adhd':
         data = fetch_adhd(n_subjects=40)
-        imgs = data.func
-        # TODO merge this in adhd fetcher
-        imgs = pd.DataFrame(columns=['filename'],
-                            data=pd.Series(imgs, index=pd.Index(
-                                np.arange(len(imgs)), name='subject')))
-        mask_img = data.mask
-        subjects = imgs.index.values
     else:
         raise ValueError('Wrong resting-state source')
+    imgs = data.rest
+    mask_img = data.mask
+    subjects = imgs.index.get_level_values('subject')
+
     train_subjects, test_subjects = train_test_split(
         subjects, random_state=_seed, test_size=test_size)
     train_subjects = train_subjects.tolist()
     test_subjects = test_subjects.tolist()
     train_imgs = imgs.loc[train_subjects, 'filename'].values
     test_imgs = imgs.loc[test_subjects, 'filename'].values
+    train_confounds = imgs.loc[train_subjects, 'confounds'].values
+    test_confounds = imgs.loc[test_subjects, 'confounds'].values
+
     _run.info['dec_train_subjects'] = train_subjects
     _run.info['dec_test_subjects'] = test_subjects
-    return train_imgs, test_imgs, mask_img
+    # noinspection PyUnboundLocalVariable
+    return train_imgs, train_confounds, test_imgs, test_confounds, mask_img
 
 
 class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
@@ -109,10 +106,12 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           method,
                           verbose,
                           _run, _seed):
-    memory = Memory(cachedir=get_cache_dirs()[0], verbose=0)
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=1)
     print('Retrieve resting-state data')
-    train_imgs, test_imgs, mask_img = get_rest_data()
-    callback = CapturedfMRIDictionaryScorer(test_imgs)
+    train_imgs, train_confounds,\
+    test_imgs, test_confounds, mask_img = get_rest_data()
+    callback = CapturedfMRIDictionaryScorer(test_imgs,
+                                            test_confounds=test_confounds)
     print('Run dictionary learning')
     components, mask_img, callback = memory.cache(
         fmri_dict_learning,
@@ -121,6 +120,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                 'memory_level',
                 'callback'])(
         train_imgs,
+        confounds=train_confounds,
         mask=mask_img,
         alpha=alpha,
         batch_size=batch_size,
@@ -159,7 +159,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
         _run.add_artifact(join(artifact_dir, 'dec_components.png'),
                           name='dec_components.png')
         fig, ax = plt.subplots(1, 1)
-        ax.plot(callback.time, callback.iter, marker='o')
+        ax.plot(callback.time, callback.score, marker='o')
         plt.savefig(join(artifact_dir, 'dec_learning_curve.png'))
         plt.close(fig)
         _run.add_artifact(join(artifact_dir, 'dec_learning_curve.png'),
@@ -173,4 +173,3 @@ def compute_decomposition(alpha, batch_size, learning_rate,
 @decomposition_ex.automain
 def run_decomposition_ex(_run):
     compute_decomposition()
-    return _run.info['final_score']

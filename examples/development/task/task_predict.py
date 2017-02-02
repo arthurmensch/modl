@@ -145,7 +145,7 @@ def run(n_jobs,
     train_data, test_data, mask_img, label_encoder = get_task_data()
 
     data = pd.concat([train_data, test_data], keys=['train', 'test'],
-                     names='fold')
+                     names=['fold'])
     print('Compute loadings')
     loadings = memory.cache(compute_loadings,
                             ignore=['n_jobs'])(
