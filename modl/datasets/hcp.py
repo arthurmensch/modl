@@ -81,6 +81,7 @@ def fetch_hcp_behavioral(data_dir=None, release='HCP900'):
     df_unrestricted.set_index('Subject', inplace=True)
     df_restricted.set_index('Subject', inplace=True)
     df = df_unrestricted.join(df_restricted, how='outer')
+    df.index.names = ['subject']
     df.sort_index(ascending=True, inplace=True)
     return df
 
@@ -294,6 +295,7 @@ def fetch_hcp_rest(data_dir=None, release='HCP900', n_subjects=500):
                 if os.path.exists(filename):
                     res.append(
                         {'filename': filename,
+                         'confounds': None,
                          'subject': int(subject_id),
                          'direction': name[-2:],
                          'series': int(name[-4])

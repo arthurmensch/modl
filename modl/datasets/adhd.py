@@ -6,6 +6,8 @@ from sklearn.datasets.base import Bunch
 
 from nilearn.datasets import fetch_adhd as nilearn_fetch_adhd
 
+import pandas as pd
+
 
 def fetch_adhd(n_subjects=30, data_dir=None, url=None, resume=True,
                modl_data_dir=None,
@@ -20,6 +22,13 @@ def fetch_adhd(n_subjects=30, data_dir=None, url=None, resume=True,
         mask_url = 'http://amensch.fr/data/adhd/mask_img.nii.gz'
     _fetch_file(mask_url, mask_data_dir, resume=resume)
     mask_img = join(mask_data_dir, 'mask_img.nii.gz')
-    return Bunch(func=dataset.func, confounds=dataset.confounds,
-                 phenotypic=dataset.phenotypic, description=dataset.description,
+    behavioral = pd.DataFrame(dataset.phenotypic)
+    behavioral.loc[:, 'Subject'] = pd.to_numeric(behavioral.loc[:, 'Subject'])
+    behavioral.set_index('Subject', inplace=True)
+    behavioral.index.names = ['subject']
+    rest = pd.DataFrame(data=list(zip(dataset.func, dataset.confounds)),
+                        columns=['filename', 'confounds'],
+                        index=behavioral.index)
+    return Bunch(rest=rest,
+                 behavioral=behavioral, description=dataset.description,
                  mask=mask_img)
