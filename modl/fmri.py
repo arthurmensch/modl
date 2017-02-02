@@ -220,15 +220,13 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
         if self.dict_init is not None:
             if self.verbose:
-                print("Loading initial dictionary")
+                print("Loading dictionary")
             masker = NiftiMasker(smoothing_fwhm=0,
                                  mask_img=self.mask_img_).fit()
             dict_init = masker.transform(self.dict_init)
             if self.n_components is not None:
                 dict_init = dict_init[:self.n_components]
             n_components = dict_init.shape[0]
-            if self.verbose:
-                print("Done loading initial dictionary")
         else:
             dict_init = None
             n_components = self.n_components
@@ -499,7 +497,7 @@ def fmri_dict_learning(imgs, confounds=None,
         return dict_fact.components_, dict_fact.masker_.mask_img_, callback
 
 
-def compute_loadings(data, components, mask=None, n_jobs=1, verbose=0,
+def compute_loadings(data, components, mask, n_jobs=1, verbose=0,
                      memory=Memory(cachedir=None), memory_level=2):
     dict_fact = fMRIDictFact(smoothing_fwhm=0,
                              mask=mask,
@@ -512,7 +510,7 @@ def compute_loadings(data, components, mask=None, n_jobs=1, verbose=0,
                              verbose=verbose - 1,
                              ).fit()
     loadings = dict_fact.transform(data)
-    return loadings, dict_fact.mask_img_
+    return loadings
 
 
 class rfMRIDictionaryScorer:

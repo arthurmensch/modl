@@ -2,9 +2,8 @@ import copy
 import shutil
 import warnings
 from os.path import expanduser, join
-from tempfile import mkdtemp, mktemp
+from tempfile import mkdtemp
 
-import matplotlib.pyplot as plt
 from matplotlib.cbook import MatplotlibDeprecationWarning
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
@@ -23,6 +22,8 @@ import pandas as pd
 import numpy as np
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
+
+import matplotlib.pyplot as plt
 
 warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
 warnings.filterwarnings('ignore', category=MatplotlibDeprecationWarning,
@@ -56,15 +57,17 @@ def config():
     source = 'adhd'
     n_subjects = 40
     test_size = 2
+    seed = 2
 
 
 @rest_data_ing.capture
 def get_rest_data(source, n_subjects, test_size, _run, _seed):
+    _run.info['rest_data'] = {}
     if source == 'hcp':
         data = fetch_hcp(n_subjects=n_subjects)
         imgs = data.rest
         mask_img = data.mask
-        subjects = imgs.index.levels[0].values
+        subjects = imgs.index.get_level_values('subject')
     elif source == 'adhd':
         data = fetch_adhd(n_subjects=40)
         imgs = data.func
@@ -82,8 +85,8 @@ def get_rest_data(source, n_subjects, test_size, _run, _seed):
     test_subjects = test_subjects.tolist()
     train_imgs = imgs.loc[train_subjects, 'filename'].values
     test_imgs = imgs.loc[test_subjects, 'filename'].values
-    _run.info['train_subjects'] = 'train_subjects'
-    _run.info['test_subjects'] = 'test_subjects'
+    _run.info['dec_train_subjects'] = train_subjects
+    _run.info['dec_test_subjects'] = test_subjects
     return train_imgs, test_imgs, mask_img
 
 
@@ -91,9 +94,9 @@ class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
     @decomposition_ex.capture
     def __call__(self, dict_fact, _run=None):
         rfMRIDictionaryScorer.__call__(self, dict_fact)
-        _run.info['score'] = self.score
-        _run.info['time'] = self.time
-        _run.info['iter'] = self.iter
+        _run.info['dec_score'] = self.score
+        _run.info['dec_time'] = self.time
+        _run.info['dec_iter'] = self.iter
 
 
 @decomposition_ex.capture
@@ -134,35 +137,37 @@ def compute_decomposition(alpha, batch_size, learning_rate,
         random_state=_seed,
         verbose=verbose)
 
-    print('Dump results')
-    _run.info['score'] = callback.score
-    _run.info['time'] = callback.time
-    _run.info['iter'] = callback.iter
-    _run.info['final_score'] = callback.score[-1]
-    artifact_dir = mkdtemp()
-    # Avoid trashing cache
-    components_copy = copy.deepcopy(components)
-    components_copy.to_filename(join(artifact_dir, 'components.nii.gz'))
-    mask_img_copy = copy.deepcopy(mask_img)
-    mask_img_copy.to_filename(join(artifact_dir, 'mask_img.nii.gz'))
-    _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
-                      name='components.nii.gz')
-    fig = plt.figure()
-    display_maps(fig, components)
-    plt.savefig(join(artifact_dir, 'components.png'))
-    plt.close(fig)
-    _run.add_artifact(join(artifact_dir, 'components.png'),
-                      name='components.png')
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(_run.info['time'], _run.info['score'], marker='o')
-    plt.savefig(join(artifact_dir, 'learning_curve.png'))
-    plt.close(fig)
-    _run.add_artifact(join(artifact_dir, 'learning_curve.png'),
-                      name='learning_curve.png')
-    try:
-        shutil.rmtree(artifact_dir)
-    except FileNotFoundError:
-        pass
+    _run.info['dec_score'] = callback.score
+    _run.info['dec_time'] = callback.time
+    _run.info['dec_iter'] = callback.iter
+    _run.info['dec_final_score'] = callback.score[-1]
+
+    if not _run.unobserved:
+        print('Write decomposition artifacts')
+        artifact_dir = mkdtemp()
+        # Avoid trashing cache
+        components_copy = copy.deepcopy(components)
+        components_copy.to_filename(join(artifact_dir, 'dec_components.nii.gz'))
+        mask_img_copy = copy.deepcopy(mask_img)
+        mask_img_copy.to_filename(join(artifact_dir, 'dec_mask_img.nii.gz'))
+        _run.add_artifact(join(artifact_dir, 'dec_components.nii.gz'),
+                          name='dec_components.nii.gz')
+        fig = plt.figure()
+        display_maps(fig, components)
+        plt.savefig(join(artifact_dir, 'dec_components.png'))
+        plt.close(fig)
+        _run.add_artifact(join(artifact_dir, 'dec_components.png'),
+                          name='dec_components.png')
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(callback.time, callback.iter, marker='o')
+        plt.savefig(join(artifact_dir, 'dec_learning_curve.png'))
+        plt.close(fig)
+        _run.add_artifact(join(artifact_dir, 'dec_learning_curve.png'),
+                          name='dec_learning_curve.png')
+        try:
+            shutil.rmtree(artifact_dir)
+        except FileNotFoundError:
+            pass
     return components, mask_img
 
 @decomposition_ex.automain

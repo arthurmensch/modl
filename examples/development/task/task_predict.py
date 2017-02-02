@@ -1,6 +1,8 @@
-import os
+import copy
 import shutil
 from os.path import expanduser, join
+from tempfile import mkdtemp
+
 import numpy as np
 import pandas as pd
 from sacred import Ingredient, Experiment
@@ -25,7 +27,14 @@ from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
 from modl.fmri import compute_loadings
 
-from ..decomposition_fmri import decomposition_ex, compute_decomposition
+import sys
+from os import path
+
+sys.path.append(path.dirname(path.dirname
+                             (path.dirname(path.abspath(__file__)))))
+
+from examples.development.decomposition_fmri \
+    import decomposition_ex, compute_decomposition
 
 task_data_ing = Ingredient('task_data')
 prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
@@ -52,12 +61,13 @@ def config():
 def config():
     # source = 'hcp'
     n_subjects = 100
-    test_size = 10
+    test_size = .5
+    seed = 2
 
 
 @task_data_ing.capture
-def get_task_data(n_subjects, test_size, _seed):
-    print('Preparing task data')
+def get_task_data(n_subjects, test_size, _run, _seed):
+    print('Retrieve task data')
     data = fetch_hcp(n_subjects=n_subjects)
     imgs = data.task
     mask_img = data.mask
@@ -78,6 +88,10 @@ def get_task_data(n_subjects, test_size, _seed):
 
     train_imgs = imgs.loc[train_subjects, :]
     test_imgs = imgs.loc[test_subjects, :]
+
+    _run.info['pred_train_subjects'] = train_subjects
+    _run.info['pred_test_subjects'] = test_subjects
+
     return train_imgs, test_imgs, mask_img, label_encoder
 
 
@@ -96,8 +110,9 @@ def logistic_regression(X_train, y_train,
                                             n_jobs=n_jobs,
                                             random_state=_seed)
     if cross_val:
-        _run.info['best_C'] = lr.best_params_["logistic_regression__C"]
-        print('Best C %.3f' % _run.info['best_C_lr'])
+        best_C = lr.best_params_["logistic_regression__C"]
+        print('Best C %.3f' % best_C)
+        _run.info['best_C'] = best_C
     return lr
 
 
@@ -121,10 +136,7 @@ def _logistic_regression(X_train, y_train, standardize=False, cross_val=False,
 
 @prediction_ex.automain
 def run(n_jobs,
-        _run, ):
-    _id = _run._id
-    artifact_dir = join(expanduser('~/runs/artifacts'), str(_id))
-    os.makedirs(artifact_dir)
+        _run):
     memory = Memory(cachedir=get_cache_dirs()[0])
 
     print('Compute components')
@@ -132,13 +144,15 @@ def run(n_jobs,
 
     train_data, test_data, mask_img, label_encoder = get_task_data()
 
-    data = pd.concat([train_data, test_data], keys=['train', 'test'])
+    data = pd.concat([train_data, test_data], keys=['train', 'test'],
+                     names='fold')
     print('Compute loadings')
     loadings = memory.cache(compute_loadings,
-                            ignore=['n_jobs'])(data,
-                                               components,
-                                               mask=mask_img,
-                                               n_jobs=n_jobs)
+                            ignore=['n_jobs'])(
+        data.loc[:, 'filename'].values,
+        components,
+        mask=mask_img,
+        n_jobs=n_jobs)
     data = data.assign(loadings=loadings)
 
     X = data.loc[:, 'loadings']
@@ -152,26 +166,33 @@ def run(n_jobs,
 
     print('Dump results')
     y_pred = lr_estimator.predict(X)
-    true_labels = data.index.get_level_values(2).values
+    true_labels = data.index.get_level_values('contrast').values
     predicted_labels = label_encoder.inverse_transform(y_pred)
-    prediction = pd.DataFrame(data=[true_labels, predicted_labels],
-                              columns=['true_label', 'predicted_label'])
-    data.to_csv(join(artifact_dir, 'prediction.csv'))
-    _run.add_artifact(join(artifact_dir, 'prediction.csv'),
-                      name='prediction.csv')
+    prediction = pd.DataFrame(data=list(zip(true_labels, predicted_labels)),
+                              columns=['true_label', 'predicted_label'],
+                              index=data.index)
 
-    train_score = np.sum(prediction.loc['train',
-                                        'predicted_label']
-                         == prediction.loc['train',
-                                           'true_label'])
-    train_score /= task_data_ing.loc['test'].shape[0]
+    train_score = np.sum(prediction.loc['train', 'predicted_label']
+                         == prediction.loc['train', 'true_label'])
+    train_score /= prediction.loc['test'].shape[0]
 
-    test_score = np.sum(data.loc['test', 'predicted_labels']
-                        == data.loc['test', 'true_labels'])
-    test_score /= task_data_ing.loc['test'].shape[0]
-    _run.info['train_score'] = train_score
-    _run.info['test_score'] = test_score
+    test_score = np.sum(prediction.loc['test', 'predicted_label']
+                        == prediction.loc['test', 'true_label'])
+    test_score /= prediction.loc['test'].shape[0]
 
-    shutil.rmtree(artifact_dir)
+    _run.info['pred_train_score'] = train_score
+    _run.info['pred_test_score'] = test_score
+    if not _run.unobserved:
+        print('Write task prediction artifacts')
+        artifact_dir = mkdtemp()
+        mask_img_copy = copy.deepcopy(mask_img)
+        mask_img_copy.to_filename(join(artifact_dir, 'pred_mask_img.nii.gz'))
+        prediction.to_csv(join(artifact_dir, 'pred_prediction.csv'))
+        _run.add_artifact(join(artifact_dir, 'pred_prediction.csv'),
+                          name='pred_prediction.csv')
+        try:
+            shutil.rmtree(artifact_dir)
+        except FileNotFoundError:
+            pass
 
-    return train_score, test_score
+    return test_score
