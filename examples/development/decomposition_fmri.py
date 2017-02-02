@@ -29,8 +29,8 @@ warnings.filterwarnings('ignore', category=UserWarning, module='numpy')
 rest_data_ing = Ingredient('rest_data')
 decomposition_ex = Experiment('decomposition', ingredients=[rest_data_ing])
 
-observer = FileStorageObserver.create(expanduser('~/runs'))
-decomposition_ex.observers.append(observer)
+# observer = FileStorageObserver.create(expanduser('~/runs'))
+# decomposition_ex.observers.append(observer)
 # observer = MongoObserver.create(db_name='amensch', collection='runs')
 # decomposition_ex.observers.append(observer)
 # observer = TinyDbObserver.create(expanduser('~/runs'))
@@ -44,8 +44,8 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-3
-    n_epochs = 1
-    smoothing_fwhm = 6
+    n_epochs = 7
+    smoothing_fwhm = 4
     n_components = 40
     n_jobs = 20
     verbose = 15
@@ -54,8 +54,8 @@ def config():
 @rest_data_ing.config
 def config():
     source = 'hcp'
-    n_subjects = 100
-    test_size = 2
+    n_subjects = 40
+    test_size = 1
     seed = 2
 
 

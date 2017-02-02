@@ -23,7 +23,7 @@ def config():
     n_jobs = 40
     source = 'hcp'
     n_subjects = 10
-
+    smoothing_fwhm = 4
 
 def mask_and_dismiss(masker, index, img, confounds):
     try:
@@ -38,7 +38,7 @@ def mask_and_dismiss(masker, index, img, confounds):
     del data
 
 @masking_ex.automain
-def main(n_jobs, source, n_subjects):
+def main(n_jobs, source, n_subjects, smoothing_fwhm):
 
     mem = Memory(cachedir=get_cache_dirs()[0], verbose=10)
 
@@ -48,10 +48,8 @@ def main(n_jobs, source, n_subjects):
 
     if source == 'hcp':
         data = fetch_hcp(n_subjects=n_subjects)
-        smoothing_fwhm = 4
     elif source == 'adhd':
         data = fetch_adhd(n_subjects=n_subjects)
-        smoothing_fwhm = 6
     else:
         raise ValueError('Wrong source')
     rest = data.rest

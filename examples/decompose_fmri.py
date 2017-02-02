@@ -46,8 +46,8 @@ def main():
     alpha = 1e-3
     n_epochs = 3
     verbose = 15
-    n_jobs = 4
-    warmup = True
+    n_jobs = 1
+    warmup = False
     smoothing_fwhm = 6
 
     dict_init = load_atlas_init('smith', n_components=n_components)
@@ -61,6 +61,7 @@ def main():
                     verbose=2)
 
     cb = rfMRIDictionaryScorer(test_data)
+    cb = None
     dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                              method=method,
                              mask=mask,
@@ -84,9 +85,9 @@ def main():
     dict_fact.components_.to_filename('components.nii.gz')
     fig = plt.figure()
     display_maps(fig, dict_fact.components_)
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.time, cb.score, marker='o')
-    plt.show()
+    # fig, ax = plt.subplots(1, 1)
+    # ax.plot(cb.time, cb.score, marker='o')
+    # plt.show()
 
 if __name__ == '__main__':
     main()
