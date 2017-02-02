@@ -5,6 +5,7 @@ from tempfile import mkdtemp
 
 import numpy as np
 import pandas as pd
+from nilearn._utils import check_niimg
 from sacred import Ingredient, Experiment
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
@@ -185,8 +186,8 @@ def run(n_jobs,
     if not _run.unobserved:
         print('Write task prediction artifacts')
         artifact_dir = mkdtemp()
-        mask_img_copy = copy.deepcopy(mask_img)
-        mask_img_copy.to_filename(join(artifact_dir, 'pred_mask_img.nii.gz'))
+        mask_img = check_niimg(mask_img)
+        mask_img.to_filename(join(artifact_dir, 'pred_mask_img.nii.gz'))
         prediction.to_csv(join(artifact_dir, 'pred_prediction.csv'))
         _run.add_artifact(join(artifact_dir, 'pred_prediction.csv'),
                           name='pred_prediction.csv')
