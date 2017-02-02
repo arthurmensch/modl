@@ -10,6 +10,7 @@ from __future__ import division
 import itertools
 import time
 import warnings
+from concurrent.futures import ProcessPoolExecutor
 
 import nibabel
 import numpy as np
@@ -22,6 +23,7 @@ from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 from sklearn.utils import check_random_state
+from nilearn._utils.niimg_conversions import _iter_check_niimg
 
 from .dict_fact import DictFact, Coder
 from math import log
@@ -293,39 +295,59 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    verbose=0)
         self.dict_fact_.prepare(n_samples=n_samples, n_features=n_voxels,
                                 X=dict_init, dtype=dtype)
-        if n_records > 0:
-            if self.verbose:
-                log_lim = log(n_records * self.n_epochs, 10)
-                self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
-                                                 base=10) - 1
-                self.verbose_iter_ = self.verbose_iter_.tolist()
-            current_n_records = 0
-            for i in range(self.n_epochs):
+        with ProcessPoolExecutor(1) as pool:
+            if n_records > 0:
                 if self.verbose:
-                    print('Epoch %i' % (i + 1))
-                record_list = self.random_state.permutation(n_records)
-                for record in record_list:
-                    if (self.verbose and self.verbose_iter_ and
-                                current_n_records >= self.verbose_iter_[0]):
-                        print('Record %i' % current_n_records)
-                        if self.callback is not None:
-                            self.callback(self)
-                        self.verbose_iter_ = self.verbose_iter_[1:]
-                    data = data_list[record]
-                    sample_indices = np.arange(indices_list[record],
-                                               indices_list[record + 1])
-                    if shelving:
-                        data = data.get()
-                    else:
-                        img, confound = data
-                        img = check_niimg(img)
-                        data = self.masker_.transform(img, confound)
-                    permutation = self.random_state.permutation(n_records)
-                    data = data[permutation]
-                    sample_indices = sample_indices[permutation]
-                    self.dict_fact_.partial_fit(data,
-                                                sample_indices=sample_indices)
-                    current_n_records += 1
+                    log_lim = log(n_records * self.n_epochs, 10)
+                    self.verbose_iter_ = np.logspace(0, log_lim, self.verbose,
+                                                     base=10) - 1
+                    self.verbose_iter_ = self.verbose_iter_.tolist()
+                current_n_records = 0
+                for i in range(self.n_epochs):
+                    if self.verbose:
+                        print('Epoch %i' % (i + 1))
+                    record_list = self.random_state.permutation(n_records)
+                    prev_record = None
+                    prev_masked_data = None
+                    for record in itertools.chain(record_list, [None]):
+                        if record is not None and (
+                                        self.verbose and self.verbose_iter_ and
+                                        current_n_records
+                                        >= self.verbose_iter_[0]):
+                            print('Record %i' % current_n_records)
+                            if self.callback is not None:
+                                self.callback(self)
+                            self.verbose_iter_ = self.verbose_iter_[1:]
+
+                        # IO bounded
+                        if record is not None:
+                            data = data_list[record]
+                            if shelving:
+                                masked_data = data.get()
+                            else:
+                                img, confound = data
+                                img = check_niimg(img)
+                                masked_data = pool.submit(self.masker_.transform,
+                                                          img, confound)
+
+                        # CPU bounded
+                        if prev_record is not None:
+                            permutation = self.random_state.permutation(
+                                n_records)
+                            prev_masked_data = prev_masked_data[permutation]
+                            sample_indices = np.arange(
+                                indices_list[prev_record],
+                                indices_list[
+                                    prev_record + 1])
+                            sample_indices = sample_indices[permutation]
+                            self.dict_fact_.partial_fit(
+                                                 prev_masked_data,
+                                                 sample_indices=sample_indices)
+                            current_n_records += 1
+                        if record is not None:
+                            if not shelving:
+                                prev_masked_data = masked_data.result()
+                            prev_record = record
         return self
 
     def score(self, imgs, confounds=None):
@@ -347,7 +369,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
         Returns
         -------
-        scores: float
+        score: float
             Average score on all input data
         """
         if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
@@ -515,6 +537,7 @@ def compute_loadings(data, components, mask, n_jobs=1, verbose=0,
 
 class rfMRIDictionaryScorer:
     """Base callback to compute test score"""
+
     def __init__(self, test_imgs, test_confounds=None):
         self.start_time = time.perf_counter()
         self.test_imgs = test_imgs
@@ -528,10 +551,13 @@ class rfMRIDictionaryScorer:
 
     def __call__(self, dict_fact):
         test_time = time.perf_counter()
-        score = dict_fact.score(self.test_imgs, self.test_confounds)
+        if not hasattr(self, 'data'):
+            self.data = dict_fact.masker_.transform(
+                self.test_imgs, confounds=self.test_confounds)
+            self.data = np.vstack(self.data)
+        score = dict_fact.dict_fact_.score(self.data)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
         self.score.append(score)
         self.time.append(this_time)
         self.iter.append(dict_fact.n_iter_)
-
