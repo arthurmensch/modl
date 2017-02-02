@@ -44,7 +44,7 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-3
-    n_epochs = 3
+    n_epochs = 1
     smoothing_fwhm = 6
     n_components = 40
     n_jobs = 20
@@ -53,8 +53,8 @@ def config():
 
 @rest_data_ing.config
 def config():
-    source = 'adhd'
-    n_subjects = 40
+    source = 'hcp'
+    n_subjects = 100
     test_size = 2
     seed = 2
 

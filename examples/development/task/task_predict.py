@@ -42,8 +42,8 @@ prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
 
 observer = FileStorageObserver.create(expanduser('~/runs'))
 prediction_ex.observers.append(observer)
-observer = MongoObserver.create(db_name='amensch', collection='runs')
-prediction_ex.observers.append(observer)
+# observer = MongoObserver.create(db_name='amensch', collection='runs')
+# prediction_ex.observers.append(observer)
 
 
 @prediction_ex.config

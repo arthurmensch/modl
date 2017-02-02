@@ -20,8 +20,9 @@ masking_ex = Experiment('masking_fmri')
 
 @masking_ex.config
 def config():
-    n_jobs = 3
+    n_jobs = 40
     source = 'hcp'
+    n_subjects = 10
 
 
 def mask_and_dismiss(masker, index, img, confounds):
@@ -37,7 +38,7 @@ def mask_and_dismiss(masker, index, img, confounds):
     del data
 
 @masking_ex.automain
-def main(n_jobs, source):
+def main(n_jobs, source, n_subjects):
 
     mem = Memory(cachedir=get_cache_dirs()[0], verbose=10)
 
@@ -46,10 +47,10 @@ def main(n_jobs, source):
         os.makedirs(failure)
 
     if source == 'hcp':
-        data = fetch_hcp(n_subjects=788)
+        data = fetch_hcp(n_subjects=n_subjects)
         smoothing_fwhm = 4
     elif source == 'adhd':
-        data = fetch_adhd(n_subjects=40)
+        data = fetch_adhd(n_subjects=n_subjects)
         smoothing_fwhm = 6
     else:
         raise ValueError('Wrong source')
