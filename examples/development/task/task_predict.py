@@ -1,13 +1,16 @@
 import os
 import shutil
 from os.path import expanduser, join
-
+import numpy as np
 import pandas as pd
-from modl.fmri import compute_loadings
-from modl.utils.nifti import monkey_patch_nifti_image
-from sacred import Ingredient
+from sacred import Ingredient, Experiment
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
+
+from modl.utils.nifti import monkey_patch_nifti_image
+
+monkey_patch_nifti_image()
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import ShuffleSplit
@@ -15,18 +18,14 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 
-monkey_patch_nifti_image()
-
-import numpy as np
-from sacred import Experiment
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
 from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
+from modl.fmri import compute_loadings
 
-from decomposition import decomposition_ex
-
+from ..decomposition_fmri import decomposition_ex, compute_decomposition
 
 task_data_ing = Ingredient('task_data')
 prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
@@ -46,6 +45,7 @@ def config():
     cross_val = True
     n_jobs = 20
     verbose = 2
+    seed = 2
 
 
 @task_data_ing.config
@@ -53,6 +53,7 @@ def config():
     # source = 'hcp'
     n_subjects = 100
     test_size = 10
+
 
 @task_data_ing.capture
 def get_task_data(n_subjects, test_size, _seed):
@@ -75,9 +76,9 @@ def get_task_data(n_subjects, test_size, _seed):
     contrast_labels = label_encoder.fit_transform(contrast_labels)
     imgs = imgs.assign(label=contrast_labels)
 
-    train_data = imgs.loc[train_subjects, :]
-    test_data = imgs.loc[test_subjects, :]
-    return train_data, test_data, mask_img, label_encoder
+    train_imgs = imgs.loc[train_subjects, :]
+    test_imgs = imgs.loc[test_subjects, :]
+    return train_imgs, test_imgs, mask_img, label_encoder
 
 
 @prediction_ex.capture
@@ -120,7 +121,7 @@ def _logistic_regression(X_train, y_train, standardize=False, cross_val=False,
 
 @prediction_ex.automain
 def run(n_jobs,
-        _run,):
+        _run, ):
     _id = _run._id
     artifact_dir = join(expanduser('~/runs/artifacts'), str(_id))
     os.makedirs(artifact_dir)
@@ -160,9 +161,9 @@ def run(n_jobs,
                       name='prediction.csv')
 
     train_score = np.sum(prediction.loc['train',
-                                  'predicted_label']
+                                        'predicted_label']
                          == prediction.loc['train',
-                                     'true_label'])
+                                           'true_label'])
     train_score /= task_data_ing.loc['test'].shape[0]
 
     test_score = np.sum(data.loc['test', 'predicted_labels']

@@ -247,7 +247,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             self.masker_._shelving = shelving
 
             if self.verbose:
-                print("Preloading data")
+                print("Scanning data")
 
             if confounds is None:
                 confounds = itertools.repeat(None)
@@ -265,9 +265,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
 
             n_voxels = np.sum(
                 check_niimg(self.masker_.mask_img_).get_data() != 0)
-
-            if self.verbose:
-                print("Done preloading data")
         else:
             n_samples = 0
             n_voxels = dict_init.shape[1]
@@ -331,8 +328,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                     self.dict_fact_.partial_fit(data,
                                                 sample_indices=sample_indices)
                     current_n_records += 1
-        if self.verbose:
-            print("Done learning decomposition")
         return self
 
     def score(self, imgs, confounds=None):
@@ -462,7 +457,7 @@ def _score_img(coding_mixin, masker, img, confound):
     return coding_mixin.score(data)
 
 
-def fmri_dict_learning(imgs, confounds,
+def fmri_dict_learning(imgs, confounds=None,
                        mask=None, *,
                        dict_init=None,
                        alpha=1,
@@ -498,30 +493,10 @@ def fmri_dict_learning(imgs, confounds,
                              warmup=False,
                              )
     dict_fact.fit(imgs, confounds)
-    if callback is not None:
-        callback(dict_fact)
-    return dict_fact.components_, dict_fact.masker_.mask_img_
-
-
-class rfMRIDictionaryScorer:
-    """Base callback to compute test score"""
-    def __init__(self, test_data):
-        self.start_time = time.perf_counter()
-        self.test_data = test_data
-        self.test_time = 0
-        self.score = []
-        self.iter = []
-        self.time = []
-
-    def __call__(self, dict_fact):
-        test_time = time.perf_counter()
-        test_imgs, test_confounds = zip(*self.test_data)
-        score = dict_fact.score(self.test_data)
-        self.test_time += time.perf_counter() - test_time
-        this_time = time.perf_counter() - self.start_time - self.test_time
-        self.score.append(score)
-        self.time.append(this_time)
-        self.iter.append(dict_fact.n_iter_)
+    if callback is None:
+        return dict_fact.components_, dict_fact.masker_.mask_img_
+    else:
+        return dict_fact.components_, dict_fact.masker_.mask_img_, callback
 
 
 def compute_loadings(data, components, mask=None, n_jobs=1, verbose=0,
@@ -538,3 +513,27 @@ def compute_loadings(data, components, mask=None, n_jobs=1, verbose=0,
                              ).fit()
     loadings = dict_fact.transform(data)
     return loadings, dict_fact.mask_img_
+
+
+class rfMRIDictionaryScorer:
+    """Base callback to compute test score"""
+    def __init__(self, test_imgs, test_confounds=None):
+        self.start_time = time.perf_counter()
+        self.test_imgs = test_imgs
+        if test_confounds is None:
+            test_confounds = itertools.repeat(None)
+        self.test_confounds = test_confounds
+        self.test_time = 0
+        self.score = []
+        self.iter = []
+        self.time = []
+
+    def __call__(self, dict_fact):
+        test_time = time.perf_counter()
+        score = dict_fact.score(self.test_imgs, self.test_confounds)
+        self.test_time += time.perf_counter() - test_time
+        this_time = time.perf_counter() - self.start_time - self.test_time
+        self.score.append(score)
+        self.time.append(this_time)
+        self.iter.append(dict_fact.n_iter_)
+

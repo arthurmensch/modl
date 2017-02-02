@@ -1,10 +1,13 @@
 import os
 
 import nibabel
+import nilearn
 import numpy as np
 import sklearn.externals.joblib as joblib
 from nibabel import Nifti1Image as NibabelNifti1Image
 from nibabel import load as nibabel_load
+from nilearn._utils.compat import get_affine, _basestring
+from nilearn._utils.niimg import short_repr, _get_target_dtype
 from sklearn.externals.joblib.func_inspect import filter_args
 from sklearn.externals.joblib.hashing import NumpyHasher, Hasher
 
@@ -86,6 +89,49 @@ def our_get_argument_hash(self, *args, **kwargs):
                     coerce_mmap=True)
 
 
+def our_load_niimg(niimg, dtype=None):
+    """Load a niimg, check if it is a nibabel SpatialImage and cast if needed
+
+    Parameters:
+    -----------
+
+    niimg: Niimg-like object
+        See http://nilearn.github.io/manipulating_images/input_output.html.
+        Image to load.
+
+    dtype: {dtype, "auto"}
+        Data type toward which the data should be converted. If "auto", the
+        data will be converted to int32 if dtype is discrete and float32 if it
+        is continuous.
+
+    Returns:
+    --------
+    img: image
+        A loaded image object.
+    """
+    from nilearn.image import new_img_like  # avoid circular imports
+
+    if isinstance(niimg, _basestring):
+        # data is a filename, we load it
+        niimg = nibabel.load(niimg)
+    elif not isinstance(niimg, nibabel.spatialimages.SpatialImage):
+        raise TypeError("Data given cannot be loaded because it is"
+                        " not compatible with nibabel format:\n"
+                        + short_repr(niimg))
+    try:
+        this_dtype = niimg.get_data_dtype()
+    except AttributeError:
+        # Nibabel bug
+        this_dtype = niimg.get_data().dtype
+    dtype = _get_target_dtype(this_dtype, dtype)
+
+    if dtype is not None:
+        niimg = new_img_like(niimg, niimg.get_data().astype(dtype),
+                             get_affine(niimg))
+    return niimg
+
+
 def monkey_patch_nifti_image():
     nibabel.load = load
     joblib.memory.MemorizedFunc._get_argument_hash = our_get_argument_hash
+    nilearn._utils.niimg.load_niimg = our_load_niimg

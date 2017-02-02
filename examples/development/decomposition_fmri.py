@@ -1,21 +1,23 @@
+import copy
+import shutil
 import warnings
 from os.path import expanduser, join
-import copy
 from tempfile import mkdtemp, mktemp
 
 import matplotlib.pyplot as plt
-import shutil
-
 from matplotlib.cbook import MatplotlibDeprecationWarning
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
 from modl.fmri import rfMRIDictionaryScorer, fmri_dict_learning
 from modl.plotting.fmri import display_maps
+from modl.utils.nifti import monkey_patch_nifti_image
 from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred import Ingredient
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
+
+monkey_patch_nifti_image()
 
 import pandas as pd
 import numpy as np
@@ -47,7 +49,7 @@ def config():
     n_components = 40
     n_jobs = 20
     verbose = 15
-
+    seed = 2
 
 @rest_data_ing.config
 def config():
@@ -78,11 +80,11 @@ def get_rest_data(source, n_subjects, test_size, _run, _seed):
         subjects, random_state=_seed, test_size=test_size)
     train_subjects = train_subjects.tolist()
     test_subjects = test_subjects.tolist()
-    train_data = imgs.loc[train_subjects, 'filename'].values
-    test_data = imgs.loc[test_subjects, 'filename'].values
+    train_imgs = imgs.loc[train_subjects, 'filename'].values
+    test_imgs = imgs.loc[test_subjects, 'filename'].values
     _run.info['train_subjects'] = 'train_subjects'
     _run.info['test_subjects'] = 'test_subjects'
-    return train_data, test_data, mask_img
+    return train_imgs, test_imgs, mask_img
 
 
 class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
@@ -94,7 +96,7 @@ class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
         _run.info['iter'] = self.iter
 
 
-@decomposition_ex.automain
+@decomposition_ex.capture
 def compute_decomposition(alpha, batch_size, learning_rate,
                           n_components,
                           n_epochs,
@@ -106,15 +108,16 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           _run, _seed):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=0)
     print('Retrieve resting-state data')
-    train_data, test_data, mask_img = get_rest_data()
-    callback = CapturedfMRIDictionaryScorer(test_data)
+    train_imgs, test_imgs, mask_img = get_rest_data()
+    callback = CapturedfMRIDictionaryScorer(test_imgs)
     print('Run dictionary learning')
-    components, mask_img = memory.cache(
+    components, mask_img, callback = memory.cache(
         fmri_dict_learning,
         ignore=['verbose', 'n_jobs',
                 'memory',
-                'memory_level'])(
-        train_data,
+                'memory_level',
+                'callback'])(
+        train_imgs,
         mask=mask_img,
         alpha=alpha,
         batch_size=batch_size,
@@ -132,8 +135,10 @@ def compute_decomposition(alpha, batch_size, learning_rate,
         verbose=verbose)
 
     print('Dump results')
-    _run.info['final_score'] = _run.info['score'][-1]
-    _id = _run._id
+    _run.info['score'] = callback.score
+    _run.info['time'] = callback.time
+    _run.info['iter'] = callback.iter
+    _run.info['final_score'] = callback.score[-1]
     artifact_dir = mkdtemp()
     # Avoid trashing cache
     components_copy = copy.deepcopy(components)
@@ -154,6 +159,13 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     plt.close(fig)
     _run.add_artifact(join(artifact_dir, 'learning_curve.png'),
                       name='learning_curve.png')
-    shutil.rmtree(mktemp())
+    try:
+        shutil.rmtree(artifact_dir)
+    except FileNotFoundError:
+        pass
     return components, mask_img
 
+@decomposition_ex.automain
+def run_decomposition_ex(_run):
+    compute_decomposition()
+    return _run.info['final_score']

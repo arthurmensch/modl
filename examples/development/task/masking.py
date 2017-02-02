@@ -52,6 +52,8 @@ def main():
         rest_imgs = pd.Series(data.func)
         rest_mask = data.mask
         smoothing_fwhm = 6
+    else:
+        raise ValueError('Wrong source')
 
     masker = MultiNiftiMasker(smoothing_fwhm=smoothing_fwhm,
                               standardize=True,
