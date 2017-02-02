@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 from nilearn._utils import check_niimg
 from sacred import Ingredient, Experiment
-from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 
 from modl.utils.nifti import monkey_patch_nifti_image
@@ -35,39 +34,59 @@ sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
 from examples.development.decomposition_fmri \
-    import decomposition_ex, compute_decomposition
+    import decomposition_ex, compute_decomposition, rest_data_ing
 
 task_data_ing = Ingredient('task_data')
 prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
                                                         decomposition_ex])
 
-observer = FileStorageObserver.create(expanduser('~/runs'))
+observer = MongoObserver.create(db_name='amensch', collection='runs')
 prediction_ex.observers.append(observer)
-# observer = MongoObserver.create(db_name='amensch', collection='runs')
-# prediction_ex.observers.append(observer)
 
 
 @prediction_ex.config
 def config():
-    n_subjects = 700
-    test_size = 0.5
+    test_size = 0.1
     standardize = True
     cross_val = True
-    n_jobs = 20
+    n_jobs = 1
     verbose = 2
     seed = 2
 
 
 @task_data_ing.config
 def config():
-    # source = 'hcp'
-    n_subjects = 100
+    n_subjects = 200
+    test_size = .1
+    seed = 2
+
+
+@rest_data_ing.config
+def config():
+    source = 'hcp'
+    n_subjects = 200
     test_size = .5
     seed = 2
 
 
+@decomposition_ex.config
+def config():
+    batch_size = 100
+    learning_rate = 0.92
+    method = 'masked'
+    reduction = 10
+    alpha = 1e-3
+    n_epochs = 1
+    smoothing_fwhm = 4
+    n_components = 40
+    n_jobs = 1
+    verbose = 15
+    seed = 2
+
+
 @task_data_ing.capture
-def get_task_data(n_subjects, test_size, _run, _seed):
+def get_task_data(n_subjects, test_size, _run, _seed,
+                  train_imgs=None, test_imgs=None):
     print('Retrieve task data')
     data = fetch_hcp(n_subjects=n_subjects)
     imgs = data.task
@@ -137,13 +156,24 @@ def _logistic_regression(X_train, y_train, standardize=False, cross_val=False,
 
 @prediction_ex.automain
 def run(n_jobs,
+        decomposition,
         _run):
     memory = Memory(cachedir=get_cache_dirs()[0])
 
-    print('Compute components')
-    components, mask_img = compute_decomposition()
-
     train_data, test_data, mask_img, label_encoder = get_task_data()
+
+    if decomposition['rest_data']['source'] == 'hcp':
+        # Overrides train and test subject in the decomposition experiment
+        train_subjects = train_data.index.get_level_values('subject').unique().values.tolist()
+        test_subjects = test_data.index.get_level_values('subject').unique().values.tolist()
+    else:
+        train_subjects = None
+        test_subjects = None
+    print(train_subjects)
+    print(test_subjects)
+    print('Compute components')
+    components, mask_img = compute_decomposition(train_subjects=train_subjects,
+                                                 test_subjects=test_subjects)
 
     data = pd.concat([train_data, test_data], keys=['train', 'test'],
                      names=['fold'])
