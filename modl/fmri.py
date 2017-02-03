@@ -14,14 +14,15 @@ import warnings
 import nibabel
 import numpy as np
 from nilearn._utils import check_niimg
-from nilearn._utils.cache_mixin import CacheMixin
-from nilearn.decomposition.base import BaseDecomposition
 from nilearn.input_data import NiftiMasker
-from sklearn.base import TransformerMixin
+from nilearn.input_data.masker_validation import check_embedded_nifti_masker
+from sklearn.base import BaseEstimator
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 from sklearn.utils import check_random_state
+
+from nilearn._utils.compat import _basestring
 
 from .dict_fact import DictFact, Coder
 from math import log, sqrt
@@ -34,7 +35,142 @@ warnings.filterwarnings('ignore', module='sklearn.cross_validation',
                         )
 
 
-class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
+class fMRICoderMixin(BaseEstimator):
+    def _set_fmri_coder_mixin_params(self,
+                                     n_components=20,
+                                     alpha=0.1,
+                                     dict_init=None,
+                                     mask=None, smoothing_fwhm=None,
+                                     standardize=True, detrend=True,
+                                     low_pass=None, high_pass=None, t_r=None,
+                                     target_affine=None, target_shape=None,
+                                     mask_strategy='epi', mask_args=None,
+                                     memory=Memory(cachedir=None),
+                                     memory_level=2,
+                                     n_jobs=1, verbose=0, ):
+        self.n_components = n_components
+        self.mask = mask
+
+        self.smoothing_fwhm = smoothing_fwhm
+        self.standardize = standardize
+        self.detrend = detrend
+        self.low_pass = low_pass
+        self.high_pass = high_pass
+        self.t_r = t_r
+        self.target_affine = target_affine
+        self.target_shape = target_shape
+        self.mask_strategy = mask_strategy
+        self.mask_args = mask_args
+        self.memory = memory
+        self.memory_level = memory_level
+        self.n_jobs = n_jobs
+        self.verbose = verbose
+
+        self.dict_init = dict_init
+        self.alpha = alpha
+
+    def fit(self, imgs=None, y=None, confounds=None):
+        if isinstance(imgs, _basestring) or not hasattr(imgs, '__iter__'):
+            # these classes are meant for list of 4D images
+            # (multi-subject), we want it to work also on a single
+            # subject, so we hack it.
+            imgs = [imgs, ]
+        if len(imgs) == 0:
+            # Common error that arises from a null glob. Capture
+            # it early and raise a helpful message
+            raise ValueError('Need one or more Niimg-like objects as input, '
+                             'an empty list was given.')
+        self.masker_ = check_embedded_nifti_masker(self)
+
+        # Avoid warning with imgs != None
+        # if masker_ has been provided a mask_img
+        if self.masker_.mask_img is None:
+            self.masker_.fit(imgs)
+        else:
+            self.masker_.fit()
+        self.mask_img_ = self.masker_.mask_img_
+
+        if self.dict_init is not None:
+            if self.verbose:
+                print("Loading dictionary")
+            masker = NiftiMasker(smoothing_fwhm=0,
+                                 mask_img=self.mask_img_).fit()
+            self.components_ = masker.transform(self.dict_init)
+            if self.n_components is not None:
+                self.components_ = self.components_[:self.n_components]
+        else:
+            self.components_ = None
+
+    def score(self, imgs, confounds=None):
+        """
+        Score the images on the learning spatial components, based on the
+        objective function value that is minimized by the algorithm. Lower
+        means better fit.
+
+        Parameters
+        ----------
+        imgs: list of Niimg-like objects
+            See http://nilearn.github.io/building_blocks/manipulating_mr_images.html#niimg.
+            Data on which PCA must be calculated. If this is a list,
+            the affine is considered the same for all.
+
+        confounds: CSV file path or 2D matrix
+            This parameter is passed to nilearn.signal.clean. Please see the
+            related documentation for details
+
+        Returns
+        -------
+        score: float
+            Average score on all input data
+        """
+        if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
+            imgs = [imgs]
+        # In case fit is not finished
+        if confounds is None:
+            confounds = itertools.repeat(None)
+        scores = Parallel(n_jobs=self.n_jobs)(
+            delayed(_score_img)(self.dict_fact_, self.masker_, img,
+                                confound) for img, confound in
+            zip(imgs, confounds))
+        scores = np.array(scores)
+        len_imgs = np.array([check_niimg(img).get_shape()[3] for img in imgs])
+        score = np.sum(scores * len_imgs) / np.sum(len_imgs)
+        return score
+
+    def transform(self, imgs, confounds=None):
+        """Compute the mask and the ICA maps across subjects
+
+        Parameters
+        ----------
+        imgs: list of Niimg-like objects
+            See http://nilearn.github.io/building_blocks/manipulating_mr_images.html#niimg.
+            Data on which PCA must be calculated. If this is a list,
+            the affine is considered the same for all.
+
+        confounds: CSV file path or 2D matrix
+            This parameter is passed to nilearn.signal.clean. Please see the
+            related documentation for details
+
+        Returns
+        -------
+        codes, list of ndarray, shape = n_images * (n_samples, n_components)
+            Loadings for each of the images, and each of the time steps
+        """
+        if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
+            imgs = [imgs]
+        # In case fit is not finished
+        if confounds is None:
+            confounds = itertools.repeat(None)
+        codes = Parallel(n_jobs=self.n_jobs)(
+            delayed(_transform_img)(self.dict_fact_,
+                                    self.masker_,
+                                    img, confound)
+            for img, confound in
+            zip(imgs, confounds))
+        return codes
+
+
+class fMRIDictFact(fMRICoderMixin):
     """Perform a map learning algorithm based on component sparsity,
      over a CanICA initialization.  This yields more stable maps than CanICA.
 
@@ -157,24 +293,25 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  memory=Memory(cachedir=None), memory_level=2,
                  n_jobs=1, verbose=0,
                  callback=None):
-        BaseDecomposition.__init__(self, n_components=n_components,
-                                   random_state=random_state,
-                                   mask=mask,
-                                   smoothing_fwhm=smoothing_fwhm,
-                                   standardize=standardize,
-                                   detrend=detrend,
-                                   low_pass=low_pass, high_pass=high_pass,
-                                   t_r=t_r,
-                                   target_affine=target_affine,
-                                   target_shape=target_shape,
-                                   mask_strategy=mask_strategy,
-                                   mask_args=mask_args,
-                                   memory=memory,
-                                   memory_level=memory_level,
-                                   n_jobs=n_jobs, verbose=verbose,
-                                   )
-        self.alpha = alpha
-        self.dict_init = dict_init
+        fMRICoderMixin. \
+            _set_fmri_coder_mixin_params(self, n_components=n_components,
+                                         alpha=alpha,
+                                         dict_init=dict_init,
+                                         mask=mask,
+                                         smoothing_fwhm=smoothing_fwhm,
+                                         standardize=standardize,
+                                         detrend=detrend,
+                                         low_pass=low_pass,
+                                         high_pass=high_pass,
+                                         t_r=t_r,
+                                         target_affine=target_affine,
+                                         target_shape=target_shape,
+                                         mask_strategy=mask_strategy,
+                                         mask_args=mask_args,
+                                         memory=memory,
+                                         memory_level=memory_level,
+                                         n_jobs=n_jobs,
+                                         verbose=verbose)
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.reduction = reduction
@@ -182,6 +319,8 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         self.method = method
 
         self.learning_rate = learning_rate
+
+        self.random_state = random_state
 
         self.callback = callback
 
@@ -203,30 +342,14 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         -------
         self
         """
-        if imgs is not None and (isinstance(imgs, str)
-                                 or not hasattr(imgs, '__iter__')):
-            imgs = [imgs]
         # Base logic for decomposition estimators
-        BaseDecomposition.fit(self, imgs)
+        fMRICoderMixin.fit(self, imgs)
 
         self.random_state = check_random_state(self.random_state)
 
         method = fMRIDictFact.methods[self.method]
         G_agg = method['G_agg']
         Dx_agg = method['Dx_agg']
-
-        if self.dict_init is not None:
-            if self.verbose:
-                print("Loading dictionary")
-            masker = NiftiMasker(smoothing_fwhm=0,
-                                 mask_img=self.mask_img_).fit()
-            dict_init = masker.transform(self.dict_init)
-            if self.n_components is not None:
-                dict_init = dict_init[:self.n_components]
-            n_components = dict_init.shape[0]
-        else:
-            dict_init = None
-            n_components = self.n_components
 
         if imgs is not None:
             n_records = len(imgs)
@@ -246,16 +369,15 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             n_voxels = np.sum(
                 check_niimg(self.masker_.mask_img_).get_data() != 0)
         else:
-            self.dict_fact_ = Coder(dictionary=dict_init,
-                                    code_alpha=self.alpha,
-                                    code_l1_ratio=0,
-                                    comp_l1_ratio=1,
-                                    random_state=self.random_state,
-                                    n_threads=self.n_jobs)
-            return self
+            raise ValueError('imgs is None, use fMRICoder instead')
 
         if self.verbose:
             print("Learning decomposition")
+
+        if self.components_ is not None:
+            n_components = self.components_.shape[0]
+        else:
+            n_components = self.n_components
 
         self.dict_fact_ = DictFact(n_components=n_components,
                                    code_alpha=self.alpha,
@@ -270,7 +392,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    n_threads=self.n_jobs,
                                    verbose=0)
         self.dict_fact_.prepare(n_samples=n_samples, n_features=n_voxels,
-                                X=dict_init, dtype=dtype)
+                                X=self.components_, dtype=dtype)
         if n_records > 0:
             if self.verbose:
                 log_lim = log(n_records * self.n_epochs, 10)
@@ -290,7 +412,7 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 record_list = self.random_state.permutation(n_records)
                 for record in record_list:
                     if (self.verbose and self.verbose_iter_ and
-                            current_n_records  >= self.verbose_iter_[0]):
+                                current_n_records >= self.verbose_iter_[0]):
                         print('Record %i' % current_n_records)
                         if self.callback is not None:
                             self.callback(self)
@@ -310,96 +432,68 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                         indices_list[record], indices_list[record + 1])
                     sample_indices = sample_indices[permutation]
                     self.dict_fact_.partial_fit(prev_masked_data,
-                        sample_indices=sample_indices)
+                                                sample_indices=sample_indices)
+                    self.components_ = self.dict_fact_.components_
                     current_n_records += 1
+        components = _flip(self.components_)
+        self.components_img_ = self.masker_.inverse_transform(components)
         return self
-
-    def score(self, imgs, confounds=None):
-        """
-        Score the images on the learning spatial components, based on the
-        objective function value that is minimized by the algorithm. Lower
-        means better fit.
-
-        Parameters
-        ----------
-        imgs: list of Niimg-like objects
-            See http://nilearn.github.io/building_blocks/manipulating_mr_images.html#niimg.
-            Data on which PCA must be calculated. If this is a list,
-            the affine is considered the same for all.
-
-        confounds: CSV file path or 2D matrix
-            This parameter is passed to nilearn.signal.clean. Please see the
-            related documentation for details
-
-        Returns
-        -------
-        score: float
-            Average score on all input data
-        """
-        if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
-            imgs = [imgs]
-        # In case fit is not finished
-        if confounds is None:
-            confounds = itertools.repeat(None)
-        scores = Parallel(n_jobs=self.n_jobs)(
-            delayed(_score_img)(self.dict_fact_, self.masker_, img,
-                                confound) for img, confound in
-            zip(imgs, confounds))
-        score = sum(scores) / len(imgs)
-        return score
-
-    def transform(self, imgs, confounds=None):
-        """Compute the mask and the ICA maps across subjects
-
-        Parameters
-        ----------
-        imgs: list of Niimg-like objects
-            See http://nilearn.github.io/building_blocks/manipulating_mr_images.html#niimg.
-            Data on which PCA must be calculated. If this is a list,
-            the affine is considered the same for all.
-
-        confounds: CSV file path or 2D matrix
-            This parameter is passed to nilearn.signal.clean. Please see the
-            related documentation for details
-
-        Returns
-        -------
-        codes, list of ndarray, shape = n_images * (n_samples, n_components)
-            Loadings for each of the images, and each of the time steps
-        """
-        if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
-            imgs = [imgs]
-        # In case fit is not finished
-        if confounds is None:
-            confounds = itertools.repeat(None)
-        codes = Parallel(n_jobs=self.n_jobs)(
-            delayed(_transform_img)(self.dict_fact_,
-                                    self.masker_,
-                                    img, confound)
-            for img, confound in
-            zip(imgs, confounds))
-        return codes
-
-    @property
-    def components_(self):
-        """Property for callback purpose"""
-        components = self.dict_fact_.components_
-        components = _normalize_and_flip(components)
-        return self.masker_.inverse_transform(components)
-
-    @property
-    def n_iter_(self):
-        """Property for callback purpose"""
-        return self.dict_fact_.n_iter_
 
     def _callback(self):
         if self.callback is not None:
             self.callback(self)
 
 
-def _normalize_and_flip(components):
+class fMRICoder(fMRICoderMixin):
+    def __init__(self, dictionary,
+                 alpha=0.1,
+                 mask=None, smoothing_fwhm=None,
+                 standardize=False, detrend=False,
+                 low_pass=None, high_pass=None, t_r=None,
+                 target_affine=None, target_shape=None,
+                 mask_strategy='epi', mask_args=None,
+                 memory=Memory(cachedir=None),
+                 memory_level=2,
+                 n_jobs=1, verbose=0, ):
+        self.dictionary = dictionary
+        fMRICoderMixin. \
+            _set_fmri_coder_mixin_params(self,
+                                         n_components=None,
+                                         alpha=alpha,
+                                         dict_init=self.dictionary,
+                                         mask=mask,
+                                         smoothing_fwhm=smoothing_fwhm,
+                                         standardize=standardize,
+                                         detrend=detrend,
+                                         low_pass=low_pass,
+                                         high_pass=high_pass,
+                                         t_r=t_r,
+                                         target_affine=target_affine,
+                                         target_shape=target_shape,
+                                         mask_strategy=mask_strategy,
+                                         mask_args=mask_args,
+                                         memory=memory,
+                                         memory_level=memory_level,
+                                         n_jobs=n_jobs,
+                                         verbose=verbose)
+
+    def fit(self, imgs=None, y=None, confounds=None):
+        fMRICoderMixin.fit(self, imgs, confounds=confounds)
+        self.dict_fact_ = Coder(dictionary=self.components_,
+                                code_alpha=self.alpha,
+                                code_l1_ratio=0,
+                                comp_l1_ratio=1,
+                                n_threads=self.n_jobs).fit()
+        self.components_ = self.dict_fact_.components_
+        components = _flip(self.components_)
+        self.components_img_ = self.masker_.inverse_transform(components)
+        return self
+
+
+def _flip(components):
     """Flip signs in each composant positive part is l1 larger
     than negative part"""
+    components = components.copy()
     for component in components:
         if np.sum(component < 0) > np.sum(component > 0):
             component *= -1
@@ -470,25 +564,20 @@ def fmri_dict_learning(imgs, confounds=None,
                              callback=callback,
                              )
     dict_fact.fit(imgs, confounds)
-    if callback is None:
-        return dict_fact.components_, dict_fact.masker_.mask_img_
-    else:
-        return dict_fact.components_, dict_fact.masker_.mask_img_, callback
+    return dict_fact.components_img_, dict_fact.masker_.mask_img_, callback
 
 
-def compute_loadings(data, components, mask, n_jobs=1, verbose=0,
+def compute_loadings(imgs, components, alpha=1, confounds=None,
+                     mask=None, n_jobs=1, verbose=0,
                      memory=Memory(cachedir=None), memory_level=2):
-    dict_fact = fMRIDictFact(smoothing_fwhm=0,
-                             mask=mask,
-                             detrend=False,
-                             standardize=False,
-                             memory_level=memory_level,
-                             memory=memory,
-                             n_jobs=n_jobs,
-                             dict_init=components,
-                             verbose=verbose - 1,
-                             ).fit()
-    loadings = dict_fact.transform(data)
+    dict_fact = fMRICoder(mask=mask,
+                          dictionary=components,
+                          alpha=alpha,
+                          verbose=verbose,
+                          memory=memory,
+                          memory_level=memory_level,
+                          n_jobs=n_jobs).fit(imgs, confounds=confounds)
+    loadings = dict_fact.transform(imgs, confounds=confounds)
     return loadings
 
 
@@ -509,12 +598,20 @@ class rfMRIDictionaryScorer:
     def __call__(self, dict_fact):
         test_time = time.perf_counter()
         if not hasattr(self, 'data'):
-            self.data = dict_fact.masker_.transform(
-                self.test_imgs, confounds=self.test_confounds)
-            self.data = np.vstack(self.data)
-        score = dict_fact.dict_fact_.score(self.data)
+            self.data = [dict_fact.masker_.transform(
+                test_img, confounds=test_confounds)
+                         for test_img, test_confounds in
+                         zip(self.test_imgs, self.test_confounds)]
+            self.data = dict_fact.masker_.transform(self.test_imgs,
+                                                    confounds=self.test_confounds)
+        scores = np.array([dict_fact.dict_fact_.score(data)
+                           for data in self.data])
+        len_imgs = np.array([data.shape[0] for data in self.data])
+        fast_score = np.sum(scores * len_imgs) / np.sum(len_imgs)
+        score = dict_fact.score(self.test_imgs, confounds=self.test_confounds)
+        print(fast_score, score)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
         self.score.append(score)
         self.time.append(this_time)
-        self.iter.append(dict_fact.n_iter_)
+        self.iter.append(dict_fact.dict_fact_.n_iter_)

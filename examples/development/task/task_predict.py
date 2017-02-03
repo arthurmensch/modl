@@ -55,6 +55,8 @@ def config():
     n_jobs = 1
     verbose = 2
     seed = 2
+    max_iter = 10000
+    tol = 1e-7
 
 
 @task_data_ing.config
@@ -80,12 +82,13 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-3
-    n_epochs = 3
+    n_epochs = 1
     smoothing_fwhm = 4
     n_components = 40
     n_jobs = 1
     verbose = 15
     seed = 2
+    callback = False
 
 
 @task_data_ing.capture
@@ -122,6 +125,8 @@ def logistic_regression(X_train, y_train,
                         # Injected parameters
                         standardize,
                         C,
+                        tol,
+                        max_iter,
                         n_jobs,
                         _run,
                         _seed):
@@ -129,30 +134,38 @@ def logistic_regression(X_train, y_train,
     lr = memory.cache(_logistic_regression)(X_train, y_train,
                                             standardize=standardize,
                                             C=C,
+                                            tol=tol, max_iter=max_iter,
                                             n_jobs=n_jobs,
                                             random_state=_seed)
     if hasattr(C, '__iter__'):
-        best_C = lr.best_params_["logistic_regression__C"]
+        best_C = lr.get_params()['logistic_regression__C']
         print('Best C %.3f' % best_C)
         _run.info['pred_best_C'] = best_C
     return lr
 
 
 def _logistic_regression(X_train, y_train, standardize=False, C=1,
+                         tol=1e-7, max_iter=1000,
                          n_jobs=1, random_state=None):
     """Function to be cached"""
     lr = LogisticRegression(multi_class='multinomial',
                             C=C,
-                            solver='sag', tol=1e-7, max_iter=5000, verbose=2,
+                            solver='sag', tol=1e-3, max_iter=200, verbose=2,
                             random_state=random_state)
     if standardize:
         sc = StandardScaler()
         lr = Pipeline([('standard_scaler', sc), ('logistic_regression', lr)])
     if hasattr(C, '__iter__'):
-        lr = GridSearchCV(lr,
+        grid_lr = GridSearchCV(lr,
                           {'logistic_regression__C': C},
                           cv=ShuffleSplit(test_size=0.1),
+                          refit=False,
                           n_jobs=n_jobs)
+    grid_lr.fit(X_train, y_train)
+    best_params = grid_lr.best_params_
+    lr.set_params(**best_params)
+    lr.set_params(logistic_regression__tol=tol,
+                  logistic_regression__max_iter=max_iter)
     lr.fit(X_train, y_train)
     return lr
 

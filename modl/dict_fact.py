@@ -68,6 +68,8 @@ class CodingMixin(TransformerMixin):
 
         dtype = self.components_.dtype
         X = check_array(X, order='C', dtype=dtype.type)
+        if X.flags['WRITEABLE'] is False:
+            X = X.copy()
         n_samples, n_features = X.shape
         if not hasattr(self, 'G_agg') or self.G_agg != 'full':
             G = self.components_.dot(self.components_.T)
@@ -709,5 +711,5 @@ class Coder(CodingMixin, BaseEstimator):
                                 n_threads=n_threads)
         self.components_ = dictionary
 
-    def fit(self, X):
+    def fit(self, X=None):
         return self

@@ -9,7 +9,7 @@ from sacred.observers import FileStorageObserver
 
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
-from modl.fmri import rfMRIDictionaryScorer, fmri_dict_learning
+from modl.fmri import rfMRIDictionaryScorer, fmri_dict_learning, fMRICoder
 from modl.plotting.fmri import display_maps
 from modl.utils.nifti import monkey_patch_nifti_image
 from modl.utils.system import get_cache_dirs
@@ -37,6 +37,7 @@ decomposition_ex.observers.append(observer)
 observer = FileStorageObserver.create(expanduser('~/output/runs'))
 decomposition_ex.observers.append(observer)
 
+
 @decomposition_ex.config
 def config():
     batch_size = 50
@@ -44,12 +45,14 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-4
-    n_epochs = 2
+    n_epochs = 1
     smoothing_fwhm = 4
     n_components = 40
     n_jobs = 1
     verbose = 15
     seed = 2
+    callback = True
+
 
 @rest_data_ing.config
 def config():
@@ -63,10 +66,11 @@ def config():
 def hcp():
     batch_size = 100
 
+
 @rest_data_ing.named_config
 def hcp():
     source = 'hcp'
-    test_size= 1
+    test_size = 1
     train_size = 10
 
 
@@ -76,7 +80,6 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
                   train_subjects=None,
                   test_subjects=None
                   ):
-    _run.info['rest_data'] = {}
     if source == 'hcp':
         data = fetch_hcp()
     elif source == 'adhd':
@@ -123,6 +126,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           reduction,
                           smoothing_fwhm,
                           method,
+                          callback,
                           verbose,
                           _run, _seed,
                           # Optional arguments, to be passed by higher level experiments
@@ -130,21 +134,23 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           test_subjects=None
                           ):
     memory = Memory(cachedir=get_cache_dirs()[0],
-                    mmap_mode='r+', verbose=10)
+                    mmap_mode=None, verbose=10)
     print('Retrieve resting-state data')
     train_imgs, train_confounds, \
     test_imgs, test_confounds, mask_img = get_rest_data(
         train_subjects=train_subjects,
         test_subjects=test_subjects)
-    callback = CapturedfMRIDictionaryScorer(test_imgs,
-                                            test_confounds=test_confounds)
+    if callback:
+        callback = CapturedfMRIDictionaryScorer(test_imgs,
+                                                test_confounds=test_confounds)
+    else:
+        callback = None
     print('Run dictionary learning')
     components, mask_img, callback = memory.cache(
         fmri_dict_learning,
         ignore=['verbose', 'n_jobs',
                 'memory',
-                'memory_level',
-                'callback'])(
+                'memory_level'])(
         train_imgs,
         confounds=train_confounds,
         mask=mask_img,
@@ -163,10 +169,20 @@ def compute_decomposition(alpha, batch_size, learning_rate,
         random_state=_seed,
         verbose=verbose)
 
-    _run.info['dec_score'] = callback.score
-    _run.info['dec_time'] = callback.time
-    _run.info['dec_iter'] = callback.iter
-    _run.info['dec_final_score'] = float(callback.score[-1])
+    if callback is not None:
+        _run.info['dec_score'] = callback.score
+        _run.info['dec_time'] = callback.time
+        _run.info['dec_iter'] = callback.iter
+
+    coder = fMRICoder(standardize=True, detrend=True,
+                      smoothing_fwhm=smoothing_fwhm,
+                      dictionary=components,
+                      memory=memory,
+                      alpha=alpha,
+                      memory_level=2,
+                      mask=mask_img).fit()
+    final_score = coder.score(test_imgs, confounds=test_confounds)
+    _run.info['dec_final_score'] = final_score
 
     if not _run.unobserved:
         print('Write decomposition artifacts')
@@ -185,12 +201,13 @@ def compute_decomposition(alpha, batch_size, learning_rate,
         plt.close(fig)
         _run.add_artifact(join(artifact_dir, 'dec_components.png'),
                           name='dec_components.png')
-        fig, ax = plt.subplots(1, 1)
-        ax.plot(callback.time, callback.score, marker='o')
-        plt.savefig(join(artifact_dir, 'dec_learning_curve.png'))
-        plt.close(fig)
-        _run.add_artifact(join(artifact_dir, 'dec_learning_curve.png'),
-                          name='dec_learning_curve.png')
+        if callback is not None:
+            fig, ax = plt.subplots(1, 1)
+            ax.plot(callback.time, callback.score, marker='o')
+            plt.savefig(join(artifact_dir, 'dec_learning_curve.png'))
+            plt.close(fig)
+            _run.add_artifact(join(artifact_dir, 'dec_learning_curve.png'),
+                              name='dec_learning_curve.png')
         try:
             shutil.rmtree(artifact_dir)
         except FileNotFoundError:

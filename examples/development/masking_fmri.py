@@ -20,10 +20,10 @@ masking_ex = Experiment('masking_fmri')
 
 @masking_ex.config
 def config():
-    n_jobs = 40
-    source = 'hcp'
-    n_subjects = 10
-    smoothing_fwhm = 4
+    n_jobs = 3
+    source = 'adhd'
+    n_subjects = 40
+    smoothing_fwhm = 6
 
 def mask_and_dismiss(masker, index, img, confounds):
     try:
