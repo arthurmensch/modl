@@ -108,7 +108,6 @@ def get_components(data, *,
                              reduction=reduction,
                              alpha=alpha,
                              callback=cb,
-                             warmup=True,
                              )
     dict_fact.fit(data)
     score = dict_fact.score(test_data)

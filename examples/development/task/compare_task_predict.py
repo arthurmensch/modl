@@ -26,15 +26,17 @@ def first_grid_search():
 
     n_components_list = [20, 50, 100]
 
-    alpha_list = [1e-4, 1e-3]
+    alpha_list = [1e-4, 1e-5]
 
     update_list = []
     for train_size in train_size_list:
         for n_components in n_components_list:
             for alpha in alpha_list:
-                config_updates = {'task_data': {'train_size': train_size},
+                config_updates = {'task_data': {'train_size': 778},
+                                  'rest_data': {'train_size': train_size},
                                   'decomposition':
-                                      {'n_components': n_components, 'alpha': alpha},
+                                      {'n_components': n_components,
+                                       'alpha': alpha},
                                   }
                 update_list.append(config_updates)
 

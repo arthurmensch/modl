@@ -47,7 +47,6 @@ def main():
     n_epochs = 1
     verbose = 15
     n_jobs = 2
-    warmup = False
     smoothing_fwhm = 6
 
     dict_init = load_atlas_init('smith', n_components=n_components)
@@ -78,7 +77,6 @@ def main():
                              reduction=reduction,
                              alpha=alpha,
                              callback=cb,
-                             warmup=warmup,
                              )
     dict_fact.fit(train_imgs, train_confounds)
 

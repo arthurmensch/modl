@@ -10,7 +10,6 @@ from __future__ import division
 import itertools
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor
 
 import nibabel
 import numpy as np
@@ -23,7 +22,6 @@ from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 from sklearn.utils import check_random_state
-from nilearn._utils.niimg_conversions import _iter_check_niimg
 
 from .dict_fact import DictFact, Coder
 from math import log, sqrt
@@ -158,7 +156,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                  mask_strategy='epi', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=2,
                  n_jobs=1, verbose=0,
-                 warmup=False,
                  callback=None):
         BaseDecomposition.__init__(self, n_components=n_components,
                                    random_state=random_state,
@@ -185,8 +182,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         self.method = method
 
         self.learning_rate = learning_rate
-
-        self.warmup = warmup
 
         self.callback = callback
 
@@ -236,28 +231,13 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if imgs is not None:
             n_records = len(imgs)
 
-            if self.warmup:
-                if self.memory is None or self.memory.cachedir is None:
-                    self.warmup = False
-                    warnings.warn(
-                        'warmup has been set to False as no memory'
-                        ' has been provided.')
-
-            shelving = self.warmup
-            self.masker_._shelving = shelving
-
             if self.verbose:
                 print("Scanning data")
 
             if confounds is None:
                 confounds = itertools.repeat(None)
-            if shelving:
-                data_list = self.masker_.transform(imgs, confounds)
-                n_samples_list = [data.get().shape[0] for data in data_list]
-                dtype = data_list[0].get().dtype
-            else:
-                data_list = list(zip(imgs, confounds))
-                n_samples_list, dtype = _lazy_scan(imgs)
+            data_list = list(zip(imgs, confounds))
+            n_samples_list, dtype = _lazy_scan(imgs)
 
             indices_list = np.zeros(len(imgs) + 1, dtype='int')
             indices_list[1:] = np.cumsum(n_samples_list)
@@ -287,12 +267,10 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                    learning_rate=self.learning_rate,
                                    batch_size=self.batch_size,
                                    random_state=self.random_state,
-                                   n_threads=max(1, self.n_jobs - 1),
+                                   n_threads=self.n_jobs,
                                    verbose=0)
         self.dict_fact_.prepare(n_samples=n_samples, n_features=n_voxels,
                                 X=dict_init, dtype=dtype)
-        if self.n_jobs > 1:
-            pool = ProcessPoolExecutor(1)
         if n_records > 0:
             if self.verbose:
                 log_lim = log(n_records * self.n_epochs, 10)
@@ -310,55 +288,30 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                     reduction = 1 + (self.reduction - 1) / sqrt(i + 1)
                     self.dict_fact_.set_params(reduction=reduction)
                 record_list = self.random_state.permutation(n_records)
-                prev_record = None
-                prev_masked_data = None
-                for record in itertools.chain(record_list, [None]):
-                    if record is not None and (
-                                    self.verbose and self.verbose_iter_ and
-                                    current_n_records
-                                    >= self.verbose_iter_[0]):
+                for record in record_list:
+                    if (self.verbose and self.verbose_iter_ and
+                            current_n_records  >= self.verbose_iter_[0]):
                         print('Record %i' % current_n_records)
                         if self.callback is not None:
                             self.callback(self)
                         self.verbose_iter_ = self.verbose_iter_[1:]
 
                     # IO bounded
-                    if record is not None:
-                        data = data_list[record]
-                        if shelving:
-                            masked_data = data.get()
-                        else:
-                            img, confound = data
-                            img = check_niimg(img)
-                            if self.n_jobs > 1:
-                                masked_data = pool.submit(self.masker_.transform,
-                                                          img, confound)
-                            else:
-                                masked_data = self.masker_.transform(img, confound)
+                    data = data_list[record]
+                    img, confound = data
+                    img = check_niimg(img)
+                    masked_data = self.masker_.transform(img, confound)
 
                     # CPU bounded
-                    if prev_record is not None:
-                        permutation = self.random_state.permutation(
-                            n_records)
-                        prev_masked_data = prev_masked_data[permutation]
-                        sample_indices = np.arange(
-                            indices_list[prev_record],
-                            indices_list[
-                                prev_record + 1])
-                        sample_indices = sample_indices[permutation]
-                        self.dict_fact_.partial_fit(
-                                             prev_masked_data,
-                                             sample_indices=sample_indices)
-                        current_n_records += 1
-                    if record is not None:
-                        if not shelving:
-                            if self.n_jobs > 1:
-                                prev_masked_data = masked_data.result()
-                            else:
-                                prev_masked_data = masked_data
-                        prev_record = record
-        if self.n_jobs > 1:
-            pool.shutdown()
+                    permutation = self.random_state.permutation(
+                        n_records)
+                    prev_masked_data = masked_data[permutation]
+                    sample_indices = np.arange(
+                        indices_list[record], indices_list[record + 1])
+                    sample_indices = sample_indices[permutation]
+                    self.dict_fact_.partial_fit(prev_masked_data,
+                        sample_indices=sample_indices)
+                    current_n_records += 1
         return self
 
     def score(self, imgs, confounds=None):
@@ -386,8 +339,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
             imgs = [imgs]
         # In case fit is not finished
-        shelving = self.masker_._shelving
-        self.masker_._shelving = False
         if confounds is None:
             confounds = itertools.repeat(None)
         scores = Parallel(n_jobs=self.n_jobs)(
@@ -395,7 +346,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                 confound) for img, confound in
             zip(imgs, confounds))
         score = sum(scores) / len(imgs)
-        self.masker_._shelving = shelving
         return score
 
     def transform(self, imgs, confounds=None):
@@ -420,8 +370,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
         if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
             imgs = [imgs]
         # In case fit is not finished
-        shelving = self.masker_._shelving
-        self.masker_._shelving = False
         if confounds is None:
             confounds = itertools.repeat(None)
         codes = Parallel(n_jobs=self.n_jobs)(
@@ -430,7 +378,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                                     img, confound)
             for img, confound in
             zip(imgs, confounds))
-        self.masker_._shelving = shelving
         return codes
 
     @property
@@ -521,7 +468,6 @@ def fmri_dict_learning(imgs, confounds=None,
                              reduction=reduction,
                              alpha=alpha,
                              callback=callback,
-                             warmup=False,
                              )
     dict_fact.fit(imgs, confounds)
     if callback is None:

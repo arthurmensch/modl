@@ -50,7 +50,6 @@ def config():
     n_jobs = 1
     verbose = 15
     seed = 2
-    mmap_mode = None
 
 @rest_data_ing.config
 def config():
@@ -91,9 +90,11 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
     if train_subjects is None and test_subjects is None:
         train_subjects, test_subjects = train_test_split(
             subjects, random_state=_seed, test_size=test_size)
-        train_subjects = train_subjects[:train_size]
         train_subjects = train_subjects.tolist()
         test_subjects = test_subjects.tolist()
+    train_subjects = train_subjects[:train_size]
+    test_subjects = test_subjects[:test_size]
+
     train_imgs = imgs.loc[train_subjects, 'filename'].values
     test_imgs = imgs.loc[test_subjects, 'filename'].values
     train_confounds = imgs.loc[train_subjects, 'confounds'].values
@@ -123,14 +124,13 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           smoothing_fwhm,
                           method,
                           verbose,
-                          mmap_mode,
                           _run, _seed,
                           # Optional arguments, to be passed by higher level experiments
                           train_subjects=None,
                           test_subjects=None
                           ):
     memory = Memory(cachedir=get_cache_dirs()[0],
-                    mmap_mode=mmap_mode, verbose=10)
+                    mmap_mode='r+', verbose=10)
     print('Retrieve resting-state data')
     train_imgs, train_confounds, \
     test_imgs, test_confounds, mask_img = get_rest_data(
@@ -142,6 +142,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     components, mask_img, callback = memory.cache(
         fmri_dict_learning,
         ignore=['verbose', 'n_jobs',
+                'memory',
                 'memory_level',
                 'callback'])(
         train_imgs,

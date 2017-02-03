@@ -1,4 +1,3 @@
-import copy
 import shutil
 from os.path import expanduser, join
 from tempfile import mkdtemp
@@ -24,7 +23,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
-from modl.datasets.hcp import fetch_hcp, contrasts_description, fetch_hcp_task
+from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
 from modl.fmri import compute_loadings
 
@@ -52,7 +51,7 @@ prediction_ex.observers.append(observer)
 def config():
     test_size = 0.1
     standardize = True
-    cross_val = True
+    C = np.logspace(-1, 1, 10)
     n_jobs = 1
     verbose = 2
     seed = 2
@@ -60,7 +59,7 @@ def config():
 
 @task_data_ing.config
 def config():
-    train_size = 20
+    train_size = 10
     test_size = 10
     seed = 2
 
@@ -68,6 +67,8 @@ def config():
 @rest_data_ing.config
 def config():
     source = 'hcp'
+    train_size = None # Overriden
+    test_size = 1
     seed = 2
     # train and test are overriden
 
@@ -120,35 +121,36 @@ def get_task_data(train_size, test_size, _run, _seed):
 def logistic_regression(X_train, y_train,
                         # Injected parameters
                         standardize,
-                        cross_val,
+                        C,
                         n_jobs,
                         _run,
                         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0])
     lr = memory.cache(_logistic_regression)(X_train, y_train,
                                             standardize=standardize,
-                                            cross_val=cross_val,
+                                            C=C,
                                             n_jobs=n_jobs,
                                             random_state=_seed)
-    if cross_val:
+    if hasattr(C, '__iter__'):
         best_C = lr.best_params_["logistic_regression__C"]
         print('Best C %.3f' % best_C)
         _run.info['pred_best_C'] = best_C
     return lr
 
 
-def _logistic_regression(X_train, y_train, standardize=False, cross_val=False,
+def _logistic_regression(X_train, y_train, standardize=False, C=1,
                          n_jobs=1, random_state=None):
     """Function to be cached"""
     lr = LogisticRegression(multi_class='multinomial',
-                            solver='sag', tol=1e-4, max_iter=1000, verbose=2,
+                            C=C,
+                            solver='sag', tol=1e-7, max_iter=5000, verbose=2,
                             random_state=random_state)
     if standardize:
         sc = StandardScaler()
         lr = Pipeline([('standard_scaler', sc), ('logistic_regression', lr)])
-    if cross_val:
+    if hasattr(C, '__iter__'):
         lr = GridSearchCV(lr,
-                          {'logistic_regression__C': np.logspace(-1, 1, 10)},
+                          {'logistic_regression__C': C},
                           cv=ShuffleSplit(test_size=0.1),
                           n_jobs=n_jobs)
     lr.fit(X_train, y_train)
@@ -167,9 +169,6 @@ def run(n_jobs,
     if not decomposition['rest_data']['source'] == 'hcp':
         train_subjects = None
         test_subjects = None
-    else:
-        # Reduce the test size for efficient debug control
-        test_subjects = test_subjects[:1]
     print('Compute components')
     components, mask_img = compute_decomposition(train_subjects=train_subjects,
                                                  test_subjects=test_subjects)
