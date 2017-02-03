@@ -132,7 +132,7 @@ def logistic_regression(X_train, y_train,
     if cross_val:
         best_C = lr.best_params_["logistic_regression__C"]
         print('Best C %.3f' % best_C)
-        _run.info['best_C'] = best_C
+        _run.info['pred_best_C'] = best_C
     return lr
 
 
@@ -169,8 +169,6 @@ def run(n_jobs,
     else:
         train_subjects = None
         test_subjects = None
-    print(train_subjects)
-    print(test_subjects)
     print('Compute components')
     components, mask_img = compute_decomposition(train_subjects=train_subjects,
                                                  test_subjects=test_subjects)
@@ -205,7 +203,7 @@ def run(n_jobs,
 
     train_score = np.sum(prediction.loc['train', 'predicted_label']
                          == prediction.loc['train', 'true_label'])
-    train_score /= prediction.loc['test'].shape[0]
+    train_score /= prediction.loc['train'].shape[0]
 
     test_score = np.sum(prediction.loc['test', 'predicted_label']
                         == prediction.loc['test', 'true_label'])
