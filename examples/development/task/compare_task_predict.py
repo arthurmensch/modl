@@ -1,5 +1,4 @@
 import sys
-import uuid
 from os import path
 
 from sacred.observers import MongoObserver
@@ -16,26 +15,26 @@ def single_run(config_updates, _id):
     observer = MongoObserver.create(db_name='amensch', collection='runs')
     prediction_ex.observers = [observer]
 
-
     run = prediction_ex._create_run(config_updates=config_updates)
     run._id = _id
     run()
 
-def main():
+
+def first_grid_search():
     n_jobs = 18
-    n_subjects_list = [50, 200, 788]
+    train_size_list = [50, 200, 778]
 
     n_components_list = [20, 50, 100]
 
     alpha_list = [1e-4, 1e-3]
 
     update_list = []
-    for n_subjects in n_subjects_list:
+    for train_size in train_size_list:
         for n_components in n_components_list:
             for alpha in alpha_list:
-                config_updates = {'task_data': {'n_subjects': n_subjects},
-                                  'decomposition': {'n_components': n_components,
-                                                    'alpha': alpha},
+                config_updates = {'task_data': {'train_size': train_size},
+                                  'decomposition':
+                                      {'n_components': n_components, 'alpha': alpha},
                                   }
                 update_list.append(config_updates)
 
@@ -48,5 +47,10 @@ def main():
     Parallel(n_jobs=n_jobs)(delayed(single_run)(config_updates, c + i)
                             for i, config_updates in enumerate(update_list))
 
+
+def second_grid_search():
+    pass
+
+
 if __name__ == '__main__':
-    main()
+    first_grid_search()

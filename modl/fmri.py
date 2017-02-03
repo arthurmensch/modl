@@ -266,10 +266,6 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             n_voxels = np.sum(
                 check_niimg(self.masker_.mask_img_).get_data() != 0)
         else:
-            n_samples = 0
-            n_voxels = dict_init.shape[1]
-            dtype = dict_init.dtype
-            n_records = 0
             self.dict_fact_ = Coder(dictionary=dict_init,
                                     code_alpha=self.alpha,
                                     code_l1_ratio=0,
@@ -307,6 +303,9 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
             for i in range(self.n_epochs):
                 if self.verbose:
                     print('Epoch %i' % (i + 1))
+                if self.method == 'gram' and i == 2:
+                    self.dict_fact_.set_params(G_agg='full',
+                                               Dx_agg='average')
                 record_list = self.random_state.permutation(n_records)
                 prev_record = None
                 prev_masked_data = None

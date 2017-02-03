@@ -5,6 +5,8 @@ from os.path import expanduser, join
 from tempfile import mkdtemp
 
 from matplotlib.cbook import MatplotlibDeprecationWarning
+from sacred.observers import FileStorageObserver
+
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
 from modl.fmri import rfMRIDictionaryScorer, fmri_dict_learning
@@ -13,7 +15,7 @@ from modl.utils.nifti import monkey_patch_nifti_image
 from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred import Ingredient
-from sacred.observers import FileStorageObserver, MongoObserver
+from sacred.observers import MongoObserver
 
 monkey_patch_nifti_image()
 
@@ -29,20 +31,20 @@ warnings.filterwarnings('ignore', category=UserWarning, module='numpy')
 rest_data_ing = Ingredient('rest_data')
 decomposition_ex = Experiment('decomposition', ingredients=[rest_data_ing])
 
-observer = FileStorageObserver.create(expanduser('~/runs'))
-decomposition_ex.observers.append(observer)
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 decomposition_ex.observers.append(observer)
 
+observer = FileStorageObserver.create(expanduser('~/runs'))
+decomposition_ex.observers.append(observer)
 
 @decomposition_ex.config
 def config():
-    batch_size = 200
+    batch_size = 50
     learning_rate = 0.92
     method = 'masked'
     reduction = 10
     alpha = 1e-4
-    n_epochs = 1
+    n_epochs = 5
     smoothing_fwhm = 4
     n_components = 40
     n_jobs = 1
@@ -52,32 +54,33 @@ def config():
 
 @rest_data_ing.config
 def config():
-    source = 'hcp'
-    n_subjects = 10
-    test_size = .5
+    source = 'adhd'
+    train_size = 36
+    test_size = 4
     seed = 2
 
 
 @rest_data_ing.capture
-def get_rest_data(source, n_subjects, test_size, _run, _seed,
+def get_rest_data(source, test_size, train_size, _run, _seed,
                   # Optional arguments
                   train_subjects=None,
                   test_subjects=None
                   ):
     _run.info['rest_data'] = {}
     if source == 'hcp':
-        data = fetch_hcp(n_subjects=n_subjects)
+        data = fetch_hcp()
     elif source == 'adhd':
-        data = fetch_adhd(n_subjects=40)
+        data = fetch_adhd()
     else:
         raise ValueError('Wrong resting-state source')
     imgs = data.rest
     mask_img = data.mask
-    subjects = imgs.index.get_level_values('subject')
+    subjects = imgs.index.get_level_values('subject').unique().values
 
     if train_subjects is None and test_subjects is None:
         train_subjects, test_subjects = train_test_split(
             subjects, random_state=_seed, test_size=test_size)
+        train_subjects = train_subjects[:train_size]
         train_subjects = train_subjects.tolist()
         test_subjects = test_subjects.tolist()
     train_imgs = imgs.loc[train_subjects, 'filename'].values
@@ -120,9 +123,6 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     test_imgs, test_confounds, mask_img = get_rest_data(
         train_subjects=train_subjects,
         test_subjects=test_subjects)
-    # Ugly
-    test_imgs = test_imgs[:4]
-    test_confounds = test_confounds[:4]
     callback = CapturedfMRIDictionaryScorer(test_imgs,
                                             test_confounds=test_confounds)
     print('Run dictionary learning')

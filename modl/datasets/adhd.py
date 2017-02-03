@@ -9,7 +9,7 @@ from nilearn.datasets import fetch_adhd as nilearn_fetch_adhd
 import pandas as pd
 
 
-def fetch_adhd(n_subjects=30, data_dir=None, url=None, resume=True,
+def fetch_adhd(n_subjects=40, data_dir=None, url=None, resume=True,
                modl_data_dir=None,
                mask_url=None,
                verbose=1):

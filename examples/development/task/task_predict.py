@@ -23,7 +23,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
-from modl.datasets.hcp import fetch_hcp, contrasts_description
+from modl.datasets.hcp import fetch_hcp, contrasts_description, fetch_hcp_task
 from modl.utils.system import get_cache_dirs
 from modl.fmri import compute_loadings
 
@@ -64,8 +64,6 @@ def config():
 @rest_data_ing.config
 def config():
     source = 'hcp'
-    n_subjects = 200
-    test_size = .5
     seed = 2
 
 
@@ -85,15 +83,17 @@ def config():
 
 
 @task_data_ing.capture
-def get_task_data(n_subjects, test_size, _run, _seed,
-                  train_imgs=None, test_imgs=None):
+def get_task_data(train_size, test_size, _run, _seed):
     print('Retrieve task data')
-    data = fetch_hcp(n_subjects=n_subjects)
+    data = fetch_hcp()
     imgs = data.task
     mask_img = data.mask
-    subjects = imgs.index.levels[0].values
+    subjects = imgs.index.get_level_values('subject').unique().values.tolist()
     train_subjects, test_subjects = \
         train_test_split(subjects, random_state=_seed, test_size=test_size)
+    train_subjects = train_subjects[:train_size]
+    _run.info['pred_train_subject'] = train_subjects
+    _run.info['pred_test_subjects'] = test_subjects
     train_subjects = train_subjects.tolist()
     test_subjects = test_subjects.tolist()
 
@@ -109,10 +109,8 @@ def get_task_data(n_subjects, test_size, _run, _seed,
     train_imgs = imgs.loc[train_subjects, :]
     test_imgs = imgs.loc[test_subjects, :]
 
-    _run.info['pred_train_subjects'] = train_subjects
-    _run.info['pred_test_subjects'] = test_subjects
-
-    return train_imgs, test_imgs, mask_img, label_encoder
+    return train_imgs, train_subjects, test_imgs, test_subjects, \
+           mask_img, label_encoder
 
 
 @prediction_ex.capture
@@ -160,15 +158,15 @@ def run(n_jobs,
         _run):
     memory = Memory(cachedir=get_cache_dirs()[0])
 
-    train_data, test_data, mask_img, label_encoder = get_task_data()
+    train_data, train_subjects, test_data,\
+    test_subjects, mask_img, label_encoder = get_task_data()
 
-    if decomposition['rest_data']['source'] == 'hcp':
-        # Overrides train and test subject in the decomposition experiment
-        train_subjects = train_data.index.get_level_values('subject').unique().values.tolist()
-        test_subjects = test_data.index.get_level_values('subject').unique().values.tolist()
-    else:
+    if not decomposition['rest_data']['source'] == 'hcp':
         train_subjects = None
         test_subjects = None
+    else:
+        # Reduce the test size for efficient debug control
+        test_subjects = test_subjects[:1]
     print('Compute components')
     components, mask_img = compute_decomposition(train_subjects=train_subjects,
                                                  test_subjects=test_subjects)
