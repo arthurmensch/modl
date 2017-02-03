@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from nilearn._utils import check_niimg
 from sacred import Ingredient, Experiment
+from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 
 from modl.utils.nifti import monkey_patch_nifti_image
@@ -43,6 +44,9 @@ prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 prediction_ex.observers.append(observer)
 
+observer = FileStorageObserver.create(expanduser('~/output/runs'))
+prediction_ex.observers.append(observer)
+
 
 @prediction_ex.config
 def config():
@@ -56,8 +60,8 @@ def config():
 
 @task_data_ing.config
 def config():
-    n_subjects = 200
-    test_size = .1
+    train_size = 20
+    test_size = 10
     seed = 2
 
 
@@ -65,6 +69,7 @@ def config():
 def config():
     source = 'hcp'
     seed = 2
+    # train and test are overriden
 
 
 @decomposition_ex.config
@@ -74,7 +79,7 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-3
-    n_epochs = 1
+    n_epochs = 3
     smoothing_fwhm = 4
     n_components = 40
     n_jobs = 1
@@ -94,8 +99,6 @@ def get_task_data(train_size, test_size, _run, _seed):
     train_subjects = train_subjects[:train_size]
     _run.info['pred_train_subject'] = train_subjects
     _run.info['pred_test_subjects'] = test_subjects
-    train_subjects = train_subjects.tolist()
-    test_subjects = test_subjects.tolist()
 
     # Selection of contrasts
     interesting_con = list(contrasts_description.keys())

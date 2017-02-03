@@ -26,7 +26,7 @@ from sklearn.utils import check_random_state
 from nilearn._utils.niimg_conversions import _iter_check_niimg
 
 from .dict_fact import DictFact, Coder
-from math import log
+from math import log, sqrt
 
 warnings.filterwarnings('ignore', module='scipy.ndimage.interpolation',
                         category=UserWarning,
@@ -306,6 +306,9 @@ class fMRIDictFact(BaseDecomposition, TransformerMixin, CacheMixin):
                 if self.method == 'gram' and i == 2:
                     self.dict_fact_.set_params(G_agg='full',
                                                Dx_agg='average')
+                if self.method == 'reducing ratio':
+                    reduction = 1 + (self.reduction - 1) / sqrt(i + 1)
+                    self.dict_fact_.set_params(reduction=reduction)
                 record_list = self.random_state.permutation(n_records)
                 prev_record = None
                 prev_masked_data = None

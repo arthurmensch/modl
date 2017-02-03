@@ -34,7 +34,7 @@ decomposition_ex = Experiment('decomposition', ingredients=[rest_data_ing])
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 decomposition_ex.observers.append(observer)
 
-observer = FileStorageObserver.create(expanduser('~/runs'))
+observer = FileStorageObserver.create(expanduser('~/output/runs'))
 decomposition_ex.observers.append(observer)
 
 @decomposition_ex.config
@@ -44,13 +44,13 @@ def config():
     method = 'masked'
     reduction = 10
     alpha = 1e-4
-    n_epochs = 5
+    n_epochs = 2
     smoothing_fwhm = 4
     n_components = 40
     n_jobs = 1
     verbose = 15
     seed = 2
-
+    mmap_mode = None
 
 @rest_data_ing.config
 def config():
@@ -58,6 +58,17 @@ def config():
     train_size = 36
     test_size = 4
     seed = 2
+
+
+@decomposition_ex.named_config
+def hcp():
+    batch_size = 100
+
+@rest_data_ing.named_config
+def hcp():
+    source = 'hcp'
+    test_size= 1
+    train_size = 10
 
 
 @rest_data_ing.capture
@@ -112,12 +123,14 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           smoothing_fwhm,
                           method,
                           verbose,
+                          mmap_mode,
                           _run, _seed,
                           # Optional arguments, to be passed by higher level experiments
                           train_subjects=None,
                           test_subjects=None
                           ):
-    memory = Memory(cachedir=get_cache_dirs()[0], verbose=10)
+    memory = Memory(cachedir=get_cache_dirs()[0],
+                    mmap_mode=mmap_mode, verbose=10)
     print('Retrieve resting-state data')
     train_imgs, train_confounds, \
     test_imgs, test_confounds, mask_img = get_rest_data(
@@ -129,7 +142,6 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     components, mask_img, callback = memory.cache(
         fmri_dict_learning,
         ignore=['verbose', 'n_jobs',
-                'memory',
                 'memory_level',
                 'callback'])(
         train_imgs,
