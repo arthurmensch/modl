@@ -136,7 +136,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     observe = observe and not _run.unobserved
 
     memory = Memory(cachedir=get_cache_dirs()[0],
-                    mmap_mode=None, verbose=0)
+                    mmap_mode=None, verbose=2)
     print('Retrieve resting-state data')
     train_imgs, train_confounds, \
     test_imgs, test_confounds, mask_img = get_rest_data(
@@ -183,7 +183,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           alpha=alpha,
                           memory_level=2,
                           mask=mask_img).fit()
-        final_score = coder.score(test_imgs, confounds=test_confounds)
+        final_score = coder.score(test_imgs, confounds=test_confounds, batch_size=10)
     elif observe:
         raise ValueError('return_score should be True when observing')
 

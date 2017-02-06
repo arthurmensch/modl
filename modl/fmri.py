@@ -14,18 +14,19 @@ import warnings
 import nibabel
 import numpy as np
 from nilearn._utils import check_niimg
+from nilearn._utils.niimg_conversions import _iter_check_niimg
 from nilearn.input_data import NiftiMasker
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from sklearn.base import BaseEstimator
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
-from sklearn.utils import check_random_state
+from sklearn.utils import check_random_state, gen_batches
 
 from nilearn._utils.compat import _basestring
 
 from .dict_fact import DictFact, Coder
-from math import log, sqrt
+from math import log, sqrt, ceil
 
 warnings.filterwarnings('ignore', module='scipy.ndimage.interpolation',
                         category=UserWarning,
@@ -40,6 +41,7 @@ class fMRICoderMixin(BaseEstimator):
                                      n_components=20,
                                      alpha=0.1,
                                      dict_init=None,
+                                     transform_batch_size=None,
                                      mask=None, smoothing_fwhm=None,
                                      standardize=True, detrend=True,
                                      low_pass=None, high_pass=None, t_r=None,
@@ -50,6 +52,8 @@ class fMRICoderMixin(BaseEstimator):
                                      n_jobs=1, verbose=0, ):
         self.n_components = n_components
         self.mask = mask
+
+        self.transform_batch_size = transform_batch_size
 
         self.smoothing_fwhm = smoothing_fwhm
         self.standardize = standardize
@@ -125,23 +129,36 @@ class fMRICoderMixin(BaseEstimator):
         """
         if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
             imgs = [imgs]
+        opt_batch_size = int(ceil(len(imgs) / self.n_jobs))
+        if self.transform_batch_size is None:
+            batch_size = opt_batch_size
+        else:
+            batch_size = min(opt_batch_size, self.transform_batch_size)
         # In case fit is not finished
         if confounds is None:
             confounds = itertools.repeat(None)
+        batches = list(gen_batches(len(imgs), batch_size))
+        prev_n_jobs = self.masker_.n_jobs
+        self.masker_.set_params(n_jobs=1)
         scores = Parallel(n_jobs=self.n_jobs)(
-            delayed(_score_img)(self.dict_fact_, self.masker_, img,
-                                confound) for img, confound in
-            zip(imgs, confounds))
+            delayed(_score_img)(self.dict_fact_, self.masker_,
+                                imgs[batch], confounds[batch])
+            for batch in batches)
+        self.masker_.set_params(n_jobs=prev_n_jobs)
+        # Ravel
         scores = np.array(scores)
         len_imgs = np.array([check_niimg(img).get_shape()[3] for img in imgs])
+        len_imgs = np.array([np.sum(len_imgs[batch]) for batch in batches])
         score = np.sum(scores * len_imgs) / np.sum(len_imgs)
         return score
 
-    def transform(self, imgs, confounds=None):
+    def transform(self, imgs, confounds=None,
+                  batch_size=100):
         """Compute the mask and the ICA maps across subjects
 
         Parameters
         ----------
+        batch_size
         imgs: list of Niimg-like objects
             See http://nilearn.github.io/building_blocks/manipulating_mr_images.html#niimg.
             Data on which PCA must be calculated. If this is a list,
@@ -158,15 +175,24 @@ class fMRICoderMixin(BaseEstimator):
         """
         if (isinstance(imgs, str) or not hasattr(imgs, '__iter__')):
             imgs = [imgs]
+        opt_batch_size = int(ceil(len(imgs) / self.n_jobs))
+        if self.transform_batch_size is None:
+            batch_size = opt_batch_size
+        else:
+            batch_size = min(opt_batch_size, self.transform_batch_size)
         # In case fit is not finished
         if confounds is None:
-            confounds = itertools.repeat(None)
+            confounds = [None] * len(imgs)
+        batches = list(gen_batches(len(imgs), batch_size))
+        prev_n_jobs = self.masker_.n_jobs
+        self.masker_.set_params(n_jobs=1)
         codes = Parallel(n_jobs=self.n_jobs)(
             delayed(_transform_img)(self.dict_fact_,
                                     self.masker_,
-                                    img, confound)
-            for img, confound in
-            zip(imgs, confounds))
+                                    imgs[batch], confounds[batch])
+            for batch in batches)
+        self.masker_.set_params(n_jobs=prev_n_jobs)
+        codes = [code for batch_code in codes for code in batch_code]
         return codes
 
 
@@ -285,6 +311,7 @@ class fMRIDictFact(fMRICoderMixin):
                  batch_size=20,
                  reduction=1,
                  learning_rate=1,
+                 transform_batch_size=None,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
                  low_pass=None, high_pass=None, t_r=None,
@@ -298,6 +325,7 @@ class fMRIDictFact(fMRICoderMixin):
                                          alpha=alpha,
                                          dict_init=dict_init,
                                          mask=mask,
+                                         transform_batch_size=transform_batch_size,
                                          smoothing_fwhm=smoothing_fwhm,
                                          standardize=standardize,
                                          detrend=detrend,
@@ -448,6 +476,7 @@ class fMRIDictFact(fMRICoderMixin):
 class fMRICoder(fMRICoderMixin):
     def __init__(self, dictionary,
                  alpha=0.1,
+                 transform_batch_size=None,
                  mask=None, smoothing_fwhm=None,
                  standardize=False, detrend=False,
                  low_pass=None, high_pass=None, t_r=None,
@@ -468,6 +497,7 @@ class fMRICoder(fMRICoderMixin):
                                          detrend=detrend,
                                          low_pass=low_pass,
                                          high_pass=high_pass,
+                                         transform_batch_size=transform_batch_size,
                                          t_r=t_r,
                                          target_affine=target_affine,
                                          target_shape=target_shape,
@@ -518,15 +548,17 @@ def _lazy_scan(imgs):
     return n_samples_list, dtype
 
 
-def _transform_img(coding_mixin, masker, img, confound):
-    img = check_niimg(img)
-    data = masker.transform(img, confound)
+def _transform_img(coding_mixin, masker, imgs, confounds):
+    imgs = list(_iter_check_niimg(imgs))
+    data = masker.transform(imgs, confounds)
+    data = np.concatenate(data)
     return coding_mixin.transform(data)
 
 
-def _score_img(coding_mixin, masker, img, confound):
-    img = check_niimg(img)
-    data = masker.transform(img, confound)
+def _score_img(coding_mixin, masker, imgs, confounds):
+    imgs = list(_iter_check_niimg(imgs))
+    data = masker.transform(imgs, confounds)
+    data = np.concatenate(data)
     return coding_mixin.score(data)
 
 
@@ -569,16 +601,19 @@ def fmri_dict_learning(imgs, confounds=None,
 
 
 def compute_loadings(imgs, components, alpha=1, confounds=None,
+                     transform_batch_size=None,
                      mask=None, n_jobs=1, verbose=0,
                      memory=Memory(cachedir=None), memory_level=2):
     dict_fact = fMRICoder(mask=mask,
                           dictionary=components,
                           alpha=alpha,
+                          transform_batch_size=None,
                           verbose=verbose,
                           memory=memory,
                           memory_level=memory_level,
+                          transform_batch_size=transform_batch_size,
                           n_jobs=n_jobs).fit(imgs, confounds=confounds)
-    loadings = dict_fact.transform(imgs, confounds=confounds)
+    loadings = dict_fact.transform(imgs, confounds=confounds,)
     return loadings
 
 

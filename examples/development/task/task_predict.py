@@ -62,12 +62,13 @@ def config():
     max_iter = 10000
     tol = 1e-7
     n_components_list = [10, 20, 40]
-    hierachical = True
+    hierachical = False
+    transform_batch_size = 300
 
 
 @task_data_ing.config
 def config():
-    train_size = 750
+    train_size = 100
     test_size = 10
     seed = 2
 
@@ -75,7 +76,7 @@ def config():
 @rest_data_ing.config
 def config():
     source = 'hcp'
-    train_size = None  # Overriden
+    train_size = 1  # Overriden
     test_size = 1
     seed = 2
     # train and test are overriden
@@ -135,7 +136,7 @@ def logistic_regression(X_train, y_train,
                         n_jobs,
                         _run,
                         _seed):
-    memory = Memory(cachedir=get_cache_dirs()[0])
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
     lr = memory.cache(_logistic_regression)(X_train, y_train,
                                             standardize=standardize,
                                             C=C,
@@ -179,9 +180,10 @@ def _logistic_regression(X_train, y_train, standardize=False, C=1,
 def run(n_jobs,
         decomposition,
         hierachical,
+        transform_batch_size,
         n_components_list,
         _run):
-    memory = Memory(cachedir=get_cache_dirs()[0])
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
 
     train_data, train_subjects, test_data, \
     test_subjects, mask_img, label_encoder = get_task_data()
@@ -235,9 +237,10 @@ def run(n_jobs,
                      names=['fold'])
     print('Compute loadings')
     loadings = memory.cache(compute_loadings,
-                            ignore=['n_jobs'])(
+                            ignore=['n_jobs', 'transform_batch_size'])(
         data.loc[:, 'filename'].values,
         components,
+        transform_batch_size=transform_batch_size,
         mask=mask_img,
         n_jobs=n_jobs)
     data = data.assign(loadings=loadings)
