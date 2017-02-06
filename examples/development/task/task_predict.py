@@ -87,7 +87,7 @@ def config():
     learning_rate = 0.92
     method = 'masked'
     reduction = 10
-    alpha = 1e-3
+    alpha = 1e-4
     n_epochs = 1
     smoothing_fwhm = 4
     n_components = 40
