@@ -1,10 +1,13 @@
+import copy
 import shutil
 from os.path import expanduser, join
 from tempfile import mkdtemp
 
 import numpy as np
 import pandas as pd
+from modl.plotting.fmri import display_maps
 from nilearn._utils import check_niimg
+from nilearn.image import new_img_like
 from sacred import Ingredient, Experiment
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
@@ -26,6 +29,8 @@ from sklearn.model_selection import train_test_split
 from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
 from modl.fmri import compute_loadings
+
+import matplotlib.pyplot as plt
 
 import sys
 from os import path
@@ -49,7 +54,6 @@ prediction_ex.observers.append(observer)
 
 @prediction_ex.config
 def config():
-    test_size = 0.1
     standardize = True
     C = np.logspace(-1, 1, 10)
     n_jobs = 1
@@ -57,11 +61,13 @@ def config():
     seed = 2
     max_iter = 10000
     tol = 1e-7
+    n_components_list = [10, 20, 40]
+    hierachical = True
 
 
 @task_data_ing.config
 def config():
-    train_size = 10
+    train_size = 750
     test_size = 10
     seed = 2
 
@@ -69,7 +75,7 @@ def config():
 @rest_data_ing.config
 def config():
     source = 'hcp'
-    train_size = None # Overriden
+    train_size = None  # Overriden
     test_size = 1
     seed = 2
     # train and test are overriden
@@ -88,7 +94,6 @@ def config():
     n_jobs = 1
     verbose = 15
     seed = 2
-    callback = False
 
 
 @task_data_ing.capture
@@ -157,10 +162,10 @@ def _logistic_regression(X_train, y_train, standardize=False, C=1,
         lr = Pipeline([('standard_scaler', sc), ('logistic_regression', lr)])
     if hasattr(C, '__iter__'):
         grid_lr = GridSearchCV(lr,
-                          {'logistic_regression__C': C},
-                          cv=ShuffleSplit(test_size=0.1),
-                          refit=False,
-                          n_jobs=n_jobs)
+                               {'logistic_regression__C': C},
+                               cv=ShuffleSplit(test_size=0.1),
+                               refit=False,
+                               n_jobs=n_jobs)
     grid_lr.fit(X_train, y_train)
     best_params = grid_lr.best_params_
     lr.set_params(**best_params)
@@ -173,18 +178,58 @@ def _logistic_regression(X_train, y_train, standardize=False, C=1,
 @prediction_ex.automain
 def run(n_jobs,
         decomposition,
+        hierachical,
+        n_components_list,
         _run):
     memory = Memory(cachedir=get_cache_dirs()[0])
 
-    train_data, train_subjects, test_data,\
+    train_data, train_subjects, test_data, \
     test_subjects, mask_img, label_encoder = get_task_data()
 
     if not decomposition['rest_data']['source'] == 'hcp':
         train_subjects = None
         test_subjects = None
     print('Compute components')
-    components, mask_img = compute_decomposition(train_subjects=train_subjects,
-                                                 test_subjects=test_subjects)
+    if hierachical:
+        components_list = []
+        unsupervised_score_list = []
+        for n_components in n_components_list:
+            components, mask_img, unsupervised_score = compute_decomposition(
+                train_subjects=train_subjects,
+                n_components=n_components,
+                test_subjects=test_subjects,
+                return_score=True,
+                observe=False)
+            components_list.append(components)
+            unsupervised_score_list.append(unsupervised_score)
+        components_data = [components.get_data() for components in
+                           components_list]
+        components_data = np.concatenate(components_data, axis=3)
+        components = new_img_like(components_list[-1], data=components_data)
+        unsupervised_score = unsupervised_score_list
+    else:
+        components, mask_img, unsupervised_score \
+            = compute_decomposition(train_subjects=train_subjects,
+                                    test_subjects=test_subjects,
+                                    observe=False,
+                                    return_score=True)
+
+    if not _run.unobserved:
+        _run.info['unsupervised_score'] = unsupervised_score
+        artifact_dir = mkdtemp()
+        components_copy = copy.deepcopy(components)
+        components_copy.to_filename(
+            join(artifact_dir, 'components.nii.gz'))
+        mask_img_copy = copy.deepcopy(mask_img)
+        mask_img_copy.to_filename(join(artifact_dir, 'mask_img.nii.gz'))
+        _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
+                          name='components.nii.gz')
+        fig = plt.figure()
+        display_maps(fig, components)
+        plt.savefig(join(artifact_dir, 'components.png'))
+        plt.close(fig)
+        _run.add_artifact(join(artifact_dir, 'components.png'),
+                          name='components.png')
 
     data = pd.concat([train_data, test_data], keys=['train', 'test'],
                      names=['fold'])
@@ -222,11 +267,10 @@ def run(n_jobs,
                         == prediction.loc['test', 'true_label'])
     test_score /= prediction.loc['test'].shape[0]
 
-    _run.info['pred_train_score'] = train_score
-    _run.info['pred_test_score'] = test_score
     if not _run.unobserved:
+        _run.info['pred_train_score'] = train_score
+        _run.info['pred_test_score'] = test_score
         print('Write task prediction artifacts')
-        artifact_dir = mkdtemp()
         mask_img = check_niimg(mask_img)
         mask_img.to_filename(join(artifact_dir, 'pred_mask_img.nii.gz'))
         prediction.to_csv(join(artifact_dir, 'pred_prediction.csv'))

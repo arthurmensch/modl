@@ -8,6 +8,7 @@ from nibabel import Nifti1Image as NibabelNifti1Image
 from nibabel import load as nibabel_load
 from nilearn._utils.compat import get_affine, _basestring
 from nilearn._utils.niimg import short_repr, _get_target_dtype
+from nilearn.input_data import MultiNiftiMasker
 from sklearn.externals.joblib.func_inspect import filter_args
 from sklearn.externals.joblib.hashing import NumpyHasher, Hasher
 
@@ -131,7 +132,33 @@ def our_load_niimg(niimg, dtype=None):
     return niimg
 
 
+def our_multi_nifti_masker_transform(self, imgs, confounds=None):
+    """ Apply mask, spatial and temporal preprocessing
+
+    Parameters
+    ----------
+    imgs: list of Niimg-like objects
+        See http://nilearn.github.io/manipulating_images/input_output.html.
+        Data to be preprocessed
+
+    confounds: CSV file path or 2D matrix
+        This parameter is passed to signal.clean. Please see the
+        corresponding documentation for details.
+
+    Returns
+    -------
+    data: {list of numpy arrays}
+        preprocessed images
+    """
+    self._check_fitted()
+    if not hasattr(imgs, '__iter__') \
+            or isinstance(imgs, _basestring):
+        return self.transform_single_imgs(imgs, confounds=confounds)
+    return self.transform_imgs(imgs, confounds, n_jobs=self.n_jobs)
+
+
 def monkey_patch_nifti_image():
     nibabel.load = load
     joblib.memory.MemorizedFunc._get_argument_hash = our_get_argument_hash
     nilearn._utils.niimg.load_niimg = our_load_niimg
+    MultiNiftiMasker.transform = our_multi_nifti_masker_transform

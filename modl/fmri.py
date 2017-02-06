@@ -425,13 +425,14 @@ class fMRIDictFact(fMRICoderMixin):
                     masked_data = self.masker_.transform(img, confound)
 
                     # CPU bounded
-                    permutation = self.random_state.permutation(
-                        n_records)
-                    prev_masked_data = masked_data[permutation]
+                    permutation = self.random_state.\
+                        permutation(masked_data.shape[0])
+                    masked_data = masked_data[permutation]
                     sample_indices = np.arange(
                         indices_list[record], indices_list[record + 1])
                     sample_indices = sample_indices[permutation]
-                    self.dict_fact_.partial_fit(prev_masked_data,
+                    masked_data = masked_data[permutation]
+                    self.dict_fact_.partial_fit(masked_data,
                                                 sample_indices=sample_indices)
                     self.components_ = self.dict_fact_.components_
                     current_n_records += 1
@@ -598,18 +599,12 @@ class rfMRIDictionaryScorer:
     def __call__(self, dict_fact):
         test_time = time.perf_counter()
         if not hasattr(self, 'data'):
-            self.data = [dict_fact.masker_.transform(
-                test_img, confounds=test_confounds)
-                         for test_img, test_confounds in
-                         zip(self.test_imgs, self.test_confounds)]
             self.data = dict_fact.masker_.transform(self.test_imgs,
                                                     confounds=self.test_confounds)
         scores = np.array([dict_fact.dict_fact_.score(data)
                            for data in self.data])
         len_imgs = np.array([data.shape[0] for data in self.data])
-        fast_score = np.sum(scores * len_imgs) / np.sum(len_imgs)
-        score = dict_fact.score(self.test_imgs, confounds=self.test_confounds)
-        print(fast_score, score)
+        score = np.sum(scores * len_imgs) / np.sum(len_imgs)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
         self.score.append(score)
