@@ -182,8 +182,10 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           memory=memory,
                           alpha=alpha,
                           memory_level=2,
+                          transform_batch_size=1,
+                          verbose=10,
                           mask=mask_img).fit()
-        final_score = coder.score(test_imgs, confounds=test_confounds, batch_size=10)
+        final_score = coder.score(test_imgs, confounds=test_confounds)
     elif observe:
         raise ValueError('return_score should be True when observing')
 

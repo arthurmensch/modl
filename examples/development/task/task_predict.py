@@ -57,7 +57,7 @@ def config():
     standardize = True
     C = np.logspace(-1, 1, 10)
     n_jobs = 1
-    verbose = 2
+    verbose = 10
     seed = 2
     max_iter = 10000
     tol = 1e-7
@@ -136,7 +136,7 @@ def logistic_regression(X_train, y_train,
                         n_jobs,
                         _run,
                         _seed):
-    memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=1)
     lr = memory.cache(_logistic_regression)(X_train, y_train,
                                             standardize=standardize,
                                             C=C,
@@ -180,10 +180,11 @@ def _logistic_regression(X_train, y_train, standardize=False, C=1,
 def run(n_jobs,
         decomposition,
         hierachical,
+        verbose,
         transform_batch_size,
         n_components_list,
         _run):
-    memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=0)
 
     train_data, train_subjects, test_data, \
     test_subjects, mask_img, label_encoder = get_task_data()
@@ -237,9 +238,11 @@ def run(n_jobs,
                      names=['fold'])
     print('Compute loadings')
     loadings = memory.cache(compute_loadings,
-                            ignore=['n_jobs', 'transform_batch_size'])(
+                            ignore=['n_jobs', 'transform_batch_size',
+                                    'verbose'])(
         data.loc[:, 'filename'].values,
         components,
+        verbose=verbose,
         transform_batch_size=transform_batch_size,
         mask=mask_img,
         n_jobs=n_jobs)

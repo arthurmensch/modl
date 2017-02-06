@@ -140,7 +140,7 @@ class fMRICoderMixin(BaseEstimator):
         batches = list(gen_batches(len(imgs), batch_size))
         prev_n_jobs = self.masker_.n_jobs
         self.masker_.set_params(n_jobs=1)
-        scores = Parallel(n_jobs=self.n_jobs)(
+        scores = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
             delayed(_score_img)(self.dict_fact_, self.masker_,
                                 imgs[batch], confounds[batch])
             for batch in batches)
@@ -152,8 +152,7 @@ class fMRICoderMixin(BaseEstimator):
         score = np.sum(scores * len_imgs) / np.sum(len_imgs)
         return score
 
-    def transform(self, imgs, confounds=None,
-                  batch_size=100):
+    def transform(self, imgs, confounds=None):
         """Compute the mask and the ICA maps across subjects
 
         Parameters
@@ -186,7 +185,7 @@ class fMRICoderMixin(BaseEstimator):
         batches = list(gen_batches(len(imgs), batch_size))
         prev_n_jobs = self.masker_.n_jobs
         self.masker_.set_params(n_jobs=1)
-        codes = Parallel(n_jobs=self.n_jobs)(
+        codes = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
             delayed(_transform_img)(self.dict_fact_,
                                     self.masker_,
                                     imgs[batch], confounds[batch])
@@ -607,11 +606,10 @@ def compute_loadings(imgs, components, alpha=1, confounds=None,
     dict_fact = fMRICoder(mask=mask,
                           dictionary=components,
                           alpha=alpha,
-                          transform_batch_size=None,
+                          transform_batch_size=transform_batch_size,
                           verbose=verbose,
                           memory=memory,
                           memory_level=memory_level,
-                          transform_batch_size=transform_batch_size,
                           n_jobs=n_jobs).fit(imgs, confounds=confounds)
     loadings = dict_fact.transform(imgs, confounds=confounds,)
     return loadings
