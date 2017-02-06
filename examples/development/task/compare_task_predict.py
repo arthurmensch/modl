@@ -27,8 +27,7 @@ def single_run(config_updates, _id):
         seed = 2
         max_iter = 10000
         tol = 1e-7
-        n_components_list = [10, 20, 40]
-        hierachical = True
+        hierachical = False
 
     @task_data_ing.config
     def config():
@@ -50,10 +49,10 @@ def single_run(config_updates, _id):
         learning_rate = 0.92
         method = 'masked'
         reduction = 10
-        alpha = 1e-3
+        alpha = 1e-3 # Overriden
+        n_components = 40 # Overriden
         n_epochs = 1
         smoothing_fwhm = 4
-        n_components = 40
         n_jobs = 1
         verbose = 15
         seed = 2

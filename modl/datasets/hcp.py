@@ -268,7 +268,7 @@ def fetch_hcp_mask(data_dir=None, url=None, resume=True):
     return join(data_dir, 'mask_img.nii.gz')
 
 
-def fetch_hcp_rest(data_dir=None, release='HCP900', n_subjects=500):
+def fetch_hcp_rest(data_dir=None, release='HCP900', n_subjects=788):
     """Nilearn like fetcher"""
     data_dir = get_data_dirs(data_dir)[0]
     source_dir = join(data_dir, release)
@@ -307,7 +307,7 @@ def fetch_hcp_rest(data_dir=None, release='HCP900', n_subjects=500):
     return rest
 
 
-def fetch_hcp(data_dir=None, n_subjects=100):
+def fetch_hcp(data_dir=None, n_subjects=788):
     rest = fetch_hcp_rest(data_dir, release='HCP900', n_subjects=n_subjects)
     task = fetch_hcp_task(data_dir, release='HCP900', output='nistats',
                           n_subjects=n_subjects)
