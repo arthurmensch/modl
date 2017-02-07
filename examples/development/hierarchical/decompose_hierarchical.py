@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from modl.datasets import fetch_adhd
 from modl.plotting.fmri import display_maps
-from modl.utils.nifti import monkey_patch_nifti_image
+from modl.input_data.fmri import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 

@@ -5,12 +5,11 @@ import time
 from os.path import expanduser
 
 import matplotlib.pyplot as plt
-from modl.feature_extraction.image import LazyCleanPatchExtractor
-from modl.image import ImageDictFact
-from sacred import Experiment
-
 from modl.datasets.image import load_image
+from modl.decomposition.image import ImageDictFact
+from modl.feature_extraction.image import LazyCleanPatchExtractor
 from modl.plotting.image import plot_patches
+from sacred import Experiment
 from sacred.observers import TinyDbObserver
 
 decompose_ex = Experiment('decompose_images')

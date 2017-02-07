@@ -5,16 +5,15 @@ from os.path import expanduser, join
 from tempfile import mkdtemp
 
 from matplotlib.cbook import MatplotlibDeprecationWarning
-from sacred.observers import FileStorageObserver
-
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
-from modl.fmri import rfMRIDictionaryScorer, fmri_dict_learning, fMRICoder
+from modl.decomposition.fmri import rfMRIDictionaryScorer, fmri_dict_learning, fMRICoder
 from modl.plotting.fmri import display_maps
-from modl.utils.nifti import monkey_patch_nifti_image
+from modl.input_data.fmri import monkey_patch_nifti_image
 from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred import Ingredient
+from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 
 monkey_patch_nifti_image()

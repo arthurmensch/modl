@@ -7,13 +7,12 @@ from tempfile import mkdtemp
 import numpy as np
 import pandas as pd
 from modl.plotting.fmri import display_maps
+from modl.input_data.fmri import monkey_patch_nifti_image
 from nilearn._utils import check_niimg
 from nilearn.image import new_img_like
 from sacred import Ingredient, Experiment
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
-
-from modl.utils.nifti import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 
@@ -29,7 +28,7 @@ from sklearn.model_selection import train_test_split
 
 from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
-from modl.fmri import compute_loadings
+from modl.decomposition.fmri import compute_loadings
 
 import matplotlib.pyplot as plt
 
@@ -39,12 +38,8 @@ from os import path
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
-from examples.development.decomposition_fmri \
-    import decomposition_ex, compute_decomposition, rest_data_ing
-
 task_data_ing = Ingredient('task_data')
-prediction_ex = Experiment('task_predict_from_nii', ingredients=[task_data_ing,
-                                                        decomposition_ex])
+prediction_ex = Experiment('task_predict_from_nii', ingredients=[task_data_ing])
 
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 prediction_ex.observers.append(observer)
@@ -57,7 +52,7 @@ prediction_ex.observers.append(observer)
 def config():
     standardize = True
     C = np.logspace(-1, 2, 15)
-    n_jobs = 10
+    n_jobs = 20
     verbose = 10
     seed = 2
     max_iter = 10000
@@ -67,7 +62,7 @@ def config():
 
 @task_data_ing.config
 def config():
-    train_size = 10
+    train_size = 778
     test_size = 10
     seed = 2
 
@@ -156,7 +151,7 @@ def run(n_jobs,
         verbose,
         transform_batch_size,
         _run):
-    memory = Memory(cachedir=get_cache_dirs()[0], verbose=0)
+    memory = Memory(cachedir=get_cache_dirs()[0])
 
     train_data, train_subjects, test_data, \
     test_subjects, mask_img, label_encoder = get_task_data()
@@ -164,44 +159,48 @@ def run(n_jobs,
     print('Compute components')
     components_list = []
     resource_dir = join(expanduser('~/resources/hierachical'))
-    components_files = glob.glob(join(resource_dir, '*.nii.gz'))
+    components_files = glob.glob(join(resource_dir, 'components_*.nii.gz'))
     for components_file in components_files:
-        _run.open_resources(components_files)
+        _run.open_resource(components_file)
         components = check_niimg(components_file)
         components_list.append(components)
     components_data = [components.get_data() for components in
                        components_list]
     components_data = np.concatenate(components_data, axis=3)
     components = new_img_like(components_list[-1], data=components_data)
-    _run.open_resources(join(resource_dir, 'mask_img.nii.gz'))
+    _run.open_resource(join(resource_dir, 'mask_img.nii.gz'))
     mask_img = check_niimg(join(resource_dir, 'mask_img.nii.gz'))
 
-    artifact_dir = mkdtemp()
-    components_copy = copy.deepcopy(components)
-    components_copy.to_filename(
-        join(artifact_dir, 'components.nii.gz'))
-    mask_img_copy = copy.deepcopy(mask_img)
-    mask_img_copy.to_filename(join(artifact_dir, 'mask_img.nii.gz'))
-    _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
-                      name='components.nii.gz')
-    fig = plt.figure()
-    display_maps(fig, components)
-    plt.savefig(join(artifact_dir, 'components.png'))
-    plt.close(fig)
-    _run.add_artifact(join(artifact_dir, 'components.png'),
-                      name='components.png')
+    if not _run.unobserved:
+        artifact_dir = mkdtemp()
+        components_copy = copy.deepcopy(components)
+        components_copy.to_filename(
+            join(artifact_dir, 'components.nii.gz'))
+        mask_img_copy = copy.deepcopy(mask_img)
+        mask_img_copy.to_filename(join(artifact_dir, 'mask_img.nii.gz'))
+        _run.add_artifact(join(artifact_dir, 'mask_img.nii.gz'),
+                          name='mask_img.nii.gz')
+        _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
+                          name='components.nii.gz')
+        fig = plt.figure()
+        display_maps(fig, components)
+        plt.savefig(join(artifact_dir, 'components.png'))
+        plt.close(fig)
+        _run.add_artifact(join(artifact_dir, 'components.png'),
+                          name='components.png')
 
     data = pd.concat([train_data, test_data], keys=['train', 'test'],
                      names=['fold'])
     print('Compute loadings')
     loadings = memory.cache(compute_loadings,
                             ignore=['n_jobs', 'transform_batch_size',
-                                    'verbose'])(
+                                    'verbose',])(
         data.loc[:, 'filename'].values,
         components,
-        verbose=verbose,
+        verbose=0,
         transform_batch_size=transform_batch_size,
         mask=mask_img,
+        raw=True,
         n_jobs=n_jobs)
     data = data.assign(loadings=loadings)
 

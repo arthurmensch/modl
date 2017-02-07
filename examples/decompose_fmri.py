@@ -2,7 +2,7 @@
 # License: BSD
 import time
 
-from modl.utils.nifti import monkey_patch_nifti_image
+from modl.input_data.fmri import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 
@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 
 from modl.datasets import fetch_adhd
 from modl.datasets.fmri import load_atlas_init
-from modl.fmri import fMRIDictFact
+from modl.decomposition.fmri import fMRIDictFact
 from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
 

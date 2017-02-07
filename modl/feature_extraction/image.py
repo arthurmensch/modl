@@ -1,6 +1,5 @@
 import numpy as np
-from modl.preprocessing.image import clean_mask
-from modl.preprocessing.image_fast import fill
+from ..input_data.image import clean_mask, fill
 from sklearn.base import BaseEstimator
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.utils import check_random_state

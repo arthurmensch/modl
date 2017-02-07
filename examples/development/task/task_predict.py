@@ -6,13 +6,12 @@ from tempfile import mkdtemp
 import numpy as np
 import pandas as pd
 from modl.plotting.fmri import display_maps
+from modl.input_data.fmri import monkey_patch_nifti_image
 from nilearn._utils import check_niimg
 from nilearn.image import new_img_like
 from sacred import Ingredient, Experiment
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
-
-from modl.utils.nifti import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 
@@ -28,7 +27,7 @@ from sklearn.model_selection import train_test_split
 
 from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
-from modl.fmri import compute_loadings
+from modl.decomposition.fmri import compute_loadings
 
 import matplotlib.pyplot as plt
 

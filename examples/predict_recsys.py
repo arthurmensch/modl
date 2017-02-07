@@ -4,10 +4,9 @@
 import time
 
 import numpy as np
-
-from modl.utils.recsys.cross_validation import train_test_split
 from modl.datasets.recsys import load_movielens
-from modl.recsys import RecsysDictFact
+from modl.decomposition.recsys import RecsysDictFact
+from modl.utils.recsys.cross_validation import train_test_split
 
 class Callback(object):
     """Utility class for plotting RMSE"""

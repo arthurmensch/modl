@@ -1,7 +1,7 @@
 import os
 from os.path import join
 
-from modl.utils.nifti import monkey_patch_nifti_image
+from modl.input_data.fmri import monkey_patch_nifti_image
 from sacred import Experiment
 
 monkey_patch_nifti_image()

@@ -1,14 +1,11 @@
 # Author: Arthur Mensch
 # License: BSD
-import os
 import time
-from os.path import expanduser
 
 import matplotlib.pyplot as plt
-from modl.feature_extraction.image import LazyCleanPatchExtractor
-from modl.image import ImageDictFact
-
 from modl.datasets.image import load_image
+from modl.decomposition.image import ImageDictFact
+from modl.feature_extraction.image import LazyCleanPatchExtractor
 from modl.plotting.image import plot_patches
 
 
