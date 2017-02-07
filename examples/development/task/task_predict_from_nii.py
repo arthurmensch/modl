@@ -1,4 +1,5 @@
 import copy
+import glob
 import shutil
 from os.path import expanduser, join
 from tempfile import mkdtemp
@@ -42,7 +43,7 @@ from examples.development.decomposition_fmri \
     import decomposition_ex, compute_decomposition, rest_data_ing
 
 task_data_ing = Ingredient('task_data')
-prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
+prediction_ex = Experiment('task_predict_from_nii', ingredients=[task_data_ing,
                                                         decomposition_ex])
 
 observer = MongoObserver.create(db_name='amensch', collection='runs')
@@ -56,44 +57,18 @@ prediction_ex.observers.append(observer)
 def config():
     standardize = True
     C = np.logspace(-1, 2, 15)
-    n_jobs = 1
+    n_jobs = 10
     verbose = 10
     seed = 2
     max_iter = 10000
     tol = 1e-7
-    n_components_list = [10, 20, 40]
-    hierachical = False
     transform_batch_size = 300
 
 
 @task_data_ing.config
 def config():
-    train_size = 100
+    train_size = 10
     test_size = 10
-    seed = 2
-
-
-@rest_data_ing.config
-def config():
-    source = 'hcp'
-    train_size = 1  # Overriden
-    test_size = 1
-    seed = 2
-    # train and test are overriden
-
-
-@decomposition_ex.config
-def config():
-    batch_size = 100
-    learning_rate = 0.92
-    method = 'masked'
-    reduction = 10
-    alpha = 1e-4
-    n_epochs = 1
-    smoothing_fwhm = 4
-    n_components = 40
-    n_jobs = 1
-    verbose = 15
     seed = 2
 
 
@@ -178,61 +153,43 @@ def _logistic_regression(X_train, y_train, standardize=False, C=1,
 
 @prediction_ex.automain
 def run(n_jobs,
-        decomposition,
-        hierachical,
         verbose,
         transform_batch_size,
-        n_components_list,
         _run):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=0)
 
     train_data, train_subjects, test_data, \
     test_subjects, mask_img, label_encoder = get_task_data()
 
-    if not decomposition['rest_data']['source'] == 'hcp':
-        train_subjects = None
-        test_subjects = None
     print('Compute components')
-    if hierachical:
-        components_list = []
-        unsupervised_score_list = []
-        for n_components in n_components_list:
-            components, mask_img, unsupervised_score = compute_decomposition(
-                train_subjects=train_subjects,
-                n_components=n_components,
-                test_subjects=test_subjects,
-                return_score=True,
-                observe=False)
-            components_list.append(components)
-            unsupervised_score_list.append(unsupervised_score)
-        components_data = [components.get_data() for components in
-                           components_list]
-        components_data = np.concatenate(components_data, axis=3)
-        components = new_img_like(components_list[-1], data=components_data)
-        unsupervised_score = unsupervised_score_list
-    else:
-        components, mask_img, unsupervised_score \
-            = compute_decomposition(train_subjects=train_subjects,
-                                    test_subjects=test_subjects,
-                                    observe=True,
-                                    return_score=True)
+    components_list = []
+    resource_dir = join(expanduser('~/resources/hierachical'))
+    components_files = glob.glob(join(resource_dir, '*.nii.gz'))
+    for components_file in components_files:
+        _run.open_resources(components_files)
+        components = check_niimg(components_file)
+        components_list.append(components)
+    components_data = [components.get_data() for components in
+                       components_list]
+    components_data = np.concatenate(components_data, axis=3)
+    components = new_img_like(components_list[-1], data=components_data)
+    _run.open_resources(join(resource_dir, 'mask_img.nii.gz'))
+    mask_img = check_niimg(join(resource_dir, 'mask_img.nii.gz'))
 
-    if hierachical and not _run.unobserved:
-        _run.info['unsupervised_score'] = unsupervised_score
-        artifact_dir = mkdtemp()
-        components_copy = copy.deepcopy(components)
-        components_copy.to_filename(
-            join(artifact_dir, 'components.nii.gz'))
-        mask_img_copy = copy.deepcopy(mask_img)
-        mask_img_copy.to_filename(join(artifact_dir, 'mask_img.nii.gz'))
-        _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
-                          name='components.nii.gz')
-        fig = plt.figure()
-        display_maps(fig, components)
-        plt.savefig(join(artifact_dir, 'components.png'))
-        plt.close(fig)
-        _run.add_artifact(join(artifact_dir, 'components.png'),
-                          name='components.png')
+    artifact_dir = mkdtemp()
+    components_copy = copy.deepcopy(components)
+    components_copy.to_filename(
+        join(artifact_dir, 'components.nii.gz'))
+    mask_img_copy = copy.deepcopy(mask_img)
+    mask_img_copy.to_filename(join(artifact_dir, 'mask_img.nii.gz'))
+    _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
+                      name='components.nii.gz')
+    fig = plt.figure()
+    display_maps(fig, components)
+    plt.savefig(join(artifact_dir, 'components.png'))
+    plt.close(fig)
+    _run.add_artifact(join(artifact_dir, 'components.png'),
+                      name='components.png')
 
     data = pd.concat([train_data, test_data], keys=['train', 'test'],
                      names=['fold'])

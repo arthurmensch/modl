@@ -21,18 +21,19 @@ def single_run(config_updates, _id):
     @prediction_ex.config
     def config():
         standardize = True
-        C = np.logspace(-1, 1, 10)
+        C = np.logspace(-1, 2, 15)
         n_jobs = 1
         verbose = 2
         seed = 2
-        max_iter = 10000
+        max_iter = 100000
         tol = 1e-7
         hierachical = False
+        transform_batch_size = 1200
 
     @task_data_ing.config
     def config():
-        train_size = 750
-        test_size = 10
+        train_size = 700
+        test_size = 88
         seed = 2
 
     @rest_data_ing.config
@@ -45,13 +46,13 @@ def single_run(config_updates, _id):
 
     @decomposition_ex.config
     def config():
-        batch_size = 100
+        batch_size = 200
         learning_rate = 0.92
         method = 'masked'
         reduction = 10
-        alpha = 1e-3 # Overriden
-        n_components = 40 # Overriden
-        n_epochs = 1
+        alpha = 1e-3  # Overriden
+        n_components = 40  # Overriden
+        n_epochs = 2
         smoothing_fwhm = 4
         n_jobs = 1
         verbose = 15
@@ -71,7 +72,7 @@ def single_run(config_updates, _id):
 
 def first_grid_search():
     n_jobs = 18
-    train_size_list = [50, 200, 778]
+    train_size_list = [50, 200, 700]
 
     n_components_list = [20, 50, 100]
 

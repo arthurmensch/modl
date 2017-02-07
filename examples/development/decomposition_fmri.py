@@ -136,7 +136,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     observe = observe and not _run.unobserved
 
     memory = Memory(cachedir=get_cache_dirs()[0],
-                    mmap_mode=None, verbose=2)
+                    mmap_mode=None)
     print('Retrieve resting-state data')
     train_imgs, train_confounds, \
     test_imgs, test_confounds, mask_img = get_rest_data(
