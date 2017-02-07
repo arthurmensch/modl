@@ -1,5 +1,3 @@
-from modl.decomposition.fmri import fMRICoder
-from modl.input_data.fmri import BaseNilearnEstimator
 from nilearn._utils import CacheMixin
 from sklearn.externals.joblib import Memory
 from sklearn.linear_model import LogisticRegression

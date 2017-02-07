@@ -1,14 +1,15 @@
-import copy
 import shutil
 import warnings
-from os.path import expanduser, join
+from os.path import join
 from tempfile import mkdtemp
 
 from matplotlib.cbook import MatplotlibDeprecationWarning
 
-from modl.input_data.fmri import monkey_patch_nifti_image, safe_to_filename
+from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
+
+from modl.input_data.fmri.base import safe_to_filename
 
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
@@ -17,7 +18,6 @@ from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred import Ingredient
-from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 
 from sklearn.externals.joblib import Memory
@@ -35,10 +35,6 @@ decomposition_ex = Experiment('decomposition', ingredients=[rest_data_ing])
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 decomposition_ex.observers.append(observer)
 
-observer = FileStorageObserver.create(expanduser('~/output/runs'))
-decomposition_ex.observers.append(observer)
-
-
 @decomposition_ex.config
 def config():
     batch_size = 50
@@ -47,7 +43,7 @@ def config():
     reduction = 10
     alpha = 1e-4
     n_epochs = 1
-    smoothing_fwhm = 4
+    smoothing_fwhm = 6
     n_components = 40
     n_jobs = 1
     verbose = 15
@@ -56,9 +52,10 @@ def config():
 
 @rest_data_ing.config
 def config():
-    source = 'adhd'
-    train_size = 36
-    test_size = 4
+    source = 'hcp'
+    n_subjects = 7
+    train_size = 6
+    test_size = 1
     seed = 2
 
 
@@ -77,13 +74,14 @@ def hcp():
 @rest_data_ing.capture
 def get_rest_data(source, test_size, train_size, _run, _seed,
                   # Optional arguments
+                  n_subjects,
                   train_subjects=None,
                   test_subjects=None
                   ):
     if source == 'hcp':
-        data = fetch_hcp()
+        data = fetch_hcp(n_subjects=n_subjects)
     elif source == 'adhd':
-        data = fetch_adhd()
+        data = fetch_adhd(n_subjects=n_subjects)
     else:
         raise ValueError('Wrong resting-state source')
     imgs = data.rest
@@ -129,7 +127,6 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           verbose,
                           _run,
                           _seed,
-                          # Optional arguments, to be passed by higher level experiments
                           train_subjects=None,
                           test_subjects=None,
                           observe=True,
@@ -176,11 +173,16 @@ def compute_decomposition(alpha, batch_size, learning_rate,
         _run.info['dec_final_score'] = final_score
         print('Write decomposition artifacts')
         artifact_dir = mkdtemp()
-        safe_to_filename(dict_fact.components_,
+        safe_to_filename(dict_fact.components_img_,
                          join(artifact_dir, 'dec_components.nii.gz'))
-        safe_to_filename(mask_img, join(artifact_dir, 'dec_mask_img.nii.gz'))
         _run.add_artifact(join(artifact_dir, 'dec_components.nii.gz'),
                           name='dec_components.nii.gz')
+
+        safe_to_filename(dict_fact.mask_img_,
+                         join(artifact_dir, 'dec_mask_img.nii.gz'))
+        _run.add_artifact(join(artifact_dir, 'dec_mask_img.nii.gz'),
+                          name='dec_mask_img.nii.gz')
+
         fig = plt.figure()
         display_maps(fig, dict_fact.components_img_)
         plt.savefig(join(artifact_dir, 'dec_components.png'))

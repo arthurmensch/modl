@@ -2,6 +2,7 @@ from distutils.extension import Extension
 
 import numpy
 
+
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
@@ -13,6 +14,9 @@ def configuration(parent_package='', top_path=None):
                             include_dirs=[numpy.get_include()]
                             ),
                   ]
+    config.add_subpackage('tests')
+    config.add_subpackage('fmri')
+
     config.ext_modules += extensions
 
     return config

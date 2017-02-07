@@ -1,19 +1,21 @@
 import shutil
-from os.path import expanduser, join
+from os.path import join
 from tempfile import mkdtemp
 
 import numpy as np
 import pandas as pd
 from nilearn._utils import check_niimg
 from sacred import Ingredient, Experiment
-from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 
-from modl.classification.fmri import fMRITaskClassifier
-from modl.input_data.fmri import monkey_patch_nifti_image, safe_to_filename
-from modl.plotting.fmri import display_maps
+from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
+
+from modl.input_data.fmri.base import safe_to_filename
+
+from modl.classification.fmri import fMRITaskClassifier
+from modl.plotting.fmri import display_maps
 
 from sklearn.preprocessing import LabelEncoder
 
@@ -41,10 +43,6 @@ prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 prediction_ex.observers.append(observer)
 
-observer = FileStorageObserver.create(expanduser('~/output/runs'))
-prediction_ex.observers.append(observer)
-
-
 @prediction_ex.config
 def config():
     standardize = True
@@ -58,14 +56,16 @@ def config():
 
 @task_data_ing.config
 def config():
-    train_size = 10
-    test_size = 10
+    n_subjects = 8
+    train_size = 5
+    test_size = 3
     seed = 2
 
 
 @rest_data_ing.config
 def config():
     source = 'hcp'
+    n_subjects = 30 # Overriden
     train_size = 1  # Overriden
     test_size = 1
     seed = 2
@@ -88,9 +88,9 @@ def config():
 
 
 @task_data_ing.capture
-def get_task_data(train_size, test_size, _run, _seed):
+def get_task_data(n_subjects, train_size, test_size, _run, _seed):
     print('Retrieve task data')
-    data = fetch_hcp()
+    data = fetch_hcp(n_subjects=n_subjects)
     imgs = data.task
     mask_img = data.mask
     subjects = imgs.index.get_level_values('subject').unique().values.tolist()

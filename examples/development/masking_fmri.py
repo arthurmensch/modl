@@ -1,10 +1,11 @@
 import os
 from os.path import join
 
-from modl.input_data.fmri import monkey_patch_nifti_image
-from sacred import Experiment
+from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
+
+from sacred import Experiment
 
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
@@ -20,10 +21,11 @@ masking_ex = Experiment('masking_fmri')
 
 @masking_ex.config
 def config():
-    n_jobs = 3
-    source = 'adhd'
-    n_subjects = 40
-    smoothing_fwhm = 6
+    n_jobs = 30
+    source = 'hcp'
+    n_subjects = 3
+    smoothing_fwhm = 4
+
 
 def mask_and_dismiss(masker, index, img, confounds):
     try:
@@ -36,6 +38,7 @@ def mask_and_dismiss(masker, index, img, confounds):
     print('Masking %s' % str(index))
     data = masker.transform(img, confounds=confounds)
     del data
+
 
 @masking_ex.automain
 def main(n_jobs, source, n_subjects, smoothing_fwhm):

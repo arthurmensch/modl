@@ -16,15 +16,14 @@ import nibabel
 import numpy as np
 from nilearn._utils import CacheMixin
 from nilearn._utils import check_niimg
-from nilearn._utils.niimg_conversions import _iter_check_niimg
 from nilearn.input_data import NiftiMasker
 from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
-from sklearn.utils import check_random_state, gen_batches
+from sklearn.utils import check_random_state
 
-from ..input_data.fmri import BaseNilearnEstimator
+from ..input_data.fmri.base import BaseNilearnEstimator
 
 from .dict_fact import DictFact, Coder
 
@@ -493,10 +492,9 @@ def _compute_components(masker,
                     verbose_iter_ = verbose_iter_[1:]
 
                 # IO bounded
-                data = data_list[record]
-                img, confound = data
+                img, these_confounds = data_list[record]
                 img = check_niimg(img)
-                masked_data = masker.transform(img, confound)
+                masked_data = masker.transform(img, confounds=these_confounds)
 
                 # CPU bounded
                 permutation = random_state.permutation(
@@ -541,12 +539,14 @@ def _lazy_scan(imgs):
 
 
 def _transform_img(coder, masker, img, confounds):
+    img = check_niimg(img)
     data = masker.transform(img,
                             confounds=confounds)
     return coder.transform(data)
 
 
 def _score_img(coder, masker, img, confounds):
+    img = check_niimg(img)
     data = masker.transform(img, confounds=confounds)
     return coder.score(data)
 
