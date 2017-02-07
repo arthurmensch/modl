@@ -1,3 +1,4 @@
+from modl.decomposition.fmri import fMRICoder
 from modl.input_data.fmri import BaseNilearnEstimator
 from nilearn._utils import CacheMixin
 from sklearn.externals.joblib import Memory
@@ -9,8 +10,9 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 
 
-class fMRITaskClassifier(BaseNilearnEstimator, CacheMixin):
-    def __init__(self, transformer,
+class fMRITaskClassifier(CacheMixin):
+    def __init__(self,
+                 transformer,
                  C=1,
                  standardize=False,
                  max_iter=100,

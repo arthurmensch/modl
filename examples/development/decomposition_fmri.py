@@ -5,18 +5,20 @@ from os.path import expanduser, join
 from tempfile import mkdtemp
 
 from matplotlib.cbook import MatplotlibDeprecationWarning
+
+from modl.input_data.fmri import monkey_patch_nifti_image, safe_to_filename
+
+monkey_patch_nifti_image()
+
 from modl.datasets import fetch_adhd
 from modl.datasets.hcp import fetch_hcp
-from modl.decomposition.fmri import rfMRIDictionaryScorer, fmri_dict_learning, fMRICoder
+from modl.decomposition.fmri import rfMRIDictionaryScorer, fMRIDictFact
 from modl.plotting.fmri import display_maps
-from modl.input_data.fmri import monkey_patch_nifti_image
 from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred import Ingredient
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
-
-monkey_patch_nifti_image()
 
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
@@ -109,8 +111,8 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
 
 class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
     @decomposition_ex.capture
-    def __call__(self, dict_fact, _run=None):
-        rfMRIDictionaryScorer.__call__(self, dict_fact)
+    def __call__(self, masker, dict_fact, _run=None):
+        rfMRIDictionaryScorer.__call__(self, masker, dict_fact)
         _run.info['dec_score'] = self.score
         _run.info['dec_time'] = self.time
         _run.info['dec_iter'] = self.iter
@@ -125,12 +127,12 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           smoothing_fwhm,
                           method,
                           verbose,
-                          _run, _seed,
+                          _run,
+                          _seed,
                           # Optional arguments, to be passed by higher level experiments
                           train_subjects=None,
                           test_subjects=None,
                           observe=True,
-                          return_score=True
                           ):
     observe = observe and not _run.unobserved
 
@@ -147,61 +149,40 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     else:
         callback = None
     print('Run dictionary learning')
-    components, mask_img, callback = memory.cache(
-        fmri_dict_learning,
-        ignore=['verbose', 'n_jobs',
-                'memory',
-                'memory_level'])(
-        train_imgs,
-        confounds=train_confounds,
-        mask=mask_img,
-        alpha=alpha,
-        batch_size=batch_size,
-        learning_rate=learning_rate,
-        n_components=n_components,
-        n_epochs=n_epochs,
-        n_jobs=n_jobs,
-        reduction=reduction,
-        memory=memory,
-        memory_level=2,
-        smoothing_fwhm=smoothing_fwhm,
-        method=method,
-        callback=callback,
-        random_state=_seed,
-        verbose=verbose)
+    dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
+                             method=method,
+                             mask=mask_img,
+                             memory=memory,
+                             memory_level=2,
+                             verbose=verbose,
+                             n_epochs=n_epochs,
+                             n_jobs=n_jobs,
+                             random_state=_seed,
+                             n_components=n_components,
+                             dict_init=None,
+                             learning_rate=learning_rate,
+                             batch_size=batch_size,
+                             reduction=reduction,
+                             alpha=alpha,
+                             callback=callback,
+                             )
+    dict_fact.fit(train_imgs, confounds=train_confounds)
 
-    if return_score:
-        if observe:
-            _run.info['dec_score'] = callback.score
-            _run.info['dec_time'] = callback.time
-            _run.info['dec_iter'] = callback.iter
-        coder = fMRICoder(standardize=True, detrend=True,
-                          smoothing_fwhm=smoothing_fwhm,
-                          dictionary=components,
-                          memory=memory,
-                          alpha=alpha,
-                          memory_level=2,
-                          transform_batch_size=1,
-                          verbose=10,
-                          mask=mask_img).fit()
-        final_score = coder.score(test_imgs, confounds=test_confounds)
-    elif observe:
-        raise ValueError('return_score should be True when observing')
-
+    final_score = dict_fact.score(test_imgs, confounds=test_confounds)
     if observe:
+        _run.info['dec_score'] = callback.score
+        _run.info['dec_time'] = callback.time
+        _run.info['dec_iter'] = callback.iter
         _run.info['dec_final_score'] = final_score
         print('Write decomposition artifacts')
         artifact_dir = mkdtemp()
-        # Avoid trashing cache
-        components_copy = copy.deepcopy(components)
-        components_copy.to_filename(
-            join(artifact_dir, 'dec_components.nii.gz'))
-        mask_img_copy = copy.deepcopy(mask_img)
-        mask_img_copy.to_filename(join(artifact_dir, 'dec_mask_img.nii.gz'))
+        safe_to_filename(dict_fact.components_,
+                         join(artifact_dir, 'dec_components.nii.gz'))
+        safe_to_filename(mask_img, join(artifact_dir, 'dec_mask_img.nii.gz'))
         _run.add_artifact(join(artifact_dir, 'dec_components.nii.gz'),
                           name='dec_components.nii.gz')
         fig = plt.figure()
-        display_maps(fig, components)
+        display_maps(fig, dict_fact.components_img_)
         plt.savefig(join(artifact_dir, 'dec_components.png'))
         plt.close(fig)
         _run.add_artifact(join(artifact_dir, 'dec_components.png'),
@@ -216,10 +197,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
             shutil.rmtree(artifact_dir)
         except FileNotFoundError:
             pass
-    if return_score:
-        return components, mask_img, final_score
-    else:
-        return components, mask_img
+    return dict_fact, final_score
 
 
 @decomposition_ex.automain

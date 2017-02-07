@@ -1,3 +1,4 @@
+import copy
 import os
 
 import nibabel
@@ -217,3 +218,8 @@ class BaseNilearnEstimator(BaseEstimator):
         self.mask_img_ = self.masker_.mask_img_
 
         return self
+
+
+def safe_to_filename(img, filename):
+    img = copy.deepcopy(img)
+    img.to_filename(filename)

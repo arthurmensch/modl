@@ -493,6 +493,8 @@ class DictFact(CodingMixin, BaseEstimator):
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
             self._callback()
+        if X.flags('WRITEABLE') is False:
+            X = X.copy()
 
         subset = self.feature_sampler_.yield_subset(self.reduction)
         batch_size = X.shape[0]

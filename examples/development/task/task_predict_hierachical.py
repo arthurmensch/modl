@@ -1,27 +1,35 @@
+import copy
 import shutil
 from os.path import expanduser, join
 from tempfile import mkdtemp
 
 import numpy as np
 import pandas as pd
+
+from modl.classification.fmri import fMRITaskClassifier
+from modl.plotting.fmri import display_maps
+from modl.input_data.fmri import monkey_patch_nifti_image, safe_to_filename
 from nilearn._utils import check_niimg
+from nilearn.image import new_img_like
 from sacred import Ingredient, Experiment
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 
-from modl.classification.fmri import fMRITaskClassifier
-from modl.input_data.fmri import monkey_patch_nifti_image, safe_to_filename
-from modl.plotting.fmri import display_maps
-
 monkey_patch_nifti_image()
 
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import ShuffleSplit
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
 
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
 from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
+from modl.decomposition.fmri import compute_loadings
 
 import matplotlib.pyplot as plt
 
@@ -54,11 +62,14 @@ def config():
     seed = 2
     max_iter = 10000
     tol = 1e-7
+    n_components_list = [10, 20, 40]
+    hierachical = False
+    transform_batch_size = 300
 
 
 @task_data_ing.config
 def config():
-    train_size = 10
+    train_size = 100
     test_size = 10
     seed = 2
 
