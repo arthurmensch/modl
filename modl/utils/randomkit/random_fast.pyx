@@ -68,6 +68,8 @@ cdef class RandomState:
         elif isinstance(seed, np.integer):
             iseed = int(seed)
             rk_seed(iseed, self.internal_state)
+        elif isinstance(seed, (int, long)):
+            rk_seed(seed, self.internal_state)
         else:
             raise ValueError("Wrong seed")
 
