@@ -3,7 +3,6 @@ from os import path
 from os.path import expanduser
 
 import numpy as np
-
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 from sacred.optional import pymongo
@@ -15,7 +14,7 @@ sys.path.append(path.dirname(path.dirname
 
 
 def single_run(config_updates, _id):
-    from examples.development.task.task_predict import prediction_ex, \
+    from examples.task.task_predict import prediction_ex, \
         task_data_ing, rest_data_ing, decomposition_ex
 
     @prediction_ex.config

@@ -1,5 +1,6 @@
 import glob
 import os
+import warnings
 from os.path import join
 
 from sklearn.datasets.base import Bunch
@@ -23,7 +24,7 @@ contrasts_description = {'2BK': {'Cognitive Task': 'Two-Back Memory',
                          'FACES': {'Cognitive Task': 'Shapes',
                                    'Instruction to participants': 'Decide which of two shapes matches another shape geometry-wise',
                                    'Stimulus material': 'Shape pictures'},
-                         'FACES-SHAPES': {'Cognitive Task': 'Faces',
+                         'SHAPES': {'Cognitive Task': 'Faces',
                                           'Instruction to participants': 'Decide which of two faces matches another face emotion-wise',
                                           'Stimulus material': 'Face pictures'},
                          'LF': {'Cognitive Task': 'Food movement',
@@ -222,9 +223,8 @@ def fetch_hcp_task(data_dir=None, release='HCP900',
     elif release == 'HCP900':
         source_dir = join(data_dir, 'HCP900', 'glm')
         if not os.path.exists(source_dir):
-            raise ValueError('Please make sure that a directory HCP900 can '
-                             'be found '
-                             'in the $MODL_DATA directory')
+            warnings.warn('No GLM directory was found.')
+            return pd.DataFrame()
         if level == 2:
             directions = ['level2']
         elif level == 1:
@@ -311,10 +311,12 @@ def fetch_hcp(data_dir=None, n_subjects=788):
     rest = fetch_hcp_rest(data_dir, release='HCP900', n_subjects=n_subjects)
     task = fetch_hcp_task(data_dir, release='HCP900', output='nistats',
                           n_subjects=n_subjects)
+    root = join(get_data_dirs(data_dir)[0], 'HCP900')
     mask = fetch_hcp_mask(data_dir)
     subjects = np.unique(np.concatenate([rest.index.get_level_values(0).values,
                                             task.index.
                                         get_level_values(0).values]))
     behavioral = fetch_hcp_behavioral(data_dir, release='HCP900')
     behavioral = behavioral.loc[subjects, :]
-    return Bunch(rest=rest, task=task, behavioral=behavioral, mask=mask)
+    return Bunch(rest=rest, task=task, behavioral=behavioral, mask=mask,
+                 root=root)

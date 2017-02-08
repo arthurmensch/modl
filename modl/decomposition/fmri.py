@@ -14,6 +14,7 @@ from math import log, sqrt, ceil
 
 import nibabel
 import numpy as np
+from nibabel.filebasedimages import ImageFileError
 from nilearn._utils import CacheMixin
 from nilearn._utils import check_niimg
 from nilearn.input_data import NiftiMasker
@@ -45,7 +46,7 @@ class fMRICoderMixin(BaseNilearnEstimator, CacheMixin, TransformerMixin):
                  standardize=True, detrend=True,
                  low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
-                 mask_strategy='epi', mask_args=None,
+                 mask_strategy='background', mask_args=None,
                  memory=Memory(cachedir=None),
                  memory_level=2,
                  n_jobs=1, verbose=0, ):
@@ -122,7 +123,12 @@ class fMRICoderMixin(BaseNilearnEstimator, CacheMixin, TransformerMixin):
                 self.coder_, self.masker_, img, these_confounds)
             for img, these_confounds in zip(imgs, confounds))
         scores = np.array(scores)
-        len_imgs = np.array([check_niimg(img).get_shape()[3] for img in imgs])
+        try:
+            len_imgs = np.array([check_niimg(img).get_shape()[3]
+                                 for img in imgs])
+        except ImageFileError:
+            len_imgs = np.array([np.load(img, mmap_mode='r').shape[0]
+                                 for img in imgs])
         score = np.sum(scores * len_imgs) / np.sum(len_imgs)
         return score
 
@@ -270,7 +276,7 @@ class fMRIDictFact(fMRICoderMixin):
                  standardize=True, detrend=True,
                  low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
-                 mask_strategy='epi', mask_args=None,
+                 mask_strategy='background', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=2,
                  n_jobs=1, verbose=0,
                  callback=None):
@@ -361,7 +367,7 @@ class fMRICoder(fMRICoderMixin):
                  standardize=False, detrend=False,
                  low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
-                 mask_strategy='epi', mask_args=None,
+                 mask_strategy='background', mask_args=None,
                  memory=Memory(cachedir=None),
                  memory_level=2,
                  n_jobs=1, verbose=0, ):
@@ -493,7 +499,6 @@ def _compute_components(masker,
 
                 # IO bounded
                 img, these_confounds = data_list[record]
-                img = check_niimg(img)
                 masked_data = masker.transform(img, confounds=these_confounds)
 
                 # CPU bounded
@@ -526,27 +531,25 @@ def _lazy_scan(imgs):
     from a 4D list of Niilike-image, without loading data"""
     n_samples_list = []
     for img in imgs:
-        if isinstance(img, str):
-            this_n_samples = nibabel.load(img).shape[3]
-        else:
+        try:
+            img = check_niimg(img)
             this_n_samples = img.shape[3]
+            dtype = img.get_data_dtype()
+        except ImageFileError:
+            img = np.load(img, mmap_mode='r')
+            this_n_samples = img.shape[0]
+            dtype = img.dtype
         n_samples_list.append(this_n_samples)
-    if isinstance(img, str):
-        dtype = nibabel.load(img).get_data_dtype()
-    else:
-        dtype = imgs[0].get_data_dtype()
     return n_samples_list, dtype
 
 
 def _transform_img(coder, masker, img, confounds):
-    img = check_niimg(img)
     data = masker.transform(img,
                             confounds=confounds)
     return coder.transform(data)
 
 
 def _score_img(coder, masker, img, confounds):
-    img = check_niimg(img)
     data = masker.transform(img, confounds=confounds)
     return coder.score(data)
 

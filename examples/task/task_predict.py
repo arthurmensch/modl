@@ -1,35 +1,29 @@
-import copy
 import shutil
-from os.path import expanduser, join
+from os.path import join
 from tempfile import mkdtemp
 
 import numpy as np
 import pandas as pd
-
-from modl.classification.fmri import fMRITaskClassifier
-from modl.plotting.fmri import display_maps
-from modl.input_data.fmri import monkey_patch_nifti_image, safe_to_filename
 from nilearn._utils import check_niimg
-from nilearn.image import new_img_like
 from sacred import Ingredient, Experiment
-from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
+
+from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import ShuffleSplit
-from sklearn.pipeline import Pipeline
+from modl.input_data.fmri.base import safe_to_filename
+
+from modl.classification.fmri import fMRITaskClassifier
+from modl.plotting.fmri import display_maps
+
 from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import StandardScaler
 
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
 from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
-from modl.decomposition.fmri import compute_loadings
 
 import matplotlib.pyplot as plt
 
@@ -39,7 +33,7 @@ from os import path
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
-from examples.development.decomposition_fmri \
+from examples.decomposition_fmri \
     import decomposition_ex, compute_decomposition, rest_data_ing
 
 task_data_ing = Ingredient('task_data')
@@ -48,10 +42,6 @@ prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
 
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 prediction_ex.observers.append(observer)
-
-observer = FileStorageObserver.create(expanduser('~/output/runs'))
-prediction_ex.observers.append(observer)
-
 
 @prediction_ex.config
 def config():
@@ -62,22 +52,21 @@ def config():
     seed = 2
     max_iter = 10000
     tol = 1e-7
-    n_components_list = [10, 20, 40]
-    hierachical = False
-    transform_batch_size = 300
 
 
 @task_data_ing.config
 def config():
-    train_size = 100
-    test_size = 10
+    n_subjects = 8
+    train_size = 5
+    test_size = 3
     seed = 2
 
 
 @rest_data_ing.config
 def config():
     source = 'hcp'
-    train_size = 1  # Overriden
+    n_subjects = 3 # Overriden
+    train_size = 2  # Overriden
     test_size = 1
     seed = 2
     # train and test are overriden
@@ -96,12 +85,13 @@ def config():
     n_jobs = 1
     verbose = 15
     seed = 2
+    raw = None
 
 
 @task_data_ing.capture
-def get_task_data(train_size, test_size, _run, _seed):
+def get_task_data(n_subjects, train_size, test_size, _run, _seed):
     print('Retrieve task data')
-    data = fetch_hcp()
+    data = fetch_hcp(n_subjects=n_subjects)
     imgs = data.task
     mask_img = data.mask
     subjects = imgs.index.get_level_values('subject').unique().values.tolist()
@@ -120,11 +110,10 @@ def get_task_data(train_size, test_size, _run, _seed):
     contrast_labels = label_encoder.fit_transform(contrast_labels)
     imgs = imgs.assign(label=contrast_labels)
 
-    train_imgs = imgs.loc[train_subjects, :]
-    test_imgs = imgs.loc[test_subjects, :]
+    imgs_list = pd.concat([imgs.loc[train_subjects],
+                      imgs.loc[test_subjects]], keys=['train', 'test'])
 
-    return train_imgs, train_subjects, test_imgs, test_subjects, \
-           mask_img, label_encoder
+    return imgs_list, mask_img, label_encoder
 
 
 @prediction_ex.automain
@@ -137,8 +126,12 @@ def run(C,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=0)
 
-    train_data, train_subjects, test_data, \
-    test_subjects, mask_img, label_encoder = get_task_data()
+    imgs_list, mask_img, label_encoder = get_task_data()
+
+    train_subjects = imgs_list.loc['train'].index.get_level_values('subject').\
+        unique().values
+    test_subjects = imgs_list.loc['test'].index.get_level_values('subject').\
+        unique().values
 
     if not decomposition['rest_data']['source'] == 'hcp':
         train_subjects = None
@@ -165,8 +158,6 @@ def run(C,
         _run.add_artifact(join(artifact_dir, 'components.png'),
                           name='components.png')
 
-    data = pd.concat([train_data, test_data], keys=['train', 'test'],
-                     names=['fold'])
     print('Compute loadings')
     classifier = fMRITaskClassifier(transformer=dict_fact,
                                     memory=memory,
@@ -178,14 +169,14 @@ def run(C,
                                     max_iter=max_iter,
                                     n_jobs=n_jobs,
                                     )
-    classifier.fit(data.loc['train', 'filename'].values)
+    classifier.fit(imgs_list.loc['train', 'filename'].values)
 
-    true_labels = data.index.get_level_values('contrast').values
+    true_labels = imgs_list.index.get_level_values('contrast').values
 
-    predicted_labels = classifier.predict(data.loc[:, 'filename'].values)
+    predicted_labels = classifier.predict(imgs_list.loc[:, 'filename'].values)
     prediction = pd.DataFrame(data=list(zip(true_labels, predicted_labels)),
                               columns=['true_label', 'predicted_label'],
-                              index=data.index)
+                              index=imgs_list.index)
 
     train_score = np.sum(prediction.loc['train', 'predicted_label']
                          == prediction.loc['train', 'true_label'])

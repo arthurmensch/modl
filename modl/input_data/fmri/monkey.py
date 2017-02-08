@@ -6,10 +6,13 @@ import nilearn
 
 from nibabel import load as nibabel_load
 from nibabel import Nifti1Image as NibabelNifti1Image
+from nilearn._utils import check_niimg
+from nilearn._utils.class_inspect import get_params
 
 from nilearn._utils.compat import _basestring, get_affine
 from nilearn._utils.niimg import short_repr, _get_target_dtype
 from nilearn.input_data import MultiNiftiMasker
+from nilearn.input_data.nifti_masker import filter_and_mask, NiftiMasker
 
 from sklearn.externals import joblib as joblib
 from sklearn.externals.joblib.func_inspect import filter_args
@@ -160,8 +163,53 @@ def our_multi_nifti_masker_transform(self, imgs, confounds=None):
     return self.transform_imgs(imgs, confounds, n_jobs=self.n_jobs)
 
 
+def our_transform_single_imgs(self, imgs, confounds=None, copy=True):
+    """Apply mask, spatial and temporal preprocessing
+
+    Parameters
+    ----------
+    imgs: 3D/4D Niimg-like object
+        See http://nilearn.github.io/manipulating_images/input_output.html.
+        Images to process. It must boil down to a 4D image with scans
+        number as last dimension.
+
+    confounds: CSV file or array-like, optional
+        This parameter is passed to signal.clean. Please see the related
+        documentation for details.
+        shape: (number of scans, number of confounds)
+
+    Returns
+    -------
+    region_signals: 2D numpy.ndarray
+        Signal for each voxel inside the mask.
+        shape: (number of scans, number of voxels)
+    """
+
+    # Ignore the mask-computing params: they are not useful and will
+    # just invalid the cache for no good reason
+    # target_shape and target_affine are conveyed implicitly in mask_img
+    imgs = check_niimg(imgs)
+    params = get_params(self.__class__, self,
+                        ignore=['mask_img', 'mask_args', 'mask_strategy'])
+
+    data = self._cache(filter_and_mask,
+                       ignore=['verbose', 'memory', 'memory_level',
+                               'copy'],
+                       shelve=self._shelving)(
+        imgs, self.mask_img_, params,
+        memory_level=self.memory_level,
+        memory=self.memory,
+        verbose=self.verbose,
+        confounds=confounds,
+        copy=copy
+    )
+
+    return data
+
+
 def monkey_patch_nifti_image():
     nibabel.load = load
     joblib.memory.MemorizedFunc._get_argument_hash = our_get_argument_hash
     nilearn._utils.niimg.load_niimg = our_load_niimg
+    NiftiMasker.transform_single_imgs = our_transform_single_imgs
     MultiNiftiMasker.transform = our_multi_nifti_masker_transform

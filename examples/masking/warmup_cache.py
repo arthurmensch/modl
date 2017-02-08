@@ -21,7 +21,7 @@ masking_ex = Experiment('masking_fmri')
 
 @masking_ex.config
 def config():
-    n_jobs = 30
+    n_jobs = 1
     source = 'hcp'
     n_subjects = 3
     smoothing_fwhm = 4
@@ -64,9 +64,9 @@ def main(n_jobs, source, n_subjects, smoothing_fwhm):
                               mask_img=mask,
                               memory=mem,
                               memory_level=1).fit()
-    iter_df = rest.loc[:, ['filename', 'confounds']].iterrows()
     Parallel(n_jobs=n_jobs)(delayed(mask_and_dismiss)(masker,
                                                       index,
                                                       img,
                                                       confounds)
-                            for index, (img, confounds) in iter_df)
+                            for index, (img, confounds) in
+                            rest.loc[:, ['filename', 'confounds']].iterrows())
