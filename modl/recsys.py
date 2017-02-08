@@ -114,7 +114,7 @@ class RecsysDictFact(BaseEstimator):
         self.feature_freq_ = np.bincount(X.indices) / n_samples
         self.feature_n_iter_ = np.zeros(n_features, dtype=int)
 
-        sparsity = X.nnz / n_samples / n_features
+        sparsity = float(X.nnz) / n_samples / n_features
         if self.batch_size is None:
             batch_size = int(ceil(1. / sparsity))
         else:
