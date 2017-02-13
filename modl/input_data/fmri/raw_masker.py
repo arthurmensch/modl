@@ -129,14 +129,13 @@ def create_raw_data(imgs_list,
             imgs_list = imgs_list.to_frame()
             imgs_list.assign(confounds=[None] * len(imgs_list))
         else:
-            assert('filename' in imgs_list.columns and 'confounds'
-                   in imgs_list.columns)
+            assert ('filename' in imgs_list.columns and 'confounds'
+                    in imgs_list.columns)
     masker = MultiNiftiMasker(verbose=1, **masker_params)
     if masker.mask_img is None:
         masker.fit(imgs_list['filename'])
     else:
         masker.fit()
-
 
     if not os.path.exists(raw_dir):
         os.makedirs(raw_dir)
@@ -146,6 +145,7 @@ def create_raw_data(imgs_list,
                                         zip(imgs_list['filename'],
                                             imgs_list['confounds']))
     imgs_list = imgs_list.assign(unmasked=filenames)
+    imgs_list['confounds'].apply(lambda x: 'none' if x is None else x)
     if not mock:
         imgs_list.to_csv(os.path.join(raw_dir, 'map.csv'))
         mask_img_file = os.path.join(raw_dir, 'mask_img.nii.gz')
@@ -188,11 +188,19 @@ def get_raw_data(imgs_list, raw_dir):
             imgs_list = imgs_list.to_frame()
     params = json.load(open(join(raw_dir, 'masker.json'), 'r'))
     masker = MultiRawMasker(**params)
-    df = pd.read_csv(join(raw_dir, 'map.csv'))
-    df.set_index(['filename', 'confounds'], inplace=True)
-    df = df['unmasked']
-    unmasked_imgs_list = imgs_list.join(df,
-                                        on=['filename', 'confounds'],
-                                        how='inner')[['unmasked', 'confounds']]
+    df = pd.read_csv(join(raw_dir, 'map.csv'),
+                     converters=dict(
+                         confounds=lambda x: None if x == 'none' else x))
+    df.set_index('filename', inplace=True)
+    df = df[['unmasked', 'confounds']]
+    unmasked_imgs_list = imgs_list.join(df, on='filename',
+                                        lsuffix='_imgs',
+                                        rsuffix='_unmasked',
+                                        how='inner')[
+        ['unmasked', 'confounds_imgs', 'confounds_unmasked']]
+    if not np.all(unmasked_imgs_list['confounds_unmasked'].values
+                  == unmasked_imgs_list['confounds_imgs'].values):
+        raise ValueError('Mismatching confounds')
     unmasked_imgs_list.rename(columns={'unmasked': 'filename'}, inplace=True)
+    unmasked_imgs_list = unmasked_imgs_list.assign(confounds=None)
     return masker, unmasked_imgs_list

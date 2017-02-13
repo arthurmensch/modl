@@ -8,6 +8,7 @@ from nilearn._utils import check_niimg
 from sacred import Ingredient, Experiment
 from sacred.observers import MongoObserver
 
+from modl.datasets import get_data_dirs, fetch_hcp
 from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
@@ -22,7 +23,6 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
-from modl.datasets.hcp import fetch_hcp, contrasts_description
 from modl.utils.system import get_cache_dirs
 
 import matplotlib.pyplot as plt
@@ -102,7 +102,7 @@ def get_task_data(n_subjects, train_size, test_size, _run, _seed):
     _run.info['pred_test_subjects'] = test_subjects
 
     # Selection of contrasts
-    interesting_con = list(contrasts_description.keys())
+    interesting_con = list(INTERESTING_CONTRASTS.keys())
     imgs = imgs.loc[(slice(None), slice(None), interesting_con), :]
 
     contrast_labels = imgs.index.get_level_values(2).values
@@ -169,7 +169,7 @@ def run(C,
                                     max_iter=max_iter,
                                     n_jobs=n_jobs,
                                     )
-    classifier.fit(imgs_list.loc['train', 'filename'].values)
+    classifier.fit(imgs_list.loc['train', 'z_map'].values)
 
     true_labels = imgs_list.index.get_level_values('contrast').values
 

@@ -12,8 +12,7 @@ monkey_patch_nifti_image()
 
 from modl.input_data.fmri.base import safe_to_filename
 
-from modl.datasets import fetch_adhd, get_data_dirs
-from modl.datasets.hcp import fetch_hcp
+from modl.datasets import fetch_adhd, fetch_hcp, get_data_dirs
 from modl.decomposition.fmri import rfMRIDictionaryScorer, fMRIDictFact
 from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
@@ -43,12 +42,12 @@ decomposition_ex.observers.append(observer)
 def config(rest_data):
     batch_size = 50
     learning_rate = 0.92
-    method = 'masked'
+    method = 'gram'
     reduction = 10
     alpha = 1e-4
-    n_epochs = 1
+    n_epochs = 3
     smoothing_fwhm = 4
-    n_components = 40
+    n_components = 200
     n_jobs = 1
     verbose = 15
     seed = 2
@@ -59,8 +58,8 @@ def config(rest_data):
 @rest_data_ing.config
 def config():
     source = 'hcp'
-    n_subjects = 3
-    train_size = 2
+    n_subjects = 788
+    train_size = 787
     test_size = 1
     seed = 2
 
@@ -104,7 +103,7 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
     test_subjects = test_subjects[:test_size]
 
     imgs_list = pd.concat([imgs.loc[train_subjects],
-                      imgs.loc[test_subjects]], keys=['train', 'test'])
+                           imgs.loc[test_subjects]], keys=['train', 'test'])
 
     _run.info['dec_train_subjects'] = train_subjects
     _run.info['dec_test_subjects'] = test_subjects
@@ -119,9 +118,9 @@ def unmask(smoothing_fwhm, raw_dir, n_jobs):
                     root=root,
                     raw_dir=raw_dir,
                     masker_params=dict(smoothing_fwhm=smoothing_fwhm,
-                              detrend=True,
-                              standardize=True,
-                              mask_img=mask_img),
+                                       detrend=True,
+                                       standardize=True,
+                                       mask_img=mask_img),
                     n_jobs=n_jobs)
 
 

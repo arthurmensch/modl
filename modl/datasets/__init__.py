@@ -1,4 +1,5 @@
 import os
+from os.path import join
 
 
 def get_data_dirs(data_dir=None):
@@ -47,6 +48,5 @@ def get_data_dirs(data_dir=None):
         paths.append(os.path.expanduser('~/modl_data'))
     return paths
 
-
-from .hcp import fetch_hcp_rest, fetch_hcp_task
 from .adhd import fetch_adhd
+from .hcp import fetch_hcp
