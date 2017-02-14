@@ -1,8 +1,10 @@
 import json
 import os
+import traceback
 from os.path import join
 
 import numpy as np
+import sys
 from nilearn._utils import check_niimg
 from nilearn._utils.compat import _basestring
 from nilearn.input_data import MultiNiftiMasker
@@ -147,7 +149,7 @@ def create_raw_data(imgs_list,
     imgs_list = imgs_list.assign(unmasked=filenames)
     imgs_list['confounds'].apply(lambda x: 'none' if x is None else x)
     if not mock:
-        imgs_list.to_csv(os.path.join(raw_dir, 'map.csv'))
+        imgs_list.to_csv(os.path.join(raw_dir, 'map.csv'), mode='w+')
         mask_img_file = os.path.join(raw_dir, 'mask_img.nii.gz')
         masker.mask_img_.to_filename(mask_img_file)
         params = masker.get_params()
@@ -161,7 +163,7 @@ def create_raw_data(imgs_list,
 
 
 def _unmask_single_img(masker, imgs, confounds, root,
-                       raw_dir, mock=False):
+                       raw_dir, mock=False, overwrite=False):
     imgs = check_niimg(imgs)
     if imgs.get_filename() is None:
         raise ValueError('Provided Nifti1Image should be linked to a file.')
@@ -171,10 +173,23 @@ def _unmask_single_img(masker, imgs, confounds, root,
     dirname = os.path.dirname(raw_filename)
     print('Saving %s to %s' % (filename, raw_filename))
     if not mock:
-        data = masker.transform(imgs, confounds=confounds)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-        np.save(raw_filename, data)
+        if overwrite or not os.path.exists(raw_filename):
+            try:
+                data = masker.transform(imgs, confounds=confounds)
+                if not os.path.exists(dirname):
+                    os.makedirs(dirname)
+                np.save(raw_filename, data)
+            except EOFError:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                msg = '\n'.join(traceback.format_exception(
+                    exc_type, exc_value, exc_traceback))
+                raw_filename += '-error'
+                if not os.path.exists(dirname):
+                    os.makedirs(dirname)
+                with open(raw_filename, 'w+'):
+                    os.write(msg)
+        else:
+            print('File already exists: skipping.')
     return raw_filename
 
 
@@ -201,6 +216,7 @@ def get_raw_data(imgs_list, raw_dir):
     if not np.all(unmasked_imgs_list['confounds_unmasked'].values
                   == unmasked_imgs_list['confounds_imgs'].values):
         raise ValueError('Mismatching confounds')
+    unmasked_imgs_list = unmasked_imgs_list[['unmasked']]
     unmasked_imgs_list.rename(columns={'unmasked': 'filename'}, inplace=True)
     unmasked_imgs_list = unmasked_imgs_list.assign(confounds=None)
     return masker, unmasked_imgs_list

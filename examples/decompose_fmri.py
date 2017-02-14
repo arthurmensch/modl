@@ -6,9 +6,10 @@ from tempfile import mkdtemp
 from matplotlib.cbook import MatplotlibDeprecationWarning
 
 from modl.input_data.fmri.monkey import monkey_patch_nifti_image
-from modl.input_data.fmri.raw_masker import get_raw_data, create_raw_data
 
 monkey_patch_nifti_image()
+
+from modl.input_data.fmri.raw_masker import get_raw_data, create_raw_data
 
 from modl.input_data.fmri.base import safe_to_filename
 
