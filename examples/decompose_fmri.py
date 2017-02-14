@@ -41,40 +41,43 @@ decomposition_ex.observers.append(observer)
 
 @decomposition_ex.config
 def config(rest_data):
-    batch_size = 50
+    batch_size = 100
     learning_rate = 0.92
     method = 'gram'
-    reduction = 10
+    reduction = 12
     alpha = 1e-4
-    n_epochs = 3
+    n_epochs = 1
     smoothing_fwhm = 4
     n_components = 200
     n_jobs = 1
     verbose = 15
     seed = 2
-    raw_dir = join(get_data_dirs()[0], 'raw', rest_data['source'],
-                   str(smoothing_fwhm))
+    raw_dir = None
 
 
 @rest_data_ing.config
 def config():
-    source = 'hcp'
-    n_subjects = 788
-    train_size = 787
-    test_size = 1
+    source = 'adhd'
+    n_subjects = 40
+    train_size = 36
+    test_size = 4
     seed = 2
 
 
 @decomposition_ex.named_config
-def hcp():
+def hcp(rest_data):
     batch_size = 100
+    smoothing_fwhm = 4
+    raw_dir = join(get_data_dirs()[0], 'raw', rest_data['source'],
+                   str(smoothing_fwhm))
 
 
 @rest_data_ing.named_config
 def hcp():
     source = 'hcp'
+    n_subjects = 788
     test_size = 1
-    train_size = 10
+    train_size = 787
 
 
 @rest_data_ing.capture
@@ -112,26 +115,34 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
     return imgs_list, mask_img, root
 
 
-@decomposition_ex.command
-def unmask(smoothing_fwhm, raw_dir, n_jobs):
-    imgs_list, mask_img, root = get_rest_data()
-    create_raw_data(imgs_list,
-                    root=root,
-                    raw_dir=raw_dir,
-                    masker_params=dict(smoothing_fwhm=smoothing_fwhm,
-                                       detrend=True,
-                                       standardize=True,
-                                       mask_img=mask_img),
-                    n_jobs=n_jobs)
-
-
 class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
+    def __init__(self, test_imgs, test_confounds=None):
+
+        rfMRIDictionaryScorer.__init__(self, test_imgs,
+                                       test_confounds=test_confounds)
+        self.components_names = []
+
     @decomposition_ex.capture
     def __call__(self, masker, dict_fact, _run=None):
         rfMRIDictionaryScorer.__call__(self, masker, dict_fact)
         _run.info['dec_score'] = self.score
         _run.info['dec_time'] = self.time
         _run.info['dec_iter'] = self.iter
+        n_records = len(self.score)
+        if n_records % 5 == 0:
+            artifact_dir = mkdtemp()
+            components_img = masker.inverse_transform(dict_fact.components_)
+            components_name = 'components_img_%i.nii.gz' % len(self.score)
+            self.components_names.append((n_records, components_name))
+            components_img.to_filename(join(artifact_dir, components_name))
+            _run.add_artifact(join(artifact_dir, components_name),
+                              name=components_name)
+            _run.info['components_names'] = self.components_names
+            try:
+                shutil.rmtree(artifact_dir)
+            except FileNotFoundError:
+                pass
+
 
 
 @decomposition_ex.capture
@@ -161,6 +172,8 @@ def compute_decomposition(alpha, batch_size, learning_rate,
         test_subjects=test_subjects)
     print('Run dictionary learning')
     if raw_dir is not None:
+        # WARNING: this is a hack to use unmasked time series without
+        # touching the core code
         raw_dir = join(get_data_dirs()[0], 'raw', rest_data['source'],
                        str(smoothing_fwhm))
         mask, imgs_list = get_raw_data(imgs_list, raw_dir=raw_dir)

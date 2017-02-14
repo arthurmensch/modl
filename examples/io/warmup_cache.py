@@ -70,3 +70,4 @@ def main(n_jobs, source, n_subjects, smoothing_fwhm):
                                                       confounds)
                             for index, (img, confounds) in
                             rest.loc[:, ['filename', 'confounds']].iterrows())
+

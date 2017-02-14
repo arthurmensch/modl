@@ -9,6 +9,7 @@ from sacred import Ingredient, Experiment
 from sacred.observers import MongoObserver
 
 from modl.datasets import get_data_dirs, fetch_hcp
+from modl.datasets.hcp import INTERESTING_CONTRASTS
 from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
@@ -33,8 +34,7 @@ from os import path
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
-from examples.decomposition_fmri \
-    import decomposition_ex, compute_decomposition, rest_data_ing
+from examples.decomposition_fmri import decomposition_ex, compute_decomposition, rest_data_ing
 
 task_data_ing = Ingredient('task_data')
 prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,

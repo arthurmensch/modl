@@ -30,21 +30,24 @@ class MultiRawMasker(MultiNiftiMasker):
                                   high_pass=high_pass, t_r=t_r,
                                   target_affine=target_affine,
                                   target_shape=target_shape,
-                                  mask_strategy='background',
+                                  mask_strategy=mask_strategy,
                                   mask_args=mask_args,
+                                  memory=memory,
+                                  memory_level=memory_level,
                                   verbose=verbose)
 
     def fit(self, imgs=None, y=None):
         self.mask_img_ = check_niimg(self.mask_img)
         self.mask_size_ = np.sum(self.mask_img_.get_data() == 1)
 
-    def transform_single_imgs(self, imgs, confounds=None, copy=True):
+    def transform_single_imgs(self, imgs, confounds=None, copy=True, mmap_mode=None):
         self._check_fitted()
-        data = np.load(imgs)
+        data = np.load(imgs, mmap_mode=mmap_mode)
         assert (data.ndim == 2 and data.shape[1] == self.mask_size_)
         return data
 
-    def transform_imgs(self, imgs_list, confounds=None, copy=True, n_jobs=1):
+    def transform_imgs(self, imgs_list, confounds=None, copy=True, n_jobs=1,
+                       mmap_mode=None):
         """Prepare multi subject data in parallel
 
         Parameters
@@ -73,11 +76,11 @@ class MultiRawMasker(MultiNiftiMasker):
             shape: list of (number of scans, number of elements)
         """
         self._check_fitted()
-        data = Parallel(n_jobs=n_jobs)(delayed(np.load)(imgs)
+        data = Parallel(n_jobs=n_jobs)(delayed(np.load)(imgs, mmap_mode=mmap_mode)
                                        for imgs in imgs_list)
         return data
 
-    def transform(self, imgs, confounds=None):
+    def transform(self, imgs, confounds=None, mmap_mode=None):
         """ Apply mask, spatial and temporal preprocessing
 
         Parameters
@@ -98,8 +101,9 @@ class MultiRawMasker(MultiNiftiMasker):
         self._check_fitted()
         if not hasattr(imgs, '__iter__') \
                 or isinstance(imgs, _basestring):
-            return self.transform_single_imgs(imgs)
-        return self.transform_imgs(imgs, confounds, n_jobs=self.n_jobs)
+            return self.transform_single_imgs(imgs, mmap_mode=mmap_mode)
+        return self.transform_imgs(imgs, confounds, n_jobs=self.n_jobs,
+                                   mmap_mode=mmap_mode)
 
 
 def create_raw_data(imgs_list,
@@ -147,7 +151,8 @@ def create_raw_data(imgs_list,
                                         zip(imgs_list['filename'],
                                             imgs_list['confounds']))
     imgs_list = imgs_list.assign(unmasked=filenames)
-    imgs_list['confounds'].apply(lambda x: 'none' if x is None else x)
+    imgs_list['confounds'] = \
+        imgs_list['confounds'].apply(lambda x: 'none' if x is None else x)
     if not mock:
         imgs_list.to_csv(os.path.join(raw_dir, 'map.csv'), mode='w+')
         mask_img_file = os.path.join(raw_dir, 'mask_img.nii.gz')
@@ -186,8 +191,8 @@ def _unmask_single_img(masker, imgs, confounds, root,
                 raw_filename += '-error'
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
-                with open(raw_filename, 'w+'):
-                    os.write(msg)
+                with open(raw_filename, 'w+') as f:
+                    f.write(msg)
         else:
             print('File already exists: skipping.')
     return raw_filename
@@ -213,6 +218,9 @@ def get_raw_data(imgs_list, raw_dir):
                                         rsuffix='_unmasked',
                                         how='inner')[
         ['unmasked', 'confounds_imgs', 'confounds_unmasked']]
+    if len(unmasked_imgs_list) != len(imgs_list):
+        raise ValueError('Some unmasked arrays are missing. Rerun '
+                         'create_raw_data')
     if not np.all(unmasked_imgs_list['confounds_unmasked'].values
                   == unmasked_imgs_list['confounds_imgs'].values):
         raise ValueError('Mismatching confounds')

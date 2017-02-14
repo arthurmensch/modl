@@ -334,7 +334,7 @@ class fMRIDictFact(fMRICoderMixin):
 
         self.components_ = self._cache(_compute_components,
                                        func_memory_level=1,
-                                       ignore=['n_jobs', 'callback',
+                                       ignore=['n_jobs',
                                                'verbose'])(
             self.masker_, imgs,
             confounds=confounds,
