@@ -14,7 +14,7 @@ from modl.datasets import get_data_dirs
 from modl.input_data.fmri.raw_masker import get_raw_contrast_data
 from modl.utils.system import get_cache_dirs
 
-prediction_ex = Experiment('task_predict')
+prediction_ex = Experiment('prediction')
 
 
 @prediction_ex.config
@@ -29,18 +29,20 @@ def config():
     dump_dir = join(get_data_dirs()[0], 'raw', 'hcp', 'task')
     n_components_list = [16, 64, 256]
     test_size = 0.1
+    train_size = None
     n_subjects = 100
 
 
 @prediction_ex.automain
-def get_raw_task(standardize, C, tol, n_components_list, max_iter, n_jobs,
-                 test_size,
-                 train_size,
-                 n_subjects,
-                 _run,
-                 _seed):
+def run(standardize, C, tol, n_components_list, max_iter, n_jobs,
+        test_size,
+        train_size,
+        dump_dir,
+        n_subjects,
+        _run,
+        _seed):
     memory = Memory(cachedir=get_cache_dirs()[0])
-    imgs = get_raw_contrast_data()
+    imgs = get_raw_contrast_data(dump_dir)
 
     subjects = imgs.index.get_level_values('subject').unique().values.tolist()
     subjects = subjects[:n_subjects]
@@ -66,18 +68,18 @@ def get_raw_task(standardize, C, tol, n_components_list, max_iter, n_jobs,
     components = masker.transform(components_imgs)
 
     classifier = L1BaggedLogisticRegression(
-                                            memory=memory,
-                                            memory_level=2,
-                                            C=C,
-                                            standardize=standardize,
-                                            random_state=_seed,
-                                            tol=tol,
-                                            max_iter=max_iter,
-                                            n_jobs=n_jobs,
-                                            )
+        memory=memory,
+        memory_level=2,
+        C=C,
+        standardize=standardize,
+        random_state=_seed,
+        tol=tol,
+        max_iter=max_iter,
+        n_jobs=n_jobs,
+    )
     # Split
     train_imgs = imgs.loc[train_subjects]
-    train_labels = train_imgs.get_level_values('contrast').values
+    train_labels = train_imgs.index.get_level_values('contrast').values
     train_imgs = train_imgs.values
 
     # Transform
