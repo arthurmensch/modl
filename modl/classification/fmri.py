@@ -11,42 +11,60 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 
+def project_multi_bases(X, bases, identity=None):
+    n_samples, n_features = X.shape
+    S = np.sqrt((X ** 2).sum(axis=1))
+    S[S == 0] = 1
+    X /= S[:, np.newaxis]
+    n_samples = X.shape[0]
+    n_loadings = np.sum(np.array([basis.shape[0]
+                                        for basis in bases]))
+    if identity:
+        n_loadings += n_features
+    loadings = np.empty((n_samples, n_loadings), order='F')
+    offset = 0
+    for basis in bases:
+        S = np.sqrt((basis ** 2).sum(axis=1))
+        S[S == 0] = 1
+        basis = basis / S[:, np.newaxis]
+        loadings_length = basis.shape[0]
+        these_loadings = linalg.lstsq(basis.T, X.T)[0].T
+        S = np.sqrt((these_loadings ** 2).sum(axis=1))
+        S[S == 0] = 1
+        these_loadings /= S[:, np.newaxis]
+        loadings[:, offset:offset + loadings_length] = these_loadings
+    if identity:
+        loadings[:, offset:] = X
+    return loadings
 
-class MultiProjectionTransformer(TransformerMixin):
+
+class MultiProjectionTransformer(CacheMixin, TransformerMixin):
     def __init__(self, bases=None,
-                 identity=True):
+                 identity=True,
+                 memory=Memory(cachedir=None),
+                 memory_level=1):
         self.bases = bases
         self.identity = identity
 
+        self.memory = memory
+        self.memory_level = memory_level
+
     def fit(self, X=None, y=None):
-        if not isinstance(self.basis, list):
-            self.basis = [self.bases]
-        self.n_loadings_ = np.sum(np.array([basis.shape[0]
-                                              for basis in self.bases]))
+        if not isinstance(self.bases, list):
+            self.bases = [self.bases]
         n_features = np.array([basis.shape[1]
                              for basis in self.bases])
         assert(np.all(n_features == n_features[0]))
-        if self.identity:
-            self.n_loadings_ += n_features[0]
         return self
 
     def transform(self, X, y=None, confounds=None):
-        n_samples = X.shape[0]
-        loadings = np.empty((n_samples, self.n_loadings_), order='F')
-        offset = 0
-        for basis in self.bases:
-            loadings_length = basis.shape[0]
-            loadings[:,offset:offset
-                              + loadings_length] = linalg.solve(basis.T, X.T)
-            offset += loadings_length
-        if self.identity:
-            loadings[:, offset:] = X
+        loadings = self._cache(project_multi_bases)(X, self.bases,
+                                                    identity=self.identity)
         return loadings
 
 
-class fMRITaskClassifier(CacheMixin):
+class L1BaggedLogisticRegression(CacheMixin):
     def __init__(self,
-                 transformer,
                  C=1,
                  standardize=False,
                  max_iter=100,
@@ -55,7 +73,6 @@ class fMRITaskClassifier(CacheMixin):
                  n_jobs=1,
                  memory=Memory(cachedir=None),
                  memory_level=1):
-        self.transformer = transformer
         self.memory = memory
 
         self.standardize = standardize
@@ -68,8 +85,7 @@ class fMRITaskClassifier(CacheMixin):
         self.memory = memory
         self.memory_level = memory_level
 
-    def fit(self, imgs, y, confounds=None):
-        X = self.transformer.transform(imgs, confounds=confounds)
+    def fit(self, X, y):
         self.le_ = LabelEncoder()
         y = self.le_.fit_transform(y)
         self.lr_ = self._cache(_logistic_regression,
@@ -105,7 +121,7 @@ def _logistic_regression(X_train, y_train,
     if early_max_iter is None:
         early_max_iter = max_iter / 10
 
-    lr = LogisticRegression(multi_class='multinomial',
+    lr = LogisticRegression(multi_class='multinomial', penalty='l2',
                             C=C,
                             solver='sag', tol=early_tol,
                             max_iter=early_max_iter, verbose=verbose,

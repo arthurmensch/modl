@@ -76,7 +76,8 @@ class MultiRawMasker(MultiNiftiMasker):
             shape: list of (number of scans, number of elements)
         """
         self._check_fitted()
-        data = Parallel(n_jobs=n_jobs)(delayed(np.load)(imgs, mmap_mode=mmap_mode)
+        data = Parallel(n_jobs=n_jobs)(delayed(np.load)(imgs,
+                                                        mmap_mode=mmap_mode)
                                        for imgs in imgs_list)
         return data
 
