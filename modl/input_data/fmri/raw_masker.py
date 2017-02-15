@@ -8,9 +8,9 @@ import sys
 from nilearn._utils import check_niimg
 from nilearn._utils.compat import _basestring
 from nilearn.input_data import MultiNiftiMasker
-from sklearn.externals.joblib import Memory
-from sklearn.externals.joblib import Parallel, delayed, dump
+from sklearn.externals.joblib import Memory, Parallel, delayed, dump, load
 import pandas as pd
+from sklearn.utils import gen_batches
 
 
 class MultiRawMasker(MultiNiftiMasker):
@@ -228,3 +228,37 @@ def get_raw_data(imgs_list, raw_dir):
     unmasked_imgs_list.rename(columns={'unmasked': 'filename'}, inplace=True)
     unmasked_imgs_list = unmasked_imgs_list.assign(confounds=None)
     return masker, unmasked_imgs_list
+
+
+def create_raw_contrast_data(imgs, mask, dump_dir, n_jobs=1, batch_size=100):
+    if not os.path.exists(dump_dir):
+        os.makedirs(dump_dir)
+
+    # Selection of contrasts
+
+    masker = MultiNiftiMasker(smoothing_fwhm=0, mask_img=mask,
+                              n_jobs=n_jobs).fit()
+
+    batches = gen_batches(len(imgs), batch_size)
+
+    dump(imgs.index, join(dump_dir, 'index.pkl'))
+
+    data = np.lib.format.open_memmap(join(dump_dir,
+                                          'z_maps.npy'),
+                                     mode='w+',
+                                     shape=(len(imgs),
+                                            masker.mask_img_.get_data().sum()),
+                                     dtype=np.float32)
+    for i, batch in enumerate(batches):
+        print('Batch %i' % i)
+        this_data = masker.transform(imgs['z_map'].values[batch],
+                                     )
+        data[batch] = this_data
+
+
+def get_raw_contrast_data(dump_dir):
+    data = np.load(join(dump_dir, 'z_maps.npy'),
+                   mmap_mode='r')
+    index = load(join(dump_dir, 'index.pkl'))
+    df = pd.DataFrame(data=data, index=index)
+    return df

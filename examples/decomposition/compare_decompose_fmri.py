@@ -2,7 +2,6 @@ import sys
 from os import path
 from os.path import expanduser, join
 
-import numpy as np
 from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 from sacred.optional import pymongo
@@ -16,7 +15,7 @@ sys.path.append(path.dirname(path.dirname
 
 
 def single_run(config_updates, _id):
-    from examples.decompose_fmri import rest_data_ing, decomposition_ex
+    from examples.decomposition.decompose_fmri import rest_data_ing, decomposition_ex
 
     @rest_data_ing.config
     def config():

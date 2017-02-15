@@ -1,4 +1,8 @@
+import numpy as np
+
 from nilearn._utils import CacheMixin
+import numpy.linalg as linalg
+from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
@@ -6,6 +10,38 @@ from sklearn.model_selection import ShuffleSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
+
+
+class MultiProjectionTransformer(TransformerMixin):
+    def __init__(self, bases=None,
+                 identity=True):
+        self.bases = bases
+        self.identity = identity
+
+    def fit(self, X=None, y=None):
+        if not isinstance(self.basis, list):
+            self.basis = [self.bases]
+        self.n_loadings_ = np.sum(np.array([basis.shape[0]
+                                              for basis in self.bases]))
+        n_features = np.array([basis.shape[1]
+                             for basis in self.bases])
+        assert(np.all(n_features == n_features[0]))
+        if self.identity:
+            self.n_loadings_ += n_features[0]
+        return self
+
+    def transform(self, X, y=None, confounds=None):
+        n_samples = X.shape[0]
+        loadings = np.empty((n_samples, self.n_loadings_), order='F')
+        offset = 0
+        for basis in self.bases:
+            loadings_length = basis.shape[0]
+            loadings[:,offset:offset
+                              + loadings_length] = linalg.solve(basis.T, X.T)
+            offset += loadings_length
+        if self.identity:
+            loadings[:, offset:] = X
+        return loadings
 
 
 class fMRITaskClassifier(CacheMixin):
@@ -32,10 +68,10 @@ class fMRITaskClassifier(CacheMixin):
         self.memory = memory
         self.memory_level = memory_level
 
-    def fit(self, imgs=None, labels=None, confounds=None):
+    def fit(self, imgs, y, confounds=None):
         X = self.transformer.transform(imgs, confounds=confounds)
         self.le_ = LabelEncoder()
-        y = self.le_.fit_transform(labels)
+        y = self.le_.fit_transform(y)
         self.lr_ = self._cache(_logistic_regression,
                                ignore=['n_jobs'])(X, y,
                                                   standardize=self.standardize,

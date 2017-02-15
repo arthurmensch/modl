@@ -34,7 +34,8 @@ from os import path
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
-from examples.decomposition_fmri import decomposition_ex, compute_decomposition, rest_data_ing
+from examples.decomposition.decompose_fmri\
+    import decomposition_ex, compute_decomposition, rest_data_ing
 
 task_data_ing = Ingredient('task_data')
 prediction_ex = Experiment('task_predict', ingredients=[task_data_ing,
