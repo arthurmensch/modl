@@ -16,7 +16,7 @@ monkey_patch_nifti_image()
 
 from modl.input_data.fmri.base import safe_to_filename
 
-from modl.classification.fmri import fMRITaskClassifier
+from modl.classification import fMRITaskClassifier
 from modl.plotting.fmri import display_maps
 
 from sklearn.preprocessing import LabelEncoder
@@ -160,8 +160,7 @@ def run(C,
                           name='components.png')
 
     print('Compute loadings')
-    classifier = fMRITaskClassifier(transformer=dict_fact,
-                                    memory=memory,
+    classifier = fMRITaskClassifier(memory=memory,
                                     memory_level=2,
                                     C=C,
                                     standardize=standardize,

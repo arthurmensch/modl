@@ -1,24 +1,33 @@
+from math import ceil
+
 import numpy as np
-
 from nilearn._utils import CacheMixin
-import numpy.linalg as linalg
-from sklearn.base import TransformerMixin
-from sklearn.externals.joblib import Memory
+from numpy import linalg as linalg
+from sklearn.base import TransformerMixin, BaseEstimator
+from sklearn.externals.joblib import Parallel, delayed, Memory
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import ShuffleSplit
+from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.utils import gen_batches
 
-def project_multi_bases(X, bases, identity=None):
+
+def _project_multi_bases(X, bases, identity=None, n_jobs=1):
+    n_samples = X.shape[0]
+    batches = gen_batches(n_samples, int(ceil(n_samples / n_jobs)))
+    loadings = Parallel(n_jobs=n_jobs)(
+        delayed(_project_multi_bases_single)(X[batch], bases,
+                                             identity=identity)
+        for batch in batches)
+    loadings = np.vstack(loadings)
+    return loadings
+
+
+def _project_multi_bases_single(X, bases, identity=None):
     n_samples, n_features = X.shape
-    S = np.sqrt((X ** 2).sum(axis=1))
-    S[S == 0] = 1
-    X /= S[:, np.newaxis]
     n_samples = X.shape[0]
     n_loadings = np.sum(np.array([basis.shape[0]
-                                        for basis in bases]))
+                                  for basis in bases]))
     if identity:
         n_loadings += n_features
     loadings = np.empty((n_samples, n_loadings), order='F')
@@ -33,18 +42,23 @@ def project_multi_bases(X, bases, identity=None):
         S[S == 0] = 1
         these_loadings /= S[:, np.newaxis]
         loadings[:, offset:offset + loadings_length] = these_loadings
+        offset += loadings_length
     if identity:
         loadings[:, offset:] = X
     return loadings
 
 
 class MultiProjectionTransformer(CacheMixin, TransformerMixin):
-    def __init__(self, bases=None,
+    def __init__(self,
+                 bases=None,
                  identity=True,
                  memory=Memory(cachedir=None),
-                 memory_level=1):
+                 memory_level=1,
+                 n_jobs=1):
         self.bases = bases
         self.identity = identity
+
+        self.n_jobs = n_jobs
 
         self.memory = memory
         self.memory_level = memory_level
@@ -53,17 +67,19 @@ class MultiProjectionTransformer(CacheMixin, TransformerMixin):
         if not isinstance(self.bases, list):
             self.bases = [self.bases]
         n_features = np.array([basis.shape[1]
-                             for basis in self.bases])
-        assert(np.all(n_features == n_features[0]))
+                               for basis in self.bases])
+        assert (np.all(n_features == n_features[0]))
         return self
 
-    def transform(self, X, y=None, confounds=None):
-        loadings = self._cache(project_multi_bases)(X, self.bases,
-                                                    identity=self.identity)
+    def transform(self, X, y=None):
+        loadings = self._cache(_project_multi_bases,
+                               ignore=['n_jobs'])(X, self.bases,
+                                                  identity=self.identity,
+                                                  n_jobs=self.n_jobs)
         return loadings
 
 
-class L1BaggedLogisticRegression(CacheMixin):
+class L2LogisticRegressionCV(CacheMixin, BaseEstimator):
     def __init__(self,
                  C=1,
                  standardize=False,
@@ -72,30 +88,29 @@ class L1BaggedLogisticRegression(CacheMixin):
                  random_state=None,
                  n_jobs=1,
                  memory=Memory(cachedir=None),
-                 memory_level=1):
+                 memory_level=1,
+                 verbose=0):
         self.memory = memory
 
         self.standardize = standardize
         self.C = C
         self.tol = tol
-        self.max_iter = max_iter,
+        self.max_iter = max_iter
         self.n_jobs = n_jobs
         self.random_state = random_state
 
         self.memory = memory
         self.memory_level = memory_level
+        self.verbose = verbose
 
     def fit(self, X, y):
-        self.le_ = LabelEncoder()
-        y = self.le_.fit_transform(y)
         self.lr_ = self._cache(_logistic_regression,
-                               ignore=['n_jobs'])(X, y,
-                                                  standardize=self.standardize,
-                                                  C=self.C,
-                                                  tol=self.tol,
-                                                  max_iter=self.max_iter,
-                                                  n_jobs=self.n_jobs,
-                                                  random_state=self.random_state)
+                               ignore=['n_jobs', 'verbose'])\
+            (X, y, standardize=self.standardize, C=self.C,
+             tol=self.tol, max_iter=self.max_iter,
+             n_jobs=self.n_jobs, random_state=self.random_state,
+             verbose=self.verbose)
+        return self
 
     def predict(self, imgs, confounds=None):
         X = self.transformer(imgs, confounds=confounds)
@@ -142,3 +157,47 @@ def _logistic_regression(X_train, y_train,
                   logistic_regression__max_iter=max_iter)
     lr.fit(X_train, y_train)
     return lr
+
+
+class fMRITaskClassifier(CacheMixin):
+    def __init__(self,
+                 transformer,
+                 C=1,
+                 standardize=False,
+                 max_iter=100,
+                 tol=1e-4,
+                 random_state=None,
+                 n_jobs=1,
+                 memory=Memory(cachedir=None),
+                 memory_level=1):
+        self.transformer = transformer
+        self.memory = memory
+
+        self.standardize = standardize
+        self.C = C
+        self.tol = tol
+        self.max_iter = max_iter,
+        self.n_jobs = n_jobs
+        self.random_state = random_state
+
+        self.memory = memory
+        self.memory_level = memory_level
+
+    def fit(self, imgs=None, labels=None, confounds=None):
+        X = self.transformer.transform(imgs, confounds=confounds)
+        self.le_ = LabelEncoder()
+        y = self.le_.fit_transform(labels)
+        self.lr_ = self._cache(_logistic_regression,
+                               ignore=['n_jobs'])(X, y,
+                                                  standardize=self.standardize,
+                                                  C=self.C,
+                                                  tol=self.tol,
+                                                  max_iter=self.max_iter,
+                                                  n_jobs=self.n_jobs,
+                                                  random_state=self.random_state)
+
+    def predict(self, imgs, confounds=None):
+        X = self.transformer(imgs, confounds=confounds)
+        y = self.lr_.predict(X)
+        labels = self.le_.inverse_transform(y)
+        return labels
