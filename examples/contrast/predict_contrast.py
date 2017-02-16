@@ -29,14 +29,15 @@ def config():
     n_jobs = 20
     verbose = 10
     seed = 2
-    max_iter = 100
-    tol = 1e-3
-    alpha = 1e-4
+    max_iter = 10000
+    tol = 1e-5
+    alpha = 1e-7
+    identity = False
 
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
-    n_subjects = 100
+    n_subjects = 788
 
 
 @predict_contrast.automain
@@ -48,6 +49,7 @@ def run(standardize, C, tol,
         train_size,
         verbose,
         n_subjects,
+        identity,
         _run,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0])
@@ -103,7 +105,7 @@ def run(standardize, C, tol,
         n_jobs=n_jobs,
         verbose=verbose,
     )
-    imgs_transformer = MultiProjectionTransformer(identity=True,
+    imgs_transformer = MultiProjectionTransformer(identity=identity,
                                                   bases=components,
                                                   memory=memory,
                                                   memory_level=1,
