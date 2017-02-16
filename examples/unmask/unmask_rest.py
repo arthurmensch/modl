@@ -32,7 +32,6 @@ def hcp():
     source = 'hcp'
     smoothing_fwhm = 4
     n_jobs = 36
-    n_jobs = 3
 
 
 @unmask_rest.command

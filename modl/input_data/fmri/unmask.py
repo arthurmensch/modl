@@ -39,11 +39,25 @@ class MultiRawMasker(MultiNiftiMasker):
     def fit(self, imgs=None, y=None):
         self.mask_img_ = check_niimg(self.mask_img)
         self.mask_size_ = np.sum(self.mask_img_.get_data() == 1)
+        return self
 
     def transform_single_imgs(self, imgs, confounds=None, copy=True,
                               mmap_mode=None):
         self._check_fitted()
-        data = np.load(imgs, mmap_mode=mmap_mode)
+        if isinstance(imgs, str):
+            name, ext = os.path.split(imgs)
+            if ext == '.npy':
+                data = np.load(imgs, mmap_mode=mmap_mode)
+            else:
+                return MultiNiftiMasker.transform_single_imgs(self, imgs,
+                                                       confounds=confounds,
+                                                       copy=copy)
+        elif isinstance(imgs, np.ndarray):
+            data = imgs
+        else:
+            return MultiNiftiMasker.transform_single_imgs(self, imgs,
+                                                          confounds=confounds,
+                                                          copy=copy)
         assert (data.ndim == 2 and data.shape[1] == self.mask_size_)
         return data
 
@@ -77,10 +91,29 @@ class MultiRawMasker(MultiNiftiMasker):
             shape: list of (number of scans, number of elements)
         """
         self._check_fitted()
-        data = Parallel(n_jobs=n_jobs)(delayed(np.load)(imgs,
-                                                        mmap_mode=mmap_mode)
-                                       for imgs in imgs_list)
-        return data
+        raw = True
+        # Check whether all imgs from imgs_list are numpy instance, or fallback
+        # to MultiNiftiMasker (could handle hybrid imgs_list but we do not
+        #  need it for the moment)
+        for imgs in imgs_list:
+            if isinstance(imgs, str):
+                name, ext = os.path.split(imgs)
+                if ext != '.npy':
+                    raw = False
+                    break
+            elif not isinstance(imgs, np.ndarray):
+                raw = False
+                break
+        if raw:
+            data = Parallel(n_jobs=n_jobs)(delayed(np.load)(imgs,
+                                                            mmap_mode=mmap_mode)
+                                           for imgs in imgs_list)
+            return data
+        else:
+            return MultiNiftiMasker.transform_imgs(self, imgs_list,
+                                                   confounds=confounds,
+                                                   copy=copy,
+                                                   n_jobs=n_jobs,)
 
     def transform(self, imgs, confounds=None, mmap_mode=None):
         """ Apply mask, spatial and temporal preprocessing
@@ -134,17 +167,6 @@ def create_raw_rest_data(imgs_list,
     """
     if masker_params is None:
         masker_params = {}
-    # if not hasattr(imgs_list, 'index'):
-    #     imgs_list = pd.Series(imgs_list, name='filename').to_frame()
-    #     imgs_list.assign(confounds=[None] * len(imgs_list))
-    # else:
-    #     if not hasattr(imgs_list, 'columns'):
-    #         imgs_list = imgs_list.to_frame()
-    #         imgs_list.assign(confounds=[None] * len(imgs_list))
-    #     else:
-    #         assert ('filename' in imgs_list.columns and 'confounds'
-    #                 in imgs_list.columns)
-
     masker = MultiNiftiMasker(verbose=1, memory=memory,
                               memory_level=1,
                               **masker_params)
@@ -252,8 +274,11 @@ def create_raw_contrast_data(imgs, mask, raw_dir,
 
 
 def get_raw_contrast_data(raw_dir):
+    mask_img = os.path.join(raw_dir, 'mask_img.nii.gz')
+    masker = MultiRawMasker(smoothing_fwhm=0, mask_img=mask_img)
+    masker.fit()
     data = np.load(join(raw_dir, 'z_maps.npy'),
                    mmap_mode='r')
     index = load(join(raw_dir, 'index.pkl'))
-    df = pd.DataFrame(data=data, index=index)
-    return df
+    imgs = pd.DataFrame(data=data, index=index)
+    return masker, imgs

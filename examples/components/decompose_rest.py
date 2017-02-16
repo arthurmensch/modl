@@ -47,7 +47,7 @@ def config():
     alpha = 1e-4
     n_epochs = 1
     smoothing_fwhm = 6
-    n_components = 200
+    n_components = 16
     n_jobs = 1
     verbose = 15
     seed = 2
@@ -111,13 +111,18 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
             unmasked_imgs.set_index(['subject', 'session', 'direction'],
                                     inplace=True)
         # TODO should assert that all record of imgs are in unmasked_dir
-        imgs = unmasked_imgs
+        try:
+            imgs = unmasked_imgs.loc[subjects]
+        except IndexError:
+            raise ValueError('Re-unmask data as some of the unmasked files are'
+                             'missing')
 
     if train_subjects is None and test_subjects is None:
         train_subjects, test_subjects = train_test_split(
             subjects, random_state=_seed, test_size=test_size)
         train_subjects = train_subjects.tolist()
         test_subjects = test_subjects.tolist()
+
     train_subjects = train_subjects[:train_size]
     test_subjects = test_subjects[:test_size]
 
