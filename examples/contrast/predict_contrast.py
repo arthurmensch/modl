@@ -30,8 +30,8 @@ def config():
     verbose = 10
     seed = 2
     max_iter = 10000
-    tol = 1e-5
-    alpha = 1e-7
+    tol = 1e-7
+    alpha = 1e-4
     identity = False
 
     n_components_list = [16, 64, 256]
