@@ -1,3 +1,5 @@
+import numpy as np
+
 from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()

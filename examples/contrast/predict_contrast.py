@@ -30,14 +30,15 @@ def config():
     verbose = 10
     seed = 2
     max_iter = 10000
-    tol = 1e-7
+    tol = 1e-5
     alpha = 1e-4
     identity = False
-
+    ensemble = True
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
     n_subjects = 788
+
 
 
 @predict_contrast.automain
@@ -49,6 +50,7 @@ def run(standardize, C, tol,
         train_size,
         verbose,
         n_subjects,
+        ensemble,
         identity,
         _run,
         _seed):
@@ -99,6 +101,7 @@ def run(standardize, C, tol,
         memory_level=2,
         C=C,
         standardize=standardize,
+        ensemble=ensemble,
         random_state=_seed,
         tol=tol,
         max_iter=max_iter,
@@ -139,7 +142,7 @@ def run(standardize, C, tol,
     _run.info['test_score'] = test_score
     print('Write task prediction artifacts')
     artifact_dir = join(get_data_dirs()[0], 'pipeline',
-                        'contrast', 'prediction')
+                        'contrast', 'prediction', str(_run._id))
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
