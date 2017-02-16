@@ -1,3 +1,4 @@
+import os
 import shutil
 import warnings
 from os.path import join
@@ -45,7 +46,7 @@ def config():
     reduction = 12
     alpha = 1e-4
     n_epochs = 1
-    smoothing_fwhm = 4
+    smoothing_fwhm = 6
     n_components = 200
     n_jobs = 1
     verbose = 15
@@ -58,6 +59,7 @@ def config():
     train_size = 36
     test_size = 4
     seed = 2
+
 
 # noinspection PyUnusedLocal
 @decompose_rest.named_config
@@ -75,6 +77,8 @@ def hcp(rest_data):
 def get_rest_data(source, test_size, train_size, _run, _seed,
                   # Optional arguments
                   n_subjects,
+                  use_resource,
+                  smoothing_fwhm,
                   train_subjects=None,
                   test_subjects=None
                   ):
@@ -85,9 +89,29 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
     else:
         raise ValueError('Wrong resting-state source')
     imgs = data.rest
-    mask_img = data.mask
-    root = data.root
+    mask = data.mask
     subjects = imgs.index.get_level_values('subject').unique().values
+
+    if use_resource is True:
+        # WARNING: this is a hack to use unmasked time series without
+        # touching the core code
+        unmasking_rest_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
+                                  'rest',
+                                  source,
+                                  str(smoothing_fwhm))
+        with open(join(unmasking_rest_dir, 'exp_id'), 'r') as f:
+            exp_id = f.read()
+        # We won't record resources as this is too much data
+        _run.info['resource_dir'] = {'unmasking_rest': unmasking_rest_dir,
+                                     'unmasking_rest_id': exp_id}
+        mask, unmasked_imgs = get_raw_rest_data(unmasking_rest_dir)
+        if source == 'adhd':
+            unmasked_imgs.set_index('subject', inplace=True)
+        else:
+            unmasked_imgs.set_index(['subject', 'session', 'direction'],
+                                    inplace=True)
+        # TODO should assert that all record of imgs are in unmasked_dir
+        imgs = unmasked_imgs
 
     if train_subjects is None and test_subjects is None:
         train_subjects, test_subjects = train_test_split(
@@ -97,23 +121,25 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
     train_subjects = train_subjects[:train_size]
     test_subjects = test_subjects[:test_size]
 
-    imgs_list = pd.concat([imgs.loc[train_subjects],
-                           imgs.loc[test_subjects]], keys=['train', 'test'])
+    imgs = pd.concat([imgs.loc[train_subjects],
+                      imgs.loc[test_subjects]], keys=['train', 'test'])
 
     _run.info['train_subjects'] = train_subjects
     _run.info['test_subjects'] = test_subjects
     # noinspection PyUnboundLocalVariable
-    return imgs_list, mask_img, root
+    return imgs, mask
 
 
 class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
     def __init__(self, test_imgs, test_confounds=None,
-                 artifact_dir=None):
+                 intermediary_dir=None):
 
         rfMRIDictionaryScorer.__init__(self, test_imgs,
                                        test_confounds=test_confounds)
-        self.artifact_dir = artifact_dir
-        if self.artifact_dir is not None:
+        self.intermediary_dir = intermediary_dir
+        if self.intermediary_dir is not None:
+            if not os.path.exists(self.intermediary_dir):
+                os.makedirs(self.intermediary_dir)
             self.intermediary_components = []
             self.call_count = 0
 
@@ -123,15 +149,16 @@ class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
         _run.info['score'] = self.score
         _run.info['time'] = self.time
         _run.info['iter'] = self.iter
-        if self.artifact_dir is not None:
+        if self.intermediary_dir is not None:
             call_count = len(self.intermediary_components)
             components_img = masker.inverse_transform(dict_fact.components_)
             components_name = 'components_%i.nii.gz' % call_count
             self.intermediary_components.append(components_name)
-            components_img.to_filename(join(self.artifact_dir,
+            components_img.to_filename(join(self.intermediary_dir,
                                             components_name))
-            _run.add_artifact(join(self.artifact_dir, components_name),
-                              name=components_name)
+            # Disable artifacts as it is too heavy
+            # _run.add_artifact(join(self.intermediary_dir, components_name),
+            #                   name=components_name)
             _run.info['intermediary_components'] = self.intermediary_components
 
 
@@ -145,7 +172,6 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           method,
                           verbose,
                           source,
-                          use_resource,
                           callback,
                           _run,
                           _seed,
@@ -154,34 +180,25 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           ):
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'components',
                         source, str(n_components), str(alpha))
+    if not os.path.exists(artifact_dir):
+        os.makedirs(artifact_dir)
     _run.info['artifact_dir'] = artifact_dir
 
     memory = Memory(cachedir=get_cache_dirs()[0])
 
     print('Retrieve resting-state data')
-    imgs_list, mask_img, _ = get_rest_data(
-        train_subjects=train_subjects,
-        test_subjects=test_subjects)
+    imgs_list, mask = get_rest_data(train_subjects=train_subjects,
+                                    test_subjects=test_subjects)
     print('Run dictionary learning')
-    if use_resource is True:
-        # WARNING: this is a hack to use unmasked time series without
-        # touching the core code
-        unmasking_rest_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
-                                  'source',
-                                  str(smoothing_fwhm))
-        # We won't record
-        _run.info['resource_dir'] = {'unmasking_rest': unmasking_rest_dir}
-        mask, imgs_list = get_raw_rest_data(imgs_list,
-                                            raw_dir=unmasking_rest_dir)
-    else:
-        mask = mask_img
-
     train_imgs, test_imgs = imgs_list.loc['train'], imgs_list.loc['test']
 
     if callback:
         callback = CapturedfMRIDictionaryScorer(test_imgs['filename'],
                                                 test_confounds
-                                                =test_imgs['confounds'])
+                                                =test_imgs['confounds'],
+                                                intermediary_dir=
+                                                join(artifact_dir,
+                                                     'intermediary'))
     else:
         callback = None
 
@@ -236,8 +253,8 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     _run.add_artifact(join(artifact_dir, 'learning_curve.png'),
                       name='learning_curve.png')
 
-    with open(join(artifact_dir, 'exp_id' % str(_run.id)), 'w+') as f:
-        f.write(_run.id)
+    with open(join(artifact_dir, 'exp_id'), 'w+') as f:
+        f.write(str(_run._id))
 
     return dict_fact, final_score
 

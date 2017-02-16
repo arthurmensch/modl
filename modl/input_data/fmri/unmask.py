@@ -120,6 +120,7 @@ def create_raw_rest_data(imgs_list,
 
     Parameters
     ----------
+    memory
     imgs_list: DataFrame with columns filename, confounds
     root
     raw_dir
@@ -133,16 +134,17 @@ def create_raw_rest_data(imgs_list,
     """
     if masker_params is None:
         masker_params = {}
-    if not hasattr(imgs_list, 'index'):
-        imgs_list = pd.Series(imgs_list, name='filename').to_frame()
-        imgs_list.assign(confounds=[None] * len(imgs_list))
-    else:
-        if not hasattr(imgs_list, 'columns'):
-            imgs_list = imgs_list.to_frame()
-            imgs_list.assign(confounds=[None] * len(imgs_list))
-        else:
-            assert ('filename' in imgs_list.columns and 'confounds'
-                    in imgs_list.columns)
+    # if not hasattr(imgs_list, 'index'):
+    #     imgs_list = pd.Series(imgs_list, name='filename').to_frame()
+    #     imgs_list.assign(confounds=[None] * len(imgs_list))
+    # else:
+    #     if not hasattr(imgs_list, 'columns'):
+    #         imgs_list = imgs_list.to_frame()
+    #         imgs_list.assign(confounds=[None] * len(imgs_list))
+    #     else:
+    #         assert ('filename' in imgs_list.columns and 'confounds'
+    #                 in imgs_list.columns)
+
     masker = MultiNiftiMasker(verbose=1, memory=memory,
                               memory_level=1,
                               **masker_params)
@@ -159,11 +161,12 @@ def create_raw_rest_data(imgs_list,
                                         for imgs, confounds in
                                         zip(imgs_list['filename'],
                                             imgs_list['confounds']))
-    imgs_list = imgs_list.assign(unmasked=filenames)
-    imgs_list['confounds'] = \
-        imgs_list['confounds'].apply(lambda x: 'none' if x is None else x)
+    imgs_list = imgs_list.rename(columns={'filename': 'orig_filename',
+                              'confounds': 'orig_confounds'})
+    imgs_list = imgs_list.assign(filename=filenames)
+    imgs_list = imgs_list.assign(confounds=None)
     if not mock:
-        imgs_list.to_csv(os.path.join(raw_dir, 'map.csv'), mode='w+')
+        imgs_list.to_csv(os.path.join(raw_dir, 'data.csv'), mode='w+')
         mask_img_file = os.path.join(raw_dir, 'mask_img.nii.gz')
         masker.mask_img_.to_filename(mask_img_file)
         params = masker.get_params()
@@ -173,7 +176,6 @@ def create_raw_rest_data(imgs_list,
         params.pop('verbose')
         params['mask_img'] = mask_img_file
         json.dump(params, open(os.path.join(raw_dir, 'masker.json'), 'w+'))
-        dump(masker, os.path.join(raw_dir, 'masker.pkl'))
 
 
 def _unmask_single_img(masker, imgs, confounds, root,
@@ -207,35 +209,13 @@ def _unmask_single_img(masker, imgs, confounds, root,
     return raw_filename
 
 
-def get_raw_rest_data(imgs_list, raw_dir):
+def get_raw_rest_data(raw_dir):
     if not os.path.exists(raw_dir):
-        raise ValueError('Extraction must be done beforehand.')
-    if not hasattr(imgs_list, 'index'):
-        imgs_list = pd.Series(imgs_list, name='filename').to_frame()
-    else:
-        if not hasattr(imgs_list, 'columns'):
-            imgs_list = imgs_list.to_frame()
+        raise ValueError('Unmask directory %s does not exist.'
+                         'Unmasking must be done beforehand.' % raw_dir)
     params = json.load(open(join(raw_dir, 'masker.json'), 'r'))
     masker = MultiRawMasker(**params)
-    df = pd.read_csv(join(raw_dir, 'map.csv'),
-                     converters=dict(
-                         confounds=lambda x: None if x == 'none' else x))
-    df.set_index('filename', inplace=True)
-    df = df[['unmasked', 'confounds']]
-    unmasked_imgs_list = imgs_list.join(df, on='filename',
-                                        lsuffix='_imgs',
-                                        rsuffix='_unmasked',
-                                        how='inner')[
-        ['unmasked', 'confounds_imgs', 'confounds_unmasked']]
-    if len(unmasked_imgs_list) != len(imgs_list):
-        raise ValueError('Some unmasked arrays are missing. Rerun '
-                         'create_raw_data')
-    if not np.all(unmasked_imgs_list['confounds_unmasked'].values
-                          == unmasked_imgs_list['confounds_imgs'].values):
-        raise ValueError('Mismatching confounds')
-    unmasked_imgs_list = unmasked_imgs_list[['unmasked']]
-    unmasked_imgs_list.rename(columns={'unmasked': 'filename'}, inplace=True)
-    unmasked_imgs_list = unmasked_imgs_list.assign(confounds=None)
+    unmasked_imgs_list = pd.read_csv(join(raw_dir, 'data.csv'))
     return masker, unmasked_imgs_list
 
 
@@ -271,9 +251,9 @@ def create_raw_contrast_data(imgs, mask, raw_dir,
         data[batch] = this_data
 
 
-def get_raw_contrast_data(dump_dir):
-    data = np.load(join(dump_dir, 'z_maps.npy'),
+def get_raw_contrast_data(raw_dir):
+    data = np.load(join(raw_dir, 'z_maps.npy'),
                    mmap_mode='r')
-    index = load(join(dump_dir, 'index.pkl'))
+    index = load(join(raw_dir, 'index.pkl'))
     df = pd.DataFrame(data=data, index=index)
     return df

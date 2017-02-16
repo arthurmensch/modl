@@ -4,9 +4,16 @@ from os.path import join
 from sacred import Experiment
 from sacred.observers import MongoObserver
 
+from modl.input_data.fmri.monkey import monkey_patch_nifti_image
+
+monkey_patch_nifti_image()
+
+from sklearn.externals.joblib import Memory
+
 from modl.datasets import fetch_adhd
 from modl.datasets import fetch_hcp, get_data_dirs
 from modl.input_data.fmri.unmask import create_raw_rest_data, get_raw_rest_data
+from modl.utils.system import get_cache_dirs
 
 unmask_rest = Experiment('unmask_rest')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
@@ -41,7 +48,7 @@ def _test(source):
     imgs_list = dataset.rest
     print('masked len %i' % len(imgs_list))
 
-    raw_dir = join(get_data_dirs()[0], 'pipeline',
+    raw_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
                    'rest', source, str(smoothing_fwhm))
 
     masker, imgs = get_raw_rest_data(imgs_list, raw_dir)
@@ -61,12 +68,14 @@ def run(source, smoothing_fwhm, n_jobs,
         dataset = fetch_adhd()
     else:
         raise ValueError('Wrong source.')
+
+    memory = Memory(cachedir=get_cache_dirs()[0])
     imgs_list = dataset.rest
     root = dataset.root
     mask_img = dataset.mask
 
     artifact_dir = join(get_data_dirs()[0], 'pipeline',
-                        'rest', source, str(smoothing_fwhm))
+                        'unmask', 'rest', source, str(smoothing_fwhm))
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
@@ -79,6 +88,7 @@ def run(source, smoothing_fwhm, n_jobs,
                                             detrend=True,
                                             standardize=True,
                                             mask_img=mask_img),
+                         memory=memory,
                          n_jobs=n_jobs)
 
     with open(join(artifact_dir, 'exp_id'), 'w+') as f:
