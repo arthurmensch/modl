@@ -4,8 +4,6 @@ from os.path import join
 
 import pandas as pd
 import numpy as np
-from hcp_builder.dataset import fetch_hcp_mask
-from nilearn.input_data import MultiNiftiMasker
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
@@ -27,8 +25,8 @@ predict_contrast.observers.append(observer)
 @predict_contrast.config
 def config():
     standardize = True
-    C = np.logspace(-1, 2, 15)
-    n_jobs = 15
+    C = np.logspace(-1, 2, 10)
+    n_jobs = 20
     verbose = 10
     seed = 2
     max_iter = 100
@@ -38,7 +36,7 @@ def config():
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
-    n_subjects = 10
+    n_subjects = 100
 
 
 @predict_contrast.automain
@@ -138,8 +136,9 @@ def run(standardize, C, tol,
     _run.info['train_score'] = train_score
     _run.info['test_score'] = test_score
     print('Write task prediction artifacts')
-    artifact_dir = join(get_data_dirs()[0], 'contrast', 'prediction')
-    if not os.path.exists:
+    artifact_dir = join(get_data_dirs()[0], 'pipeline',
+                        'contrast', 'prediction')
+    if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
     prediction.to_csv(join(artifact_dir, 'prediction.csv'))

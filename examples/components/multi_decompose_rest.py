@@ -33,14 +33,14 @@ def config():
     alpha = 1e-4  # Overriden
     n_components = 40  # Overriden
     n_epochs = 4
-    smoothing_fwhm = 6
-    n_jobs = 4
-    verbose = 10
+    smoothing_fwhm = 4
+    n_jobs = 5
+    verbose = 12
     seed = 2
 
-    source = 'adhd'
-    n_subjects = 40
-    train_size = 39
+    source = 'hcp'
+    n_subjects = 788
+    train_size = 787
     test_size = 1
 
 

@@ -112,11 +112,9 @@ class L2LogisticRegressionCV(CacheMixin, BaseEstimator):
              verbose=self.verbose)
         return self
 
-    def predict(self, imgs, confounds=None):
-        X = self.transformer(imgs, confounds=confounds)
+    def predict(self, X):
         y = self.lr_.predict(X)
-        labels = self.le_.inverse_transform(y)
-        return labels
+        return y
 
 
 def _logistic_regression(X_train, y_train,
