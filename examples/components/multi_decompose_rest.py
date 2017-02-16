@@ -1,31 +1,19 @@
 import sys
 from os import path
-from os.path import expanduser, join
-
-from sacred.observers import FileStorageObserver
 from sacred.observers import MongoObserver
 from sacred.optional import pymongo
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 
-from modl.datasets import get_data_dirs
-
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
 
+
 def single_run(config_updates, _id):
-    from examples.decomposition.decompose_fmri import rest_data_ing, decomposition_ex
+    from examples.components.decompose_rest import decompose_rest
 
-    @rest_data_ing.config
-    def config():
-        source = 'hcp'
-        n_subjects = 788
-        train_size = 787
-        test_size = 1
-        seed = 2
-
-    @decomposition_ex.config
+    @decompose_rest.config
     def config():
         batch_size = 100
         learning_rate = 0.92
@@ -38,21 +26,25 @@ def single_run(config_updates, _id):
         n_jobs = 1
         verbose = 10
         seed = 2
-        raw_dir = join(get_data_dirs()[0], 'raw', 'hcp', '4')
 
-    observer = MongoObserver.create(db_name='amensch', collection='runs')
+        source = 'hcp'
+        n_subjects = 788
+        train_size = 787
+        test_size = 1
+        seed = 2
 
-    observer_file = FileStorageObserver.create(expanduser('~/output/runs'))
-    decomposition_ex.observers.append(observer_file)
+    observer = MongoObserver.create(db_name='amensch',
+                                    collection='runs')
 
-    decomposition_ex.observers = [observer, observer_file]
+    decompose_rest.observers = [observer]
 
-    run = decomposition_ex._create_run(config_updates=config_updates)
+    run = decompose_rest._create_run(config_updates=config_updates)
     run._id = _id
     run()
 
 
-def first_grid_search():
+@multi_decompose_rest.automain
+def run():
     n_jobs = 6
     n_components_list = [16, 64, 256]
 
@@ -73,6 +65,3 @@ def first_grid_search():
 
     Parallel(n_jobs=n_jobs)(delayed(single_run)(config_updates, c + i)
                             for i, config_updates in enumerate(update_list))
-
-if __name__ == '__main__':
-    first_grid_search()

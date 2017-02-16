@@ -176,7 +176,7 @@ class fMRIDictFact(fMRICoderMixin):
         number of time to cycle over images
 
     alpha: float
-        Penalty to apply. The larger, the sparser the decomposition will be in
+        Penalty to apply. The larger, the sparser the components will be in
         space
 
     dict_init: Niimg-like or None
@@ -325,7 +325,7 @@ class fMRIDictFact(fMRICoderMixin):
         -------
         self
         """
-        # Base logic for decomposition estimators
+        # Base logic for components estimators
         if imgs is None:
             raise ValueError('imgs is None, use fMRICoder instead')
 
@@ -457,7 +457,7 @@ def _compute_components(masker,
     n_voxels = np.sum(check_niimg(masker.mask_img_).get_data() != 0)
 
     if verbose:
-        print("Learning decomposition")
+        print("Learning components")
     dict_fact = DictFact(n_components=n_components,
                          code_alpha=alpha,
                          code_l1_ratio=0,

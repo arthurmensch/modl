@@ -7,15 +7,15 @@ from Cython.Build import cythonize
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
-    config = Configuration('decomposition', parent_package, top_path)
+    config = Configuration('components', parent_package, top_path)
 
     extensions = [
-        Extension('modl.decomposition.dict_fact_fast',
-                  sources=['modl/decomposition/dict_fact_fast.pyx'],
+        Extension('modl.components.dict_fact_fast',
+                  sources=['modl/components/dict_fact_fast.pyx'],
                   include_dirs=[numpy.get_include()],
                   ),
-        Extension('modl.decomposition.recsys_fast',
-                  sources=['modl/decomposition/recsys_fast.pyx'],
+        Extension('modl.components.recsys_fast',
+                  sources=['modl/components/recsys_fast.pyx'],
                   include_dirs=[numpy.get_include()],
                   ),
     ]

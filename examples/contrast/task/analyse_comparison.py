@@ -17,8 +17,8 @@ def first_trial():
                               {"$skip": 1},
                               {"$limit": 18},
                               {"$project": {
-                                  'alpha': '$config.decomposition.alpha',
-                                  'n_components': '$config.decomposition.n_components',
+                                  'alpha': '$config.components.alpha',
+                                  'n_components': '$config.components.n_components',
                                   'train_size': '$config.rest_data.train_size',
                                   'test_score': '$info.pred_test_score',
                                   'train_score': '$info.pred_train_score',
@@ -40,9 +40,9 @@ def second_trial():
                               {"$skip": 0},
                               {"$limit": 18},
                               {"$project": {
-                                  'alpha': '$config.decomposition.alpha',
+                                  'alpha': '$config.components.alpha',
                                   'n_components': '$config.'
-                                                  'decomposition.n_components',
+                                                  'components.n_components',
                                   'train_size': '$config.rest_data.train_size',
                                   'test_score': '$info.pred_test_score',
                                   'train_score': '$info.pred_train_score',
@@ -60,8 +60,8 @@ def third_trial():
                                '_id': {"$gte": 284, "$lte": 301}}},
                               {"$sort": {'_id': -1}},
                               {"$project": {
-                                  'alpha': '$config.decomposition.alpha',
-                                  'n_components': '$config.decomposition.n_components',
+                                  'alpha': '$config.components.alpha',
+                                  'n_components': '$config.components.n_components',
                                   'train_size': '$config.rest_data.train_size',
                                   'test_score': '$info.pred_test_score',
                                   'train_score': '$info.pred_train_score',

@@ -39,7 +39,7 @@ class RecsysDictFact(BaseEstimator):
     callback: callable,
         Function to be called when printing information
     detrend: boolean,
-        Perform matrix decomposition on centered data, and predict data
+        Perform matrix components on centered data, and predict data
          accordingly
     crop: 2-uple or None,
         Bounds of matrix values, useful at prediction time

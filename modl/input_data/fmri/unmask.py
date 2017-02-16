@@ -40,7 +40,8 @@ class MultiRawMasker(MultiNiftiMasker):
         self.mask_img_ = check_niimg(self.mask_img)
         self.mask_size_ = np.sum(self.mask_img_.get_data() == 1)
 
-    def transform_single_imgs(self, imgs, confounds=None, copy=True, mmap_mode=None):
+    def transform_single_imgs(self, imgs, confounds=None, copy=True,
+                              mmap_mode=None):
         self._check_fitted()
         data = np.load(imgs, mmap_mode=mmap_mode)
         assert (data.ndim == 2 and data.shape[1] == self.mask_size_)
@@ -107,12 +108,14 @@ class MultiRawMasker(MultiNiftiMasker):
                                    mmap_mode=mmap_mode)
 
 
-def create_raw_data(imgs_list,
-                    root,
-                    raw_dir,
-                    masker_params={},
-                    n_jobs=1,
-                    mock=False):
+def create_raw_rest_data(imgs_list,
+                         root,
+                         raw_dir,
+                         masker_params=None,
+                         n_jobs=1,
+                         mock=False,
+                         memory=Memory(cachedir=None),
+                         overwrite=False):
     """
 
     Parameters
@@ -128,6 +131,8 @@ def create_raw_data(imgs_list,
     -------
 
     """
+    if masker_params is None:
+        masker_params = {}
     if not hasattr(imgs_list, 'index'):
         imgs_list = pd.Series(imgs_list, name='filename').to_frame()
         imgs_list.assign(confounds=[None] * len(imgs_list))
@@ -138,7 +143,9 @@ def create_raw_data(imgs_list,
         else:
             assert ('filename' in imgs_list.columns and 'confounds'
                     in imgs_list.columns)
-    masker = MultiNiftiMasker(verbose=1, **masker_params)
+    masker = MultiNiftiMasker(verbose=1, memory=memory,
+                              memory_level=1,
+                              **masker_params)
     if masker.mask_img is None:
         masker.fit(imgs_list['filename'])
     else:
@@ -147,7 +154,8 @@ def create_raw_data(imgs_list,
     if not os.path.exists(raw_dir):
         os.makedirs(raw_dir)
     filenames = Parallel(n_jobs=n_jobs)(delayed(_unmask_single_img)(
-        masker, imgs, confounds, root, raw_dir, mock=mock)
+        masker, imgs, confounds, root, raw_dir, mock=mock,
+        overwrite=overwrite)
                                         for imgs, confounds in
                                         zip(imgs_list['filename'],
                                             imgs_list['confounds']))
@@ -199,7 +207,7 @@ def _unmask_single_img(masker, imgs, confounds, root,
     return raw_filename
 
 
-def get_raw_data(imgs_list, raw_dir):
+def get_raw_rest_data(imgs_list, raw_dir):
     if not os.path.exists(raw_dir):
         raise ValueError('Extraction must be done beforehand.')
     if not hasattr(imgs_list, 'index'):
@@ -223,7 +231,7 @@ def get_raw_data(imgs_list, raw_dir):
         raise ValueError('Some unmasked arrays are missing. Rerun '
                          'create_raw_data')
     if not np.all(unmasked_imgs_list['confounds_unmasked'].values
-                  == unmasked_imgs_list['confounds_imgs'].values):
+                          == unmasked_imgs_list['confounds_imgs'].values):
         raise ValueError('Mismatching confounds')
     unmasked_imgs_list = unmasked_imgs_list[['unmasked']]
     unmasked_imgs_list.rename(columns={'unmasked': 'filename'}, inplace=True)
@@ -231,20 +239,26 @@ def get_raw_data(imgs_list, raw_dir):
     return masker, unmasked_imgs_list
 
 
-def create_raw_contrast_data(imgs, mask, dump_dir, n_jobs=1, batch_size=100):
-    if not os.path.exists(dump_dir):
-        os.makedirs(dump_dir)
+def create_raw_contrast_data(imgs, mask, raw_dir,
+                             memory=Memory(cachedir=None),
+                             n_jobs=1, batch_size=100):
+    if not os.path.exists(raw_dir):
+        os.makedirs(raw_dir)
 
     # Selection of contrasts
-
-    masker = MultiNiftiMasker(smoothing_fwhm=0, mask_img=mask,
+    masker = MultiNiftiMasker(smoothing_fwhm=0,
+                              mask_img=mask,
+                              memory=memory,
+                              memory_level=1,
                               n_jobs=n_jobs).fit()
+    mask_img_file = os.path.join(raw_dir, 'mask_img.nii.gz')
+    masker.mask_img_.to_filename(mask_img_file)
 
     batches = gen_batches(len(imgs), batch_size)
 
-    dump(imgs.index, join(dump_dir, 'index.pkl'))
+    dump(imgs.index, join(raw_dir, 'index.pkl'))
 
-    data = np.lib.format.open_memmap(join(dump_dir,
+    data = np.lib.format.open_memmap(join(raw_dir,
                                           'z_maps.npy'),
                                      mode='w+',
                                      shape=(len(imgs),

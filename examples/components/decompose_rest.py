@@ -1,7 +1,6 @@
 import shutil
 import warnings
 from os.path import join
-from tempfile import mkdtemp
 
 from matplotlib.cbook import MatplotlibDeprecationWarning
 
@@ -9,7 +8,7 @@ from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 
-from modl.input_data.fmri.raw_masker import get_raw_data, create_raw_data
+from modl.input_data.fmri.unmask import get_raw_rest_data
 
 from modl.input_data.fmri.base import safe_to_filename
 
@@ -18,7 +17,6 @@ from modl.decomposition.fmri import rfMRIDictionaryScorer, fMRIDictFact
 from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
 from sacred import Experiment
-from sacred import Ingredient
 from sacred.observers import MongoObserver
 
 from sklearn.externals.joblib import Memory
@@ -32,15 +30,15 @@ warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
 warnings.filterwarnings('ignore', category=MatplotlibDeprecationWarning,
                         module='matplotlib')
 warnings.filterwarnings('ignore', category=UserWarning, module='numpy')
-rest_data_ing = Ingredient('rest_data')
-decomposition_ex = Experiment('decomposition', ingredients=[rest_data_ing])
 
+decompose_rest = Experiment('decompose_rest')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
-decomposition_ex.observers.append(observer)
+decompose_rest.observers.append(observer)
 
 
-@decomposition_ex.config
-def config(rest_data):
+# noinspection PyUnusedLocal
+@decompose_rest.config
+def config():
     batch_size = 100
     learning_rate = 0.92
     method = 'gram'
@@ -52,35 +50,28 @@ def config(rest_data):
     n_jobs = 1
     verbose = 15
     seed = 2
-    raw_dir = None
-
-
-@rest_data_ing.config
-def config():
+    use_resource = True
+    callback = True
+    # Data
     source = 'adhd'
     n_subjects = 40
     train_size = 36
     test_size = 4
     seed = 2
 
-
-@decomposition_ex.named_config
+# noinspection PyUnusedLocal
+@decompose_rest.named_config
 def hcp(rest_data):
     batch_size = 100
     smoothing_fwhm = 4
-    raw_dir = join(get_data_dirs()[0], 'raw', rest_data['source'],
-                   str(smoothing_fwhm))
-
-
-@rest_data_ing.named_config
-def hcp():
+    # Data
     source = 'hcp'
     n_subjects = 788
     test_size = 1
     train_size = 787
 
 
-@rest_data_ing.capture
+@decompose_rest.capture
 def get_rest_data(source, test_size, train_size, _run, _seed,
                   # Optional arguments
                   n_subjects,
@@ -109,43 +100,42 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
     imgs_list = pd.concat([imgs.loc[train_subjects],
                            imgs.loc[test_subjects]], keys=['train', 'test'])
 
-    _run.info['dec_train_subjects'] = train_subjects
-    _run.info['dec_test_subjects'] = test_subjects
+    _run.info['train_subjects'] = train_subjects
+    _run.info['test_subjects'] = test_subjects
     # noinspection PyUnboundLocalVariable
     return imgs_list, mask_img, root
 
 
 class CapturedfMRIDictionaryScorer(rfMRIDictionaryScorer):
-    def __init__(self, test_imgs, test_confounds=None):
+    def __init__(self, test_imgs, test_confounds=None,
+                 artifact_dir=None):
 
         rfMRIDictionaryScorer.__init__(self, test_imgs,
                                        test_confounds=test_confounds)
-        self.components_names = []
+        self.artifact_dir = artifact_dir
+        if self.artifact_dir is not None:
+            self.intermediary_components = []
+            self.call_count = 0
 
-    @decomposition_ex.capture
+    @decompose_rest.capture
     def __call__(self, masker, dict_fact, _run=None):
         rfMRIDictionaryScorer.__call__(self, masker, dict_fact)
-        _run.info['dec_score'] = self.score
-        _run.info['dec_time'] = self.time
-        _run.info['dec_iter'] = self.iter
-        n_records = len(self.score)
-        if n_records % 5 == 0:
-            artifact_dir = mkdtemp()
+        _run.info['score'] = self.score
+        _run.info['time'] = self.time
+        _run.info['iter'] = self.iter
+        if self.artifact_dir is not None:
+            call_count = len(self.intermediary_components)
             components_img = masker.inverse_transform(dict_fact.components_)
-            components_name = 'components_img_%i.nii.gz' % len(self.score)
-            self.components_names.append((n_records, components_name))
-            components_img.to_filename(join(artifact_dir, components_name))
-            _run.add_artifact(join(artifact_dir, components_name),
+            components_name = 'components_%i.nii.gz' % call_count
+            self.intermediary_components.append(components_name)
+            components_img.to_filename(join(self.artifact_dir,
+                                            components_name))
+            _run.add_artifact(join(self.artifact_dir, components_name),
                               name=components_name)
-            _run.info['components_names'] = self.components_names
-            try:
-                shutil.rmtree(artifact_dir)
-            except FileNotFoundError:
-                pass
+            _run.info['intermediary_components'] = self.intermediary_components
 
 
-
-@decomposition_ex.capture
+@decompose_rest.capture
 def compute_decomposition(alpha, batch_size, learning_rate,
                           n_components,
                           n_epochs,
@@ -154,34 +144,41 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           smoothing_fwhm,
                           method,
                           verbose,
-                          raw_dir,
-                          rest_data,
+                          source,
+                          use_resource,
+                          callback,
                           _run,
                           _seed,
                           train_subjects=None,
                           test_subjects=None,
-                          observe=True,
                           ):
-    observe = observe and not _run.unobserved
+    artifact_dir = join(get_data_dirs()[0], 'pipeline', 'components',
+                        source, str(n_components), str(alpha))
+    _run.info['artifact_dir'] = artifact_dir
 
-    memory = Memory(cachedir=get_cache_dirs()[0],
-                    mmap_mode=None)
+    memory = Memory(cachedir=get_cache_dirs()[0])
+
     print('Retrieve resting-state data')
     imgs_list, mask_img, _ = get_rest_data(
         train_subjects=train_subjects,
         test_subjects=test_subjects)
     print('Run dictionary learning')
-    if raw_dir is not None:
+    if use_resource is True:
         # WARNING: this is a hack to use unmasked time series without
         # touching the core code
-        raw_dir = join(get_data_dirs()[0], 'raw', rest_data['source'],
-                       str(smoothing_fwhm))
-        mask, imgs_list = get_raw_data(imgs_list, raw_dir=raw_dir)
+        unmasking_rest_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
+                                  'source',
+                                  str(smoothing_fwhm))
+        # We won't record
+        _run.info['resource_dir'] = {'unmasking_rest': unmasking_rest_dir}
+        mask, imgs_list = get_raw_rest_data(imgs_list,
+                                            raw_dir=unmasking_rest_dir)
     else:
         mask = mask_img
+
     train_imgs, test_imgs = imgs_list.loc['train'], imgs_list.loc['test']
 
-    if observe:
+    if callback:
         callback = CapturedfMRIDictionaryScorer(test_imgs['filename'],
                                                 test_confounds
                                                 =test_imgs['confounds'])
@@ -209,42 +206,42 @@ def compute_decomposition(alpha, batch_size, learning_rate,
 
     final_score = dict_fact.score(test_imgs['filename'],
                                   confounds=test_imgs['confounds'])
-    if observe:
-        _run.info['dec_score'] = callback.score
-        _run.info['dec_time'] = callback.time
-        _run.info['dec_iter'] = callback.iter
-        _run.info['dec_final_score'] = final_score
-        print('Write decomposition artifacts')
-        artifact_dir = mkdtemp()
-        safe_to_filename(dict_fact.components_img_,
-                         join(artifact_dir, 'dec_components.nii.gz'))
-        _run.add_artifact(join(artifact_dir, 'dec_components.nii.gz'),
-                          name='dec_components.nii.gz')
 
-        safe_to_filename(dict_fact.mask_img_,
-                         join(artifact_dir, 'dec_mask_img.nii.gz'))
-        _run.add_artifact(join(artifact_dir, 'dec_mask_img.nii.gz'),
-                          name='dec_mask_img.nii.gz')
+    _run.info['score'] = callback.score
+    _run.info['time'] = callback.time
+    _run.info['iter'] = callback.iter
+    _run.info['final_score'] = final_score
 
-        fig = plt.figure()
-        display_maps(fig, dict_fact.components_img_)
-        plt.savefig(join(artifact_dir, 'dec_components.png'))
-        plt.close(fig)
-        _run.add_artifact(join(artifact_dir, 'dec_components.png'),
-                          name='dec_components.png')
-        fig, ax = plt.subplots(1, 1)
-        ax.plot(callback.time, callback.score, marker='o')
-        plt.savefig(join(artifact_dir, 'dec_learning_curve.png'))
-        plt.close(fig)
-        _run.add_artifact(join(artifact_dir, 'dec_learning_curve.png'),
-                          name='dec_learning_curve.png')
-        try:
-            shutil.rmtree(artifact_dir)
-        except FileNotFoundError:
-            pass
+    print('Write components artifacts')
+    safe_to_filename(dict_fact.components_img_,
+                     join(artifact_dir, 'components.nii.gz'))
+    _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
+                      name='components.nii.gz')
+
+    safe_to_filename(dict_fact.mask_img_,
+                     join(artifact_dir, 'mask_img.nii.gz'))
+    _run.add_artifact(join(artifact_dir, 'mask_img.nii.gz'),
+                      name='mask_img.nii.gz')
+
+    fig = plt.figure()
+    display_maps(fig, dict_fact.components_img_)
+    plt.savefig(join(artifact_dir, 'components.png'))
+    plt.close(fig)
+    _run.add_artifact(join(artifact_dir, 'components.png'),
+                      name='components.png')
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(callback.time, callback.score, marker='o')
+    plt.savefig(join(artifact_dir, 'learning_curve.png'))
+    plt.close(fig)
+    _run.add_artifact(join(artifact_dir, 'learning_curve.png'),
+                      name='learning_curve.png')
+
+    with open(join(artifact_dir, 'exp_id' % str(_run.id)), 'w+') as f:
+        f.write(_run.id)
+
     return dict_fact, final_score
 
 
-@decomposition_ex.automain
+@decompose_rest.automain
 def run_decomposition_ex(_run):
     compute_decomposition()

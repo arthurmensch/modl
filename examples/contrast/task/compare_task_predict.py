@@ -14,7 +14,7 @@ sys.path.append(path.dirname(path.dirname
 
 
 def single_run(config_updates, _id):
-    from examples.task.task_predict import prediction_ex, \
+    from examples.contrast.task.task_predict import prediction_ex, \
         task_data_ing, rest_data_ing, decomposition_ex
 
     @prediction_ex.config
@@ -83,7 +83,7 @@ def first_grid_search():
             for alpha in alpha_list:
                 config_updates = {'task_data': {'train_size': 778},
                                   'rest_data': {'train_size': train_size},
-                                  'decomposition':
+                                  'components':
                                       {'n_components': n_components,
                                        'alpha': alpha},
                                   }

@@ -149,6 +149,7 @@ def _logistic_regression(X_train, y_train,
                                {'logistic_regression__C': C},
                                cv=ShuffleSplit(test_size=test_size),
                                refit=False,
+                               verbose=verbose,
                                n_jobs=n_jobs)
     grid_lr.fit(X_train, y_train)
     best_params = grid_lr.best_params_

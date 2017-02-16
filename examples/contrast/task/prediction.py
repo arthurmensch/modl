@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import LabelEncoder
 
-from modl.classification import MultiProjectionTransformer,\
+from modl.classification import MultiProjectionTransformer, \
     L2LogisticRegressionCV
 from modl.datasets import get_data_dirs
 from modl.input_data.fmri.raw_masker import get_raw_contrast_data
@@ -58,7 +58,7 @@ def run(standardize, C, tol, n_components_list, max_iter, n_jobs,
     labels = X.index.get_level_values('contrast').values
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(labels)
-    y = pd.DataFrame(index=X.index, data=y, columns=['label'])
+    y = pd.Series(index=X.index, data=y, name='label')
 
     train_subjects, test_subjects = \
         train_test_split(subjects, random_state=_seed, test_size=test_size)
@@ -67,10 +67,10 @@ def run(standardize, C, tol, n_components_list, max_iter, n_jobs,
     _run.info['pred_test_subjects'] = test_subjects
 
     X = pd.concat([X.loc[train_subjects],
-                      X.loc[test_subjects]], keys=['train', 'test'],
+                   X.loc[test_subjects]], keys=['train', 'test'],
                   names=['fold'])
     y = pd.concat([y.loc[train_subjects],
-                      y.loc[test_subjects]], keys=['train', 'test'],
+                   y.loc[test_subjects]], keys=['train', 'test'],
                   names=['fold'])
     # Components
     _run.info['stage'] = 'fetching components'
@@ -111,9 +111,9 @@ def run(standardize, C, tol, n_components_list, max_iter, n_jobs,
     _run.info['stage'] = 'model eval'
     predicted_y = piped_classifier.predict(X.values)
     predicted_labels = label_encoder.inverse_transform(predicted_y)
-
-    prediction = pd.DataFrame(data=list(zip(labels, predicted_labels)),
-                              columns=['label', 'predicted_label'],
+    true_labels = label_encoder.inverse_transform(y.values)
+    prediction = pd.DataFrame(data=list(zip(true_labels, predicted_labels)),
+                              columns=['true_label', 'predicted_label'],
                               index=X.index)
 
     train_score = np.sum(prediction.loc['train', 'predicted_label']
