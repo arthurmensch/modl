@@ -45,7 +45,7 @@ class MultiRawMasker(MultiNiftiMasker):
                               mmap_mode=None):
         self._check_fitted()
         if isinstance(imgs, str):
-            name, ext = os.path.split(imgs)
+            name, ext = os.path.splitext(imgs)
             if ext == '.npy':
                 data = np.load(imgs, mmap_mode=mmap_mode)
             else:
@@ -97,7 +97,7 @@ class MultiRawMasker(MultiNiftiMasker):
         #  need it for the moment)
         for imgs in imgs_list:
             if isinstance(imgs, str):
-                name, ext = os.path.split(imgs)
+                name, ext = os.path.splitext(imgs)
                 if ext != '.npy':
                     raw = False
                     break

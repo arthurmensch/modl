@@ -90,7 +90,7 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
         raise ValueError('Wrong resting-state source')
     imgs = data.rest
     mask = data.mask
-    subjects = imgs.index.get_level_values('subject').unique().values
+    subjects = imgs.index.get_level_values('subject').unique().values.tolist()
 
     if use_resource is True:
         # WARNING: this is a hack to use unmasked time series without
@@ -120,8 +120,6 @@ def get_rest_data(source, test_size, train_size, _run, _seed,
     if train_subjects is None and test_subjects is None:
         train_subjects, test_subjects = train_test_split(
             subjects, random_state=_seed, test_size=test_size)
-        train_subjects = train_subjects.tolist()
-        test_subjects = test_subjects.tolist()
 
     train_subjects = train_subjects[:train_size]
     test_subjects = test_subjects[:test_size]

@@ -19,9 +19,9 @@ multi_decompose_rest.observers.append(observer)
 
 @multi_decompose_rest.config
 def config():
-    n_jobs = 3
-    n_components_list = [16, 64, 256]
-    alpha_list = [1e-3]
+    n_jobs = 1
+    n_components_list = [256]
+    alpha_list = [1e-4]
 
 
 @decompose_rest.config
@@ -34,7 +34,7 @@ def config():
     n_components = 40  # Overriden
     n_epochs = 4
     smoothing_fwhm = 6
-    n_jobs = 1
+    n_jobs = 4
     verbose = 10
     seed = 2
 
