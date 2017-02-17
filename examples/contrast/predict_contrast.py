@@ -12,7 +12,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import LabelEncoder
 
 from modl.classification import MultiProjectionTransformer, \
-    L2LogisticRegressionCV
+    LogisticRegressionCV
 from modl.datasets import get_data_dirs
 from modl.input_data.fmri.unmask import get_raw_contrast_data
 from modl.utils.system import get_cache_dirs
@@ -25,19 +25,20 @@ predict_contrast.observers.append(observer)
 @predict_contrast.config
 def config():
     standardize = True
-    C = np.logspace(-1, 2, 10)
+    C = np.logspace(-2, 2, 10)
     n_jobs = 20
-    verbose = 10
+    verbose = 2
     seed = 2
-    max_iter = 10000
-    tol = 1e-5
+    max_iter = 100
+    tol = 1e-3
     alpha = 1e-4
     identity = False
-    ensemble = True
-    n_components_list = [16, 64, 256]
+    ensemble = False
+    n_components_list = [16, 64]
     test_size = 0.1
     train_size = None
     n_subjects = 788
+    loss = 'l1'
 
 
 
@@ -52,6 +53,7 @@ def run(standardize, C, tol,
         n_subjects,
         ensemble,
         identity,
+        loss,
         _run,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0])
@@ -96,10 +98,11 @@ def run(standardize, C, tol,
                    y.loc[test_subjects]], keys=['train', 'test'],
                   names=['fold'])
 
-    l1_log_classifier = L2LogisticRegressionCV(
+    l1_log_classifier = LogisticRegressionCV(
         memory=memory,
         memory_level=2,
         C=C,
+        loss=loss,
         standardize=standardize,
         ensemble=ensemble,
         random_state=_seed,

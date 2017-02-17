@@ -3,15 +3,21 @@ import copy
 from math import ceil
 
 import numpy as np
+from modl.model_selection import MemGridSearchCV
 from nilearn._utils import CacheMixin
 from numpy import linalg as linalg
-from sklearn.base import TransformerMixin, BaseEstimator
+from sklearn.base import TransformerMixin, BaseEstimator, clone
+from sklearn.cross_validation import check_cv
 from sklearn.externals.joblib import Parallel, delayed, Memory
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV, ShuffleSplit
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.model_selection import ShuffleSplit
+from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.utils import gen_batches
+
+from lightning.classification import CDClassifier
 
 
 def _project_multi_bases(X, bases, identity=None, n_jobs=1):
@@ -81,14 +87,16 @@ class MultiProjectionTransformer(CacheMixin, TransformerMixin):
         return loadings
 
 
-class L2LogisticRegressionCV(CacheMixin, BaseEstimator):
+class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
     def __init__(self,
-                 C=1,
+                 Cs=1,
+                 cv=10,
                  standardize=False,
                  max_iter=100,
                  tol=1e-4,
                  random_state=None,
-                 ensemble=False,
+                 loss='l2',
+                 refit=False,
                  n_jobs=1,
                  memory=Memory(cachedir=None),
                  memory_level=1,
@@ -96,150 +104,131 @@ class L2LogisticRegressionCV(CacheMixin, BaseEstimator):
         self.memory = memory
 
         self.standardize = standardize
-        self.C = C
+        self.Cs = Cs
         self.tol = tol
         self.max_iter = max_iter
         self.n_jobs = n_jobs
         self.random_state = random_state
 
-        self.ensemble = ensemble
+        self.loss = loss
+
+        self.refit = refit
+
+        self.cv = cv
 
         self.memory = memory
         self.memory_level = memory_level
         self.verbose = verbose
 
     def fit(self, X, y):
-        self.lr_ = self._cache(_logistic_regression,
-                               ignore=['n_jobs', 'verbose']) \
-            (X, y, standardize=self.standardize, C=self.C,
-             tol=self.tol, max_iter=self.max_iter,
-             ensemble=self.ensemble,
-             n_jobs=self.n_jobs, random_state=self.random_state,
-             verbose=self.verbose)
+        self.estimator_ = self._cache(_logistic_regression,
+                                      ignore=['n_jobs', 'verbose'],
+                                      func_memory_level=1)(
+            X, y, standardize=self.standardize, Cs=self.Cs,
+            tol=self.tol, max_iter=self.max_iter,
+            refit=self.refit,
+            loss=self.loss,
+            cv=self.cv,
+            n_jobs=self.n_jobs, random_state=self.random_state,
+            verbose=self.verbose)
         return self
 
     def predict(self, X):
-        y = self.lr_.predict(X)
+        y = self.estimator_.predict(X)
         return y
+
+    def score(self, X, y):
+        score = self.estimator_.score(X, y)
+        return score
 
 
 def _logistic_regression(X, y,
                          standardize=False,
-                         C=1,
+                         Cs=1,
                          tol=1e-7,
                          max_iter=1000,
+                         loss='l2',
                          early_tol=None,
                          early_max_iter=None,
-                         test_size=0.1,
                          n_jobs=1,
+                         cv=10,
                          verbose=0,
-                         ensemble=False,
+                         refit=False,
                          random_state=None):
     """Function to be cached"""
-    lr = LogisticRegression(multi_class='multinomial', penalty='l2',
-                            C=C,
-                            solver='sag', tol=tol,
-                            max_iter=max_iter, verbose=verbose,
-                            random_state=random_state)
+    if early_tol is None:
+        early_tol = tol * 10
+    if early_max_iter is None:
+        early_max_iter = max_iter / 2
+    if loss == 'l2':
+        lr = LogisticRegressionCV(multi_class='multinomial', penalty='l2',
+                                  Cs=Cs,
+                                  cv=cv,
+                                  refit=refit,
+                                  solver='sag',
+                                  tol=tol,
+                                  max_iter=max_iter,
+                                  verbose=verbose,
+                                  random_state=random_state)
+    elif loss == 'l1':
+        lr = CDClassifier(loss='log', penalty='l1',
+                          verbose=verbose,
+                          tol=early_tol if refit else tol,
+                          max_iter=early_max_iter if refit else
+                          max_iter,
+                          random_state=random_state)
+        cv = check_cv(cv, y=y, classifier=True)
+        lr = MemGridSearchCV(lr,
+                             {'C': Cs},
+                             cv=cv,
+                             refit=False,
+                             keep_best=not refit,
+                             verbose=verbose,
+                             n_jobs=n_jobs)
+    else:
+        raise NotImplementedError()
     if standardize:
         sc = StandardScaler()
-        lr = Pipeline([('standard_scaler', sc), ('logistic_regression', lr)])
-    if hasattr(C, '__iter__'):
-        # TODO Blast this pipeline shit
-        if ensemble:
-            cv = ShuffleSplit(test_size=test_size)
-            best_lr_list = []
-            for train, test in cv.split(X, y):
-                res = Parallel(n_jobs=n_jobs)(delayed(_single_fit_lr)
-                                            (X, lr, test, this_C, train, y)
-                                        for this_C in C)
-                scores, lr_list = zip(*res)
-                scores = np.array(scores)
-                i = np.argmax(scores)
-                best_lr = lr_list[i]
-                best_lr_list.append(best_lr)
-            coef = np.concatenate([this_lr.steps[1][1].coef_[..., np.newaxis]
-                                   for this_lr in best_lr_list], axis=2)
-            coef = np.mean(coef, axis=2)
-            intercept = np.concatenate([this_lr.steps[1][1].intercept_[..., np.newaxis]
-                                        for this_lr in best_lr_list], axis=1)
-            intercept = np.mean(intercept, axis=1)
-            n_iter = np.array([this_lr.steps[1][1].n_iter_ for this_lr in best_lr_list])
-            n_iter = np.mean(n_iter)
-            lr.steps[0][1].fit(X)
-            lr.steps[1][1].n_iter_ = n_iter
-            lr.steps[1][1].intercept_ = intercept
-            lr.steps[1][1].coef_ = coef
-            lr.steps[1][1].classes_ = best_lr_list[0].steps[1][1].classes_
+        estimator = Pipeline([('standard_scaler', sc),
+                              ('logistic_regression', lr)])
+    else:
+        estimator = lr
+    estimator.fit(X, y)
+    if refit:
+        if loss == 'l2':
+            pass
         else:
-            if early_tol is None:
-                early_tol = tol * 1e2
-            if early_max_iter is None:
-                early_max_iter = max_iter / 10
-            lr.set_params(logistic_regression__tol=early_tol,
-                          logistic_regression__max_iter=early_max_iter)
-            grid_lr = GridSearchCV(lr,
-                                   {'logistic_regression__C': C},
-                                   cv=ShuffleSplit(test_size=test_size),
-                                   refit=False,
-                                   verbose=verbose,
-                                   n_jobs=n_jobs)
-            grid_lr.fit(X, y)
-            best_params = grid_lr.best_params_
-            lr.set_params(**best_params)
-            lr.set_params(logistic_regression__tol=tol,
-                          logistic_regression__max_iter=max_iter)
-            lr.fit(X, y)
-    return lr
-
-
-def _single_fit_lr(X, lr, test, this_C, train, y):
-    this_lr = copy.deepcopy(lr)
-    this_lr.set_params(logistic_regression__C=this_C)
-    this_lr.fit(X[train], y[train])
-    this_score = this_lr.score(X[test], y[test])
-    return this_score, this_lr
-
-
-class fMRITaskClassifier(CacheMixin):
-    def __init__(self,
-                 transformer,
-                 C=1,
-                 standardize=False,
-                 max_iter=100,
-                 tol=1e-4,
-                 random_state=None,
-                 n_jobs=1,
-                 memory=Memory(cachedir=None),
-                 memory_level=1):
-        self.transformer = transformer
-        self.memory = memory
-
-        self.standardize = standardize
-        self.C = C
-        self.tol = tol
-        self.max_iter = max_iter,
-        self.n_jobs = n_jobs
-        self.random_state = random_state
-
-        self.memory = memory
-        self.memory_level = memory_level
-
-    def fit(self, imgs=None, labels=None, confounds=None):
-        X = self.transformer.transform(imgs, confounds=confounds)
-        self.le_ = LabelEncoder()
-        y = self.le_.fit_transform(labels)
-        self.lr_ = self._cache(_logistic_regression,
-                               ignore=['n_jobs'])(X, y,
-                                                  standardize=self.standardize,
-                                                  C=self.C,
-                                                  tol=self.tol,
-                                                  max_iter=self.max_iter,
-                                                  n_jobs=self.n_jobs,
-                                                  random_state=self.random_state)
-
-    def predict(self, imgs, confounds=None):
-        X = self.transformer(imgs, confounds=confounds)
-        y = self.lr_.predict(X)
-        labels = self.le_.inverse_transform(y)
-        return labels
+            lr = clone(lr.estimator).set_params(**lr.best_params_)
+            lr.set_params(tol=tol, max_iter=max_iter)
+        if standardize:
+            estimator = Pipeline([('standard_scaler',
+                                   sc),
+                                  ('logistic_regression', lr)])
+        else:
+            estimator = lr
+    else:
+        if loss == 'l2':
+            # Averaging has already been made within estimator
+            pass
+        else:
+            coef = [best_estimator.coef_[..., np.newaxis]
+                    for best_estimator in lr.best_estimators_]
+            intercept = [best_estimator.intercept_[..., np.newaxis]
+                         for best_estimator in lr.best_estimators_]
+            label_binarizer = lr.best_estimators_[0].label_binarizer_
+            lr = clone(lr.estimator).set_params(**lr.best_params_)
+            # External fit
+            lr.coef_ = np.mean(np.concatenate(coef, axis=2), axis=2)
+            lr.intercept_ = np.mean(np.concatenate(intercept, axis=1),
+                                    axis=1)
+            lr.label_binarizer_ = label_binarizer
+            # XXX There might be a bug when some labels disappear in the split
+    if standardize:
+        estimator = Pipeline([('standard_scaler',
+                               sc),
+                              ('logistic_regression', lr)])
+    else:
+        estimator = lr
+    if refit:
+        estimator.fit(X, y)
+    return estimator
