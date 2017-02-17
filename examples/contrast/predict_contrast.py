@@ -12,7 +12,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import LabelEncoder
 
 from modl.classification import MultiProjectionTransformer, \
-    LogisticRegressionCV
+    OurLogisticRegressionCV
 from modl.datasets import get_data_dirs
 from modl.input_data.fmri.unmask import get_raw_contrast_data
 from modl.utils.system import get_cache_dirs
@@ -25,15 +25,15 @@ predict_contrast.observers.append(observer)
 @predict_contrast.config
 def config():
     standardize = True
-    C = np.logspace(-2, 2, 10)
+    Cs = np.logspace(-2, 2, 10)
     n_jobs = 20
     verbose = 2
     seed = 2
-    max_iter = 100
-    tol = 1e-3
+    max_iter = 1000
+    tol = 1e-5
     alpha = 1e-4
     identity = False
-    ensemble = False
+    refit = False
     n_components_list = [16, 64]
     test_size = 0.1
     train_size = None
@@ -43,7 +43,7 @@ def config():
 
 
 @predict_contrast.automain
-def run(standardize, C, tol,
+def run(standardize, Cs, tol,
         n_components_list,
         alpha,
         max_iter, n_jobs,
@@ -51,7 +51,7 @@ def run(standardize, C, tol,
         train_size,
         verbose,
         n_subjects,
-        ensemble,
+        refit,
         identity,
         loss,
         _run,
@@ -98,13 +98,13 @@ def run(standardize, C, tol,
                    y.loc[test_subjects]], keys=['train', 'test'],
                   names=['fold'])
 
-    l1_log_classifier = LogisticRegressionCV(
+    l1_log_classifier = OurLogisticRegressionCV(
         memory=memory,
         memory_level=2,
-        C=C,
+        Cs=Cs,
         loss=loss,
         standardize=standardize,
-        ensemble=ensemble,
+        refit=refit,
         random_state=_seed,
         tol=tol,
         max_iter=max_iter,
