@@ -33,6 +33,7 @@ def config():
     tol = 1e-7
     alpha = 1e-4
     identity = False
+    multi_class = 'multinomial'
     refit = False
     n_components_list = [16, 64, 256]
     test_size = 0.1
@@ -52,6 +53,7 @@ def run(standardize, alphas, tol,
         solver,
         train_size,
         verbose,
+        multi_class,
         n_subjects,
         refit,
         identity,
@@ -107,6 +109,7 @@ def run(standardize, alphas, tol,
         alphas=alphas,
         penalty=penalty,
         standardize=standardize,
+        multi_class=multi_class,
         refit=refit,
         random_state=_seed,
         tol=tol,

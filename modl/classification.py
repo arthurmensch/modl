@@ -96,6 +96,7 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
                  max_iter=100,
                  tol=1e-4,
                  random_state=None,
+                 multi_class='ovr',
                  solver='cd',
                  penalty='l2',
                  refit=False,
@@ -116,6 +117,8 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
 
         self.refit = refit
 
+        self.multi_class = 'ovr'
+
         self.solver = solver
 
         self.cv = cv
@@ -130,6 +133,7 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
                                       func_memory_level=1)(
             X, y, standardize=self.standardize, alphas=self.alphas,
             solver=self.solver,
+            multi_class=self.multi_class,
             tol=self.tol, max_iter=self.max_iter,
             refit=self.refit,
             penalty=self.penalty,
@@ -153,6 +157,7 @@ def _logistic_regression(X, y,
                          alphas=[1],
                          tol=1e-7,
                          max_iter=1000,
+                         multi_class='ovr',
                          penalty='l2',
                          early_tol=None,
                          early_max_iter=None,
@@ -191,7 +196,7 @@ def _logistic_regression(X, y,
         Cs = 1. / (np.array(alphas) * n_samples)
         lr = LogisticRegression(penalty=penalty, solver='sag',
                                 fit_intercept=False,
-                                multi_class='ovr',
+                                multi_class=multi_class,
                                 tol=early_tol if refit else tol,
                                 max_iter=early_max_iter if refit else max_iter)
         lr = MemGridSearchCV(lr,
