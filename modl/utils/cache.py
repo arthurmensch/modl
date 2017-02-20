@@ -13,19 +13,12 @@ def _cached_call(estimator, method, *args, **kwargs):
 # memory_level = 2 -> everything is cached
 class CachedEstimator(BaseEstimator, CacheMixin):
     def __init__(self, estimator, memory=Memory(cachedir=None),
+                 ignore=None,
                  memory_level=1):
         self.estimator = estimator
-
+        self.ignore = ignore
         self.memory = memory
         self.memory_level = memory_level
-
-    @property
-    def _estimator_type(self):
-        return self.estimator._estimator_type
-
-    @property
-    def classes_(self):
-        return self.estimator_.classes_
 
     def score(self, X, y=None):
         """Call score with cache.
@@ -46,7 +39,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
 
         """
         return self._cache(_cached_call,
-                           func_memory_level=2)(self.estimator_,
+                           func_memory_level=2,
+                           ignore=self.ignore)(self.estimator_,
                                                 'score',
                                                 X, y)
 
@@ -62,7 +56,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
 
         """
         return self._cache(_cached_call,
-                           func_memory_level=2)(self.estimator_,
+                           func_memory_level=2,
+                           ignore=self.ignore)(self.estimator_,
                                                 'predict',
                                                 X)
 
@@ -78,7 +73,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
 
         """
         return self._cache(_cached_call,
-                           func_memory_level=2)(self.estimator_,
+                           func_memory_level=2,
+                           ignore=self.ignore)(self.estimator_,
                                                 'predict_proba',
                                                 X)
 
@@ -93,7 +89,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
 
         """
         return self._cache(_cached_call,
-                           func_memory_level=2)(self.estimator_,
+                           func_memory_level=2,
+                           ignore=self.ignore)(self.estimator_,
                                                 'predict_log_proba',
                                                 X)
 
@@ -108,7 +105,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
 
         """
         return self._cache(_cached_call,
-                           func_memory_level=2)(self.estimator_,
+                           func_memory_level=2,
+                           ignore=self.ignore)(self.estimator_,
                                                 'decision_function',
                                                 X)
 
@@ -124,7 +122,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
 
         """
         return self._cache(_cached_call,
-                           func_memory_level=2)(self.estimator_,
+                           func_memory_level=2,
+                           ignore=self.ignore)(self.estimator_,
                                                 'transform',
                                                 X)
 
@@ -140,7 +139,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
 
         """
         return self._cache(_cached_call,
-                           func_memory_level=2)(self.estimator_,
+                           func_memory_level=2,
+                           ignore=self.ignore)(self.estimator_,
                                                 'inverse_transform',
                                                 Xt)
 
@@ -160,13 +160,15 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         # Strip attributes
         self.estimator_ = clone(self.estimator)
         self.estimator_ = self._cache(_cached_call,
-                                      func_memory_level=1)(self.estimator_,
+                                      func_memory_level=1,
+                                      ignore=self.ignore)(self.estimator_,
                                                            'fit',
                                                            X, y)
         return self
 
     def __setattr__(self, name, value):
-        if name in ['memory', 'memory_level', 'estimator', 'estimator_']:
+        if name in ['memory', 'memory_level', 'ignore',
+                    'estimator', 'estimator_']:
             super().__setattr__(name, value)
         else:
             if hasattr(self.estimator, name):
@@ -177,7 +179,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
                 super().__setattr__(name, value)
 
     def __getattr__(self, name):
-        if name in ['memory', 'memory_level', 'estimator', 'estimator_']:
+        if name in ['memory', 'memory_level', 'ignore',
+                    'estimator', 'estimator_']:
             return super().__getattr__(name)
         else:
             if hasattr(self.estimator_, name):

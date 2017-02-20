@@ -25,11 +25,11 @@ predict_contrast.observers.append(observer)
 @predict_contrast.config
 def config():
     standardize = True
-    Cs = np.logspace(-2, 2, 10)
-    n_jobs = 20
+    alphas = np.logspace(-2, 2, 10).tolist()
+    n_jobs = 30
     verbose = 2
     seed = 2
-    max_iter = 1000
+    max_iter = 100
     tol = 1e-5
     alpha = 1e-4
     identity = False
@@ -38,22 +38,24 @@ def config():
     test_size = 0.1
     train_size = None
     n_subjects = 788
-    loss = 'l1'
+    penalty = 'l2'
+    solver = 'saga'
 
 
 
 @predict_contrast.automain
-def run(standardize, Cs, tol,
+def run(standardize, alphas, tol,
         n_components_list,
         alpha,
         max_iter, n_jobs,
         test_size,
+        solver,
         train_size,
         verbose,
         n_subjects,
         refit,
         identity,
-        loss,
+        penalty,
         _run,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0])
@@ -99,10 +101,11 @@ def run(standardize, Cs, tol,
                   names=['fold'])
 
     l1_log_classifier = OurLogisticRegressionCV(
+        solver=solver,
         memory=memory,
         memory_level=2,
-        Cs=Cs,
-        loss=loss,
+        alphas=alphas,
+        penalty=penalty,
         standardize=standardize,
         refit=refit,
         random_state=_seed,

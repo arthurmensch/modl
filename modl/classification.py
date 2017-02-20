@@ -3,16 +3,15 @@ import copy
 from math import ceil
 
 import numpy as np
+from lightning.impl.sag import SAGAClassifier
+
 from modl.model_selection import MemGridSearchCV
 from nilearn._utils import CacheMixin
 from numpy import linalg as linalg
 from sklearn.base import TransformerMixin, BaseEstimator, clone
 from sklearn.cross_validation import check_cv
 from sklearn.externals.joblib import Parallel, delayed, Memory
-from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import LogisticRegressionCV
-from sklearn.model_selection import ShuffleSplit
-from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import gen_batches
@@ -89,13 +88,14 @@ class MultiProjectionTransformer(CacheMixin, TransformerMixin):
 
 class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
     def __init__(self,
-                 Cs=1,
+                 alphas=[1],
                  cv=10,
                  standardize=False,
                  max_iter=100,
                  tol=1e-4,
                  random_state=None,
-                 loss='l2',
+                 solver='cd',
+                 penalty='l2',
                  refit=False,
                  n_jobs=1,
                  memory=Memory(cachedir=None),
@@ -104,15 +104,17 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
         self.memory = memory
 
         self.standardize = standardize
-        self.Cs = Cs
+        self.alphas = alphas
         self.tol = tol
         self.max_iter = max_iter
         self.n_jobs = n_jobs
         self.random_state = random_state
 
-        self.loss = loss
+        self.penalty = penalty
 
         self.refit = refit
+
+        self.solver = solver
 
         self.cv = cv
 
@@ -124,10 +126,11 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
         self.estimator_ = self._cache(_logistic_regression,
                                       ignore=['n_jobs', 'verbose'],
                                       func_memory_level=1)(
-            X, y, standardize=self.standardize, Cs=self.Cs,
+            X, y, standardize=self.standardize, alphas=self.alphas,
+            solver=self.solver,
             tol=self.tol, max_iter=self.max_iter,
             refit=self.refit,
-            loss=self.loss,
+            penalty=self.penalty,
             cv=self.cv,
             n_jobs=self.n_jobs, random_state=self.random_state,
             verbose=self.verbose)
@@ -144,10 +147,11 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
 
 def _logistic_regression(X, y,
                          standardize=False,
-                         Cs=1,
+                         solver='cd',
+                         alphas=[1],
                          tol=1e-7,
                          max_iter=1000,
-                         loss='l2',
+                         penalty='l2',
                          early_tol=None,
                          early_max_iter=None,
                          n_jobs=1,
@@ -160,33 +164,59 @@ def _logistic_regression(X, y,
         early_tol = tol * 10
     if early_max_iter is None:
         early_max_iter = max_iter / 2
-    if loss == 'l2':
-        lr = LogisticRegressionCV(multi_class='multinomial', penalty='l2',
-                                  Cs=Cs,
-                                  cv=cv,
-                                  refit=refit,
-                                  solver='sag',
-                                  tol=tol,
-                                  max_iter=max_iter,
-                                  verbose=verbose,
-                                  random_state=random_state)
-    elif loss == 'l1':
-        lr = CDClassifier(loss='log', penalty='l1',
+    n_samples = X.shape[0]
+    cv = check_cv(cv, y=y, classifier=True)
+    if solver == 'cd':
+        lr = CDClassifier(loss='log', penalty=penalty,
+                          C=1 / n_samples,
+                          multiclass=False,
                           verbose=verbose,
                           tol=early_tol if refit else tol,
                           max_iter=early_max_iter if refit else
                           max_iter,
                           random_state=random_state)
-        cv = check_cv(cv, y=y, classifier=True)
         lr = MemGridSearchCV(lr,
-                             {'C': Cs},
+                             {'alpha': alphas},
                              cv=cv,
                              refit=False,
                              keep_best=not refit,
                              verbose=verbose,
                              n_jobs=n_jobs)
+    elif solver == 'saga':
+        if penalty == 'l1':
+            lr = SAGAClassifier(eta='auto',
+                                loss='log',
+                                alpha=0,
+                                penalty='l1',
+                                verbose=verbose,
+                                tol=tol,
+                                max_iter=max_iter,
+                                random_state=random_state)
+            lr = MemGridSearchCV(lr,
+                                 {'beta': alphas},
+                                 cv=cv,
+                                 refit=False,
+                                 keep_best=not refit,
+                                 verbose=verbose,
+                                 n_jobs=n_jobs)
+        elif penalty == 'l2':
+            lr = SAGAClassifier(eta='auto',
+                                loss='log',
+                                beta=0,
+                                penalty=None,
+                                tol=tol,
+                                max_iter=max_iter,
+                                verbose=verbose,
+                                random_state=random_state)
+            lr = MemGridSearchCV(lr,
+                                 {'alpha': alphas},
+                                 cv=cv,
+                                 refit=False,
+                                 keep_best=not refit,
+                                 verbose=verbose,
+                                 n_jobs=n_jobs)
     else:
-        raise NotImplementedError()
+        raise ValueError('Wrong solver.')
     if standardize:
         sc = StandardScaler()
         estimator = Pipeline([('standard_scaler', sc),
@@ -195,34 +225,25 @@ def _logistic_regression(X, y,
         estimator = lr
     estimator.fit(X, y)
     if refit:
-        if loss == 'l2':
-            pass
-        else:
-            lr = clone(lr.estimator).set_params(**lr.best_params_)
-            lr.set_params(tol=tol, max_iter=max_iter)
-        if standardize:
-            estimator = Pipeline([('standard_scaler',
-                                   sc),
-                                  ('logistic_regression', lr)])
-        else:
-            estimator = lr
+        lr = clone(lr.estimator).set_params(**lr.best_params_)
+        lr.set_params(tol=tol, max_iter=max_iter)
     else:
-        if loss == 'l2':
-            # Averaging has already been made within estimator
-            pass
-        else:
-            coef = [best_estimator.coef_[..., np.newaxis]
-                    for best_estimator in lr.best_estimators_]
+        coef = [best_estimator.coef_[..., np.newaxis]
+                for best_estimator in lr.best_estimators_]
+        if hasattr(lr.best_estimators_[0], 'intercept_'):
             intercept = [best_estimator.intercept_[..., np.newaxis]
                          for best_estimator in lr.best_estimators_]
-            label_binarizer = lr.best_estimators_[0].label_binarizer_
-            lr = clone(lr.estimator).set_params(**lr.best_params_)
-            # External fit
-            lr.coef_ = np.mean(np.concatenate(coef, axis=2), axis=2)
+        else:
+            intercept = False
+        label_binarizer = lr.best_estimators_[0].label_binarizer_
+        lr = clone(lr.estimator).set_params(**lr.best_params_)
+        # External fit
+        if intercept:
             lr.intercept_ = np.mean(np.concatenate(intercept, axis=1),
                                     axis=1)
-            lr.label_binarizer_ = label_binarizer
-            # XXX There might be a bug when some labels disappear in the split
+        lr.coef_ = np.mean(np.concatenate(coef, axis=2), axis=2)
+        lr.label_binarizer_ = label_binarizer
+        # XXX There might be a bug when some labels disappear in the split
     if standardize:
         estimator = Pipeline([('standard_scaler',
                                sc),
