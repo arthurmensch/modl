@@ -1,9 +1,11 @@
 import copy
+import warnings
 
 from math import ceil
 
 import numpy as np
 from lightning.impl.sag import SAGAClassifier
+from sklearn.linear_model import LogisticRegression
 
 from modl.model_selection import MemGridSearchCV
 from nilearn._utils import CacheMixin
@@ -166,6 +168,9 @@ def _logistic_regression(X, y,
         early_max_iter = max_iter / 2
     n_samples = X.shape[0]
     cv = check_cv(cv, y=y, classifier=True)
+    if solver == 'sag_sklearn' and penalty == 'l1':
+        solver = 'saga'
+        warnings.warn('Falling back to SAGA estimator')
     if solver == 'cd':
         lr = CDClassifier(loss='log', penalty=penalty,
                           C=1 / n_samples,
@@ -182,6 +187,21 @@ def _logistic_regression(X, y,
                              keep_best=not refit,
                              verbose=verbose,
                              n_jobs=n_jobs)
+    elif solver == 'sag_sklearn':
+        Cs = 1. / (np.array(alphas) * n_samples)
+        lr = LogisticRegression(penalty=penalty, solver='sag',
+                                fit_intercept=False,
+                                multi_class='ovr',
+                                tol=early_tol if refit else tol,
+                                max_iter=early_max_iter if refit else max_iter)
+        lr = MemGridSearchCV(lr,
+                             {'C': Cs},
+                             cv=cv,
+                             refit=False,
+                             keep_best=not refit,
+                             verbose=verbose,
+                             n_jobs=n_jobs)
+
     elif solver == 'saga':
         if penalty == 'l1':
             lr = SAGAClassifier(eta='auto',
@@ -235,14 +255,25 @@ def _logistic_regression(X, y,
                          for best_estimator in lr.best_estimators_]
         else:
             intercept = False
-        label_binarizer = lr.best_estimators_[0].label_binarizer_
+        if hasattr(lr.best_estimators_[0], 'label_binarizer_'):
+            label_binarizer = lr.best_estimators_[0].label_binarizer_
+        else:
+            label_binarizer = False
+        if hasattr(lr.best_estimators_[0], 'classes_'):
+            classes = lr.best_estimators_[0].classes_
+            has_classes = True
+        else:
+            has_classes = False
         lr = clone(lr.estimator).set_params(**lr.best_params_)
         # External fit
         if intercept:
             lr.intercept_ = np.mean(np.concatenate(intercept, axis=1),
                                     axis=1)
         lr.coef_ = np.mean(np.concatenate(coef, axis=2), axis=2)
-        lr.label_binarizer_ = label_binarizer
+        if label_binarizer:
+            lr.label_binarizer_ = label_binarizer
+        if has_classes:
+            lr.classes_ = classes
         # XXX There might be a bug when some labels disappear in the split
     if standardize:
         estimator = Pipeline([('standard_scaler',

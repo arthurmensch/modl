@@ -29,17 +29,17 @@ def config():
     n_jobs = 30
     verbose = 2
     seed = 2
-    max_iter = 100
-    tol = 1e-5
+    max_iter = 1000
+    tol = 1e-7
     alpha = 1e-4
     identity = False
     refit = False
-    n_components_list = [16, 64]
+    n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
     n_subjects = 788
     penalty = 'l2'
-    solver = 'saga'
+    solver = 'sag_sklearn'
 
 
 

@@ -4,7 +4,8 @@ from sklearn import datasets
 import pytest
 from modl.classification import OurLogisticRegressionCV
 
-@pytest.mark.parametrize("solver", ['cd', 'saga'])
+
+@pytest.mark.parametrize("solver", ['cd', 'saga', 'sag_sklearn'])
 @pytest.mark.parametrize("penalty", ['l1', 'l2'])
 @pytest.mark.parametrize("standardize", [True, False])
 @pytest.mark.parametrize("refit", [True, False])
@@ -35,7 +36,7 @@ def test_our_logistic_regression_cv(penalty, standardize, refit, solver):
 @pytest.mark.parametrize("penalty", ['l1', 'l2'])
 @pytest.mark.parametrize("standardize", [False, True])
 @pytest.mark.parametrize("refit", [True])
-def test_solver_same_result(penalty, standardize, refit,):
+def test_solver_same_result(penalty, standardize, refit, ):
     digits = datasets.load_digits()
 
     from sklearn.model_selection import train_test_split
@@ -67,7 +68,7 @@ def test_solver_same_result(penalty, standardize, refit,):
         classifier.fit(X_train, y_train)
     if not standardize:
         assert_array_almost_equal(classifier_cd.estimator_.coef_,
-                                  classifier_saga.estimator_.coef_, 2 )
+                                  classifier_saga.estimator_.coef_, 2)
     else:
         assert_array_almost_equal(classifier_cd.estimator_.steps[1][1].coef_,
                                   classifier_saga.estimator_.steps[1][1].coef_,
