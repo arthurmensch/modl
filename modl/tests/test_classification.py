@@ -7,9 +7,10 @@ from modl.classification import OurLogisticRegressionCV
 
 @pytest.mark.parametrize("solver", ['cd', 'saga', 'sag_sklearn'])
 @pytest.mark.parametrize("penalty", ['l1', 'l2'])
-@pytest.mark.parametrize("standardize", [True, False])
-@pytest.mark.parametrize("refit", [True, False])
-def test_our_logistic_regression_cv(penalty, standardize, refit, solver):
+@pytest.mark.parametrize("refit", [False, True])
+def test_our_logistic_regression_cv(penalty, refit, solver):
+    if solver == 'sag_sklearn' and penalty == 'l1':
+        pytest.skip()
     digits = datasets.load_digits()
 
     from sklearn.model_selection import train_test_split
@@ -22,7 +23,6 @@ def test_our_logistic_regression_cv(penalty, standardize, refit, solver):
     classifier = OurLogisticRegressionCV(
         alphas=[0.01, .1, 1],
         refit=refit,
-        standardize=standardize,
         solver=solver,
         tol=0.001,
         max_iter=100, cv=4, penalty=penalty,
@@ -34,9 +34,8 @@ def test_our_logistic_regression_cv(penalty, standardize, refit, solver):
 
 
 @pytest.mark.parametrize("penalty", ['l1', 'l2'])
-@pytest.mark.parametrize("standardize", [False, True])
 @pytest.mark.parametrize("refit", [True])
-def test_solver_same_result(penalty, standardize, refit, ):
+def test_solver_same_result(penalty, refit, ):
     digits = datasets.load_digits()
 
     from sklearn.model_selection import train_test_split
@@ -49,7 +48,6 @@ def test_solver_same_result(penalty, standardize, refit, ):
     classifier_cd = OurLogisticRegressionCV(
         alphas=[.1, 1, 10, 100, 1000],
         refit=refit,
-        standardize=standardize,
         solver='cd',
         tol=1e-10,
         max_iter=1000, cv=2, penalty=penalty,
@@ -58,7 +56,6 @@ def test_solver_same_result(penalty, standardize, refit, ):
     classifier_saga = OurLogisticRegressionCV(
         alphas=[.1, 1, 10, 100, 1000],
         refit=refit,
-        standardize=standardize,
         solver='saga',
         tol=1e-10,
         max_iter=1000, cv=2, penalty=penalty,
@@ -66,10 +63,5 @@ def test_solver_same_result(penalty, standardize, refit, ):
         random_state=0)
     for classifier in [classifier_cd, classifier_saga]:
         classifier.fit(X_train, y_train)
-    if not standardize:
-        assert_array_almost_equal(classifier_cd.estimator_.coef_,
-                                  classifier_saga.estimator_.coef_, 2)
-    else:
-        assert_array_almost_equal(classifier_cd.estimator_.steps[1][1].coef_,
-                                  classifier_saga.estimator_.steps[1][1].coef_,
-                                  1)
+    assert_array_almost_equal(classifier_cd.coef_,
+                              classifier_saga.coef_, 2)

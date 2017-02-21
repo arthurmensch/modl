@@ -1,98 +1,113 @@
 import copy
 import warnings
 
-from math import ceil
+from math import ceil, sqrt
 
 import numpy as np
 from lightning.impl.sag import SAGAClassifier
+from lightning.impl.sgd import SGDClassifier
 from sklearn.linear_model import LogisticRegression
 
 from modl.model_selection import MemGridSearchCV
 from nilearn._utils import CacheMixin
-from numpy import linalg as linalg
 from sklearn.base import TransformerMixin, BaseEstimator, clone
-from sklearn.cross_validation import check_cv
+from sklearn.linear_model.base import LinearClassifierMixin
+from sklearn.model_selection import check_cv
 from sklearn.externals.joblib import Parallel, delayed, Memory
-from sklearn.linear_model import LogisticRegressionCV
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import gen_batches
 
 from lightning.classification import CDClassifier
 
 
-def _project_multi_bases(X, bases, identity=None, n_jobs=1):
-    n_samples = X.shape[0]
-    batches = gen_batches(n_samples, int(ceil(n_samples / n_jobs)))
-    loadings = Parallel(n_jobs=n_jobs)(
-        delayed(_project_multi_bases_single)(X[batch], bases,
-                                             identity=identity)
-        for batch in batches)
-    loadings = np.vstack(loadings)
-    return loadings
-
-
-def _project_multi_bases_single(X, bases, identity=None):
-    n_samples, n_features = X.shape
-    n_samples = X.shape[0]
-    n_loadings = np.sum(np.array([basis.shape[0]
-                                  for basis in bases]))
-    if identity:
-        n_loadings += n_features
-    loadings = np.empty((n_samples, n_loadings), order='F')
-    offset = 0
-    for basis in bases:
-        S = np.sqrt((basis ** 2).sum(axis=1))
-        S[S == 0] = 1
-        basis = basis / S[:, np.newaxis]
-        loadings_length = basis.shape[0]
-        these_loadings = linalg.lstsq(basis.T, X.T)[0].T
-        S = np.sqrt((these_loadings ** 2).sum(axis=1))
-        S[S == 0] = 1
-        these_loadings /= S[:, np.newaxis]
-        loadings[:, offset:offset + loadings_length] = these_loadings
-        offset += loadings_length
-    if identity:
-        loadings[:, offset:] = X
-    return loadings
-
-
-class MultiProjectionTransformer(CacheMixin, TransformerMixin):
-    def __init__(self,
-                 bases=None,
-                 identity=True,
+class Projector(CacheMixin, TransformerMixin, BaseEstimator):
+    def __init__(self, basis,
+                 n_jobs=1,
                  memory=Memory(cachedir=None),
-                 memory_level=1,
-                 n_jobs=1):
-        self.bases = bases
-        self.identity = identity
-
+                 memory_level=1):
+        self.basis = basis
         self.n_jobs = n_jobs
 
         self.memory = memory
         self.memory_level = memory_level
 
     def fit(self, X=None, y=None):
-        if not isinstance(self.bases, list):
-            self.bases = [self.bases]
-        n_features = np.array([basis.shape[1]
-                               for basis in self.bases])
-        assert (np.all(n_features == n_features[0]))
         return self
 
     def transform(self, X, y=None):
-        loadings = self._cache(_project_multi_bases,
-                               ignore=['n_jobs'])(X, self.bases,
-                                                  identity=self.identity,
-                                                  n_jobs=self.n_jobs)
+        loadings = self._cache(_project)(X, self.basis,
+                                         n_jobs=self.n_jobs)
         return loadings
 
+    def inverse_transform(self, Xt):
+        rec = Xt.dot(self.basis)
+        return rec
 
-class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
+
+def _project(X, basis, n_jobs=1):
+    n_samples = X.shape[0]
+    batch_size = int(ceil(n_samples / n_jobs))
+    batches = gen_batches(n_samples, batch_size)
+    loadings = Parallel(n_jobs=n_jobs)(
+        delayed(_dot)(X[batch], basis.T) for batch in batches)
+    loadings = np.vstack(loadings)
+    return loadings
+
+
+def _dot(x, y):
+    return x.dot(y)
+
+
+class FeatureImportanceTransformer(TransformerMixin, BaseEstimator):
+    def __init__(self, feature_importance):
+        self.feature_importance = feature_importance
+
+    def fit(self, X=None, y=None):
+        return self
+
+    def transform(self, X, y=None):
+        X = X * self.feature_importance[np.newaxis, :]
+        return X
+
+    def inverse_transform(self, Xt):
+        Xt = Xt / self.feature_importance[np.newaxis, :]
+        return Xt
+
+
+def make_loadings_extractor(bases, scale_bases=True,
+                            standardize=True, scale_importance=True,
+                            memory=Memory(cachedir=None),
+                            n_jobs=1,
+                            memory_level=1):
+    if not isinstance(bases, list):
+        bases = [bases]
+    sizes = []
+    for basis in bases:
+        sizes.append(basis.shape[0])
+    if scale_bases:
+        for i, basis in enumerate(bases):
+            S = np.std(basis, axis=1)
+            S[S == 0] = 0
+            basis = basis / S[:, np.newaxis]
+            bases[i] = basis
+    bases = np.vstack(bases)
+    pipeline = [('projector', Projector(bases, n_jobs=n_jobs, memory=memory,
+                                        memory_level=memory_level))]
+    if standardize:
+        pipeline.append(('standard_scaler', StandardScaler()))
+    if scale_importance:
+        feature_importance = np.concatenate([np.ones(size)
+                                             / sqrt(size) for size in sizes])
+        pipeline.append(('feature_importance', FeatureImportanceTransformer(
+            feature_importance=feature_importance)))
+    return pipeline
+
+
+class OurLogisticRegressionCV(CacheMixin, BaseEstimator,
+                              LinearClassifierMixin):
     def __init__(self,
                  alphas=[1],
                  cv=10,
-                 standardize=False,
                  max_iter=100,
                  tol=1e-4,
                  random_state=None,
@@ -100,13 +115,13 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
                  solver='cd',
                  penalty='l2',
                  refit=False,
+                 fit_intercept=False,
                  n_jobs=1,
                  memory=Memory(cachedir=None),
                  memory_level=1,
                  verbose=0):
         self.memory = memory
 
-        self.standardize = standardize
         self.alphas = alphas
         self.tol = tol
         self.max_iter = max_iter
@@ -116,10 +131,9 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
         self.penalty = penalty
 
         self.refit = refit
-
-        self.multi_class = 'ovr'
-
+        self.multi_class = multi_class
         self.solver = solver
+        self.fit_intercept = fit_intercept
 
         self.cv = cv
 
@@ -128,62 +142,53 @@ class OurLogisticRegressionCV(CacheMixin, BaseEstimator):
         self.verbose = verbose
 
     def fit(self, X, y):
-        self.estimator_ = self._cache(_logistic_regression,
-                                      ignore=['n_jobs', 'verbose'],
-                                      func_memory_level=1)(
-            X, y, standardize=self.standardize, alphas=self.alphas,
-            solver=self.solver,
-            multi_class=self.multi_class,
-            tol=self.tol, max_iter=self.max_iter,
-            refit=self.refit,
-            penalty=self.penalty,
-            cv=self.cv,
-            n_jobs=self.n_jobs, random_state=self.random_state,
-            verbose=self.verbose)
+        self.coef_, self.intercept_, self.classes_ = \
+            self._cache(_logistic_regression,
+                        ignore=['n_jobs', 'verbose'],
+                        func_memory_level=1)(
+                X, y, alphas=self.alphas,
+                solver=self.solver,
+                multi_class=self.multi_class,
+                tol=self.tol, max_iter=self.max_iter,
+                fit_intercept=self.fit_intercept,
+                refit=self.refit,
+                penalty=self.penalty,
+                cv=self.cv,
+                n_jobs=self.n_jobs, random_state=self.random_state,
+                verbose=self.verbose)
         return self
-
-    def predict(self, X):
-        y = self.estimator_.predict(X)
-        return y
-
-    def score(self, X, y):
-        score = self.estimator_.score(X, y)
-        return score
 
 
 def _logistic_regression(X, y,
-                         standardize=False,
                          solver='cd',
                          alphas=[1],
+                         fit_intercept=False,
                          tol=1e-7,
                          max_iter=1000,
                          multi_class='ovr',
                          penalty='l2',
-                         early_tol=None,
-                         early_max_iter=None,
                          n_jobs=1,
                          cv=10,
                          verbose=0,
                          refit=False,
                          random_state=None):
     """Function to be cached"""
-    if early_tol is None:
-        early_tol = tol * 10
-    if early_max_iter is None:
-        early_max_iter = max_iter / 2
+    early_tol = tol * 10 if refit else tol
+    early_max_iter = max_iter / 2 if refit else max_iter
     n_samples = X.shape[0]
     cv = check_cv(cv, y=y, classifier=True)
-    if solver == 'sag_sklearn' and penalty == 'l1':
-        solver = 'saga'
-        warnings.warn('Falling back to SAGA estimator')
+
     if solver == 'cd':
+        if multi_class != 'ovr':
+            raise ValueError('Unsupported multiclass for solver `cd`.')
+        if fit_intercept:
+            raise ValueError('Unsupported intercept for solver `cd`.')
         lr = CDClassifier(loss='log', penalty=penalty,
                           C=1 / n_samples,
                           multiclass=False,
                           verbose=verbose,
-                          tol=early_tol if refit else tol,
-                          max_iter=early_max_iter if refit else
-                          max_iter,
+                          tol=early_tol,
+                          max_iter=early_max_iter,
                           random_state=random_state)
         lr = MemGridSearchCV(lr,
                              {'alpha': alphas},
@@ -195,10 +200,10 @@ def _logistic_regression(X, y,
     elif solver == 'sag_sklearn':
         Cs = 1. / (np.array(alphas) * n_samples)
         lr = LogisticRegression(penalty=penalty, solver='sag',
-                                fit_intercept=False,
+                                fit_intercept=fit_intercept,
                                 multi_class=multi_class,
-                                tol=early_tol if refit else tol,
-                                max_iter=early_max_iter if refit else max_iter)
+                                tol=early_tol,
+                                max_iter=early_max_iter, )
         lr = MemGridSearchCV(lr,
                              {'C': Cs},
                              cv=cv,
@@ -206,16 +211,20 @@ def _logistic_regression(X, y,
                              keep_best=not refit,
                              verbose=verbose,
                              n_jobs=n_jobs)
-
     elif solver == 'saga':
+        if multi_class != 'ovr':
+            raise ValueError("Unsupported multiclass != 'ovr'"
+                             "for solver `saga`.")
+        if fit_intercept:
+            raise ValueError("Unsupported intercept for solver `saga`.")
         if penalty == 'l1':
             lr = SAGAClassifier(eta='auto',
                                 loss='log',
                                 alpha=0,
                                 penalty='l1',
                                 verbose=verbose,
-                                tol=tol,
-                                max_iter=max_iter,
+                                tol=early_tol,
+                                max_iter=early_max_iter,
                                 random_state=random_state)
             lr = MemGridSearchCV(lr,
                                  {'beta': alphas},
@@ -229,8 +238,8 @@ def _logistic_regression(X, y,
                                 loss='log',
                                 beta=0,
                                 penalty=None,
-                                tol=tol,
-                                max_iter=max_iter,
+                                tol=early_tol,
+                                max_iter=early_max_iter,
                                 verbose=verbose,
                                 random_state=random_state)
             lr = MemGridSearchCV(lr,
@@ -240,52 +249,47 @@ def _logistic_regression(X, y,
                                  keep_best=not refit,
                                  verbose=verbose,
                                  n_jobs=n_jobs)
+        else:
+            raise ValueError('Non valid penalty %s' % penalty)
+    elif solver == 'sgd':
+        lr = SGDClassifier(loss='log', multiclass=multi_class,
+                           fit_intercept=fit_intercept,
+                           penalty=penalty,
+                           epsilon=early_tol,
+                           verbose=verbose,
+                           max_iter=early_max_iter,
+                           alpha=0)
+        lr = MemGridSearchCV(lr,
+                             {'alpha': alphas},
+                             cv=cv,
+                             refit=False,
+                             keep_best=not refit,
+                             verbose=verbose,
+                             n_jobs=n_jobs)
     else:
-        raise ValueError('Wrong solver.')
-    if standardize:
-        sc = StandardScaler()
-        estimator = Pipeline([('standard_scaler', sc),
-                              ('logistic_regression', lr)])
-    else:
-        estimator = lr
-    estimator.fit(X, y)
+        raise ValueError('Wrong solver %s' % solver)
+    lr.fit(X, y)
     if refit:
         lr = clone(lr.estimator).set_params(**lr.best_params_)
         lr.set_params(tol=tol, max_iter=max_iter)
+        lr.fit(X, y)
+        coef = lr.coef_
+        classes = lr.classes_
+        n_classes = classes.shape[0]
+        if hasattr(lr, 'intercept_'):
+            intercept = lr.intercept_
+        else:
+            intercept = np.zeros(n_classes)
     else:
+        classes = lr.best_estimators_[0].classes_
+        n_classes = classes.shape[0]
         coef = [best_estimator.coef_[..., np.newaxis]
                 for best_estimator in lr.best_estimators_]
+        coef = np.mean(np.concatenate(coef, axis=2), axis=2)
         if hasattr(lr.best_estimators_[0], 'intercept_'):
             intercept = [best_estimator.intercept_[..., np.newaxis]
                          for best_estimator in lr.best_estimators_]
+            intercept = np.mean(np.concatenate(intercept, axis=1), axis=1)
         else:
-            intercept = False
-        if hasattr(lr.best_estimators_[0], 'label_binarizer_'):
-            label_binarizer = lr.best_estimators_[0].label_binarizer_
-        else:
-            label_binarizer = False
-        if hasattr(lr.best_estimators_[0], 'classes_'):
-            classes = lr.best_estimators_[0].classes_
-            has_classes = True
-        else:
-            has_classes = False
-        lr = clone(lr.estimator).set_params(**lr.best_params_)
-        # External fit
-        if intercept:
-            lr.intercept_ = np.mean(np.concatenate(intercept, axis=1),
-                                    axis=1)
-        lr.coef_ = np.mean(np.concatenate(coef, axis=2), axis=2)
-        if label_binarizer:
-            lr.label_binarizer_ = label_binarizer
-        if has_classes:
-            lr.classes_ = classes
-        # XXX There might be a bug when some labels disappear in the split
-    if standardize:
-        estimator = Pipeline([('standard_scaler',
-                               sc),
-                              ('logistic_regression', lr)])
-    else:
-        estimator = lr
-    if refit:
-        estimator.fit(X, y)
-    return estimator
+            intercept = np.zeros(n_classes)
+    return coef, intercept, classes

@@ -1,3 +1,4 @@
+import copy
 from nilearn._utils import CacheMixin
 from sklearn.base import BaseEstimator, clone
 from sklearn.externals.joblib import Memory
@@ -6,6 +7,11 @@ from sklearn.utils.metaestimators import if_delegate_has_method
 
 def _cached_call(estimator, method, *args, **kwargs):
     func = getattr(estimator, method)
+    param_dict = estimator.get_params().keys()
+    for param in kwargs:
+        if param in param_dict:
+            value = kwargs.pop(param)
+            estimator.set_params(**{param: value})
     return func(*args, **kwargs)
 
 
@@ -14,11 +20,12 @@ def _cached_call(estimator, method, *args, **kwargs):
 class CachedEstimator(BaseEstimator, CacheMixin):
     def __init__(self, estimator, memory=Memory(cachedir=None),
                  ignore=None,
-                 memory_level=1):
+                 memory_level=1, ignored_params=None):
         self.estimator = estimator
         self.ignore = ignore
         self.memory = memory
         self.memory_level = memory_level
+        self.ignored_params = ignored_params
 
     def score(self, X, y=None):
         """Call score with cache.
@@ -41,8 +48,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         return self._cache(_cached_call,
                            func_memory_level=2,
                            ignore=self.ignore)(self.estimator_,
-                                                'score',
-                                                X, y)
+                                               'score',
+                                               X, y)
 
     @if_delegate_has_method(delegate=('estimator_', 'estimator'))
     def predict(self, X):
@@ -58,8 +65,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         return self._cache(_cached_call,
                            func_memory_level=2,
                            ignore=self.ignore)(self.estimator_,
-                                                'predict',
-                                                X)
+                                               'predict',
+                                               X)
 
     @if_delegate_has_method(delegate=('estimator_', 'estimator'))
     def predict_proba(self, X):
@@ -75,8 +82,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         return self._cache(_cached_call,
                            func_memory_level=2,
                            ignore=self.ignore)(self.estimator_,
-                                                'predict_proba',
-                                                X)
+                                               'predict_proba',
+                                               X)
 
     @if_delegate_has_method(delegate=('estimator_', 'estimator'))
     def predict_log_proba(self, X):
@@ -91,8 +98,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         return self._cache(_cached_call,
                            func_memory_level=2,
                            ignore=self.ignore)(self.estimator_,
-                                                'predict_log_proba',
-                                                X)
+                                               'predict_log_proba',
+                                               X)
 
     @if_delegate_has_method(delegate=('estimator_', 'estimator'))
     def decision_function(self, X):
@@ -107,8 +114,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         return self._cache(_cached_call,
                            func_memory_level=2,
                            ignore=self.ignore)(self.estimator_,
-                                                'decision_function',
-                                                X)
+                                               'decision_function',
+                                               X)
 
     @if_delegate_has_method(delegate=('estimator_', 'estimator'))
     def transform(self, X):
@@ -124,8 +131,8 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         return self._cache(_cached_call,
                            func_memory_level=2,
                            ignore=self.ignore)(self.estimator_,
-                                                'transform',
-                                                X)
+                                               'transform',
+                                               X)
 
     @if_delegate_has_method(delegate=('estimator_', 'estimator'))
     def inverse_transform(self, Xt):
@@ -141,8 +148,19 @@ class CachedEstimator(BaseEstimator, CacheMixin):
         return self._cache(_cached_call,
                            func_memory_level=2,
                            ignore=self.ignore)(self.estimator_,
-                                                'inverse_transform',
-                                                Xt)
+                                               'inverse_transform',
+                                               Xt)
+
+    def _cache(self, func, func_memory_level=1, shelve=False, **kwargs):
+        param_dict = self.estimator.get_params()
+        ignored_param_dict = {param: param_dict[param]
+                              for param in self.ignored_params}
+        res = CacheMixin._cache(self, func,
+                                func_memory_level=func_memory_level,
+                                shelve=shelve,
+                                **ignored_param_dict,
+                                **kwargs)
+        return res
 
     def fit(self, X, y):
         """Call fit with cache.
@@ -157,36 +175,43 @@ class CachedEstimator(BaseEstimator, CacheMixin):
             Target relative to X for classification or regression;
             None for unsupervised learning.
         """
-        # Strip attributes
         self.estimator_ = clone(self.estimator)
+        # self.estimator_.__getstate__ = self._getstate
         self.estimator_ = self._cache(_cached_call,
                                       func_memory_level=1,
-                                      ignore=self.ignore)(self.estimator_,
-                                                           'fit',
-                                                           X, y)
+                                      ignore=self.ignored_params)(
+            self.estimator_, 'fit', X, y)
         return self
+    #
+    # def _getstate(self):
+    #     print('Monkey patch')
+    #     state = self.estimator_.__dict__
+    #     if self.ignored_attributes:
+    #         for attribute in self.ignored_attributes:
+    #             state.pop(attribute, None)
+    #     return state
 
-    def __setattr__(self, name, value):
-        if name in ['memory', 'memory_level', 'ignore',
-                    'estimator', 'estimator_']:
-            super().__setattr__(name, value)
-        else:
-            if hasattr(self.estimator, name):
-                setattr(self.estimator, name, value)
-                if hasattr(self, 'estimator_'):
-                    setattr(self.estimator_, name, value)
-            else:
-                super().__setattr__(name, value)
 
-    def __getattr__(self, name):
-        if name in ['memory', 'memory_level', 'ignore',
-                    'estimator', 'estimator_']:
-            return super().__getattr__(name)
-        else:
-            if hasattr(self.estimator_, name):
-                return getattr(self.estimator_, name)
-            elif hasattr(self.estimator, name):
-                return getattr(self.estimator, name)
-            else:
-                return super().__getattr__(name)
-
+        # def __setattr__(self, name, value):
+        #     if name in ['memory', 'memory_level', 'ignore',
+        #                 'estimator', 'estimator_']:
+        #         super().__setattr__(name, value)
+        #     else:
+        #         if hasattr(self.estimator, name):
+        #             setattr(self.estimator, name, value)
+        #             if hasattr(self, 'estimator_'):
+        #                 setattr(self.estimator_, name, value)
+        #         else:
+        #             super().__setattr__(name, value)
+        #
+        # def __getattr__(self, name):
+        #     if name in ['memory', 'memory_level', 'ignore',
+        #                 'estimator', 'estimator_']:
+        #         return super().__getattr__(name)
+        #     else:
+        #         if hasattr(self.estimator_, name):
+        #             return getattr(self.estimator_, name)
+        #         elif hasattr(self.estimator, name):
+        #             return getattr(self.estimator, name)
+        #         else:
+        #             return super().__getattr__(name)

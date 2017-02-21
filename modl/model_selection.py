@@ -34,18 +34,48 @@ class MemGridSearchCV(GridSearchCV):
                          return_train_score=return_train_score, )
         self.keep_best = keep_best
 
-    def _fit(self, X, y, groups, parameter_iterable):
-        """Actual fitting,  performing the search over parameters."""
+    def fit(self, X, y=None, groups=None, **fit_params):
+        """Run fit with all sets of parameters.
 
+        Parameters
+        ----------
+
+        X : array-like, shape = [n_samples, n_features]
+            Training vector, where n_samples is the number of samples and
+            n_features is the number of features.
+
+        y : array-like, shape = [n_samples] or [n_samples, n_output], optional
+            Target relative to X for classification or regression;
+            None for unsupervised learning.
+
+        groups : array-like, with shape (n_samples,), optional
+            Group labels for the samples used while splitting the dataset into
+            train/test set.
+
+        **fit_params : dict of string -> object
+            Parameters passed to the ``fit`` method of the estimator
+        """
+        if self.fit_params:
+            warnings.warn('"fit_params" as a constructor argument was '
+                          'deprecated in version 0.19 and will be removed '
+                          'in version 0.21. Pass fit parameters to the '
+                          '"fit" method instead.', DeprecationWarning)
+            if fit_params:
+                warnings.warn('Ignoring fit_params passed as a constructor '
+                              'argument in favor of keyword arguments to '
+                              'the "fit" method.', RuntimeWarning)
+            else:
+                fit_params = self.fit_params
         estimator = self.estimator
-
         cv = check_cv(self.cv, y, classifier=is_classifier(estimator))
         self.scorer_ = check_scoring(self.estimator, scoring=self.scoring)
 
         X, y, groups = indexable(X, y, groups)
         n_splits = cv.get_n_splits(X, y, groups)
-        if self.verbose > 0 and isinstance(parameter_iterable, Sized):
-            n_candidates = len(parameter_iterable)
+        # Regenerate parameter iterable for each fit
+        candidate_params = list(self._get_param_iterator())
+        n_candidates = len(candidate_params)
+        if self.verbose > 0:
             print("Fitting {0} folds for each of {1} candidates, totalling"
                   " {2} fits".format(n_splits, n_candidates,
                                      n_candidates * n_splits))
@@ -53,45 +83,39 @@ class MemGridSearchCV(GridSearchCV):
         base_estimator = clone(self.estimator)
         pre_dispatch = self.pre_dispatch
 
-        cv_iter = list(cv.split(X, y, groups))
         out = Parallel(
             n_jobs=self.n_jobs, verbose=self.verbose,
             pre_dispatch=pre_dispatch
         )(delayed(_fit_and_score)(clone(base_estimator), X, y, self.scorer_,
                                   train, test, self.verbose, parameters,
-                                  fit_params=self.fit_params,
+                                  fit_params=fit_params,
                                   return_train_score=self.return_train_score,
                                   return_n_test_samples=True,
-                                  return_times=True, return_parameters=True,
+                                  return_times=True, return_parameters=False,
                                   return_estimator=self.keep_best,
                                   error_score=self.error_score)
-          for parameters in parameter_iterable
-          for train, test in cv_iter)
+          for train, test in cv.split(X, y, groups)
+          for parameters in candidate_params)
 
         # if one choose to see train score, "out" will contain train score info
-        if not self.keep_best:
-            if self.return_train_score:
-                (train_scores, test_scores, test_sample_counts,
-                 fit_time, score_time, parameters) = zip(*out)
-            else:
-                (test_scores, test_sample_counts,
-                 fit_time, score_time, parameters) = zip(*out)
+
+        out = list(zip(*out))
+        if self.keep_best:
+            out, estimators = out[:-1], out[-1]
+
+        if self.return_train_score:
+            (train_scores, test_scores, test_sample_counts, fit_time,
+             score_time) = out
         else:
-            if self.return_train_score:
-                (train_scores, test_scores, test_sample_counts,
-                 fit_time, score_time, parameters, estimators) = zip(*out)
-            else:
-                (test_scores, test_sample_counts,
-                 fit_time, score_time, parameters, estimators) = zip(*out)
-        candidate_params = parameters[::n_splits]
-        n_candidates = len(candidate_params)
+            (test_scores, test_sample_counts, fit_time, score_time) = out
 
         results = dict()
 
         def _store(key_name, array, weights=None, splits=False, rank=False):
             """A small helper to store the scores/times to the cv_results_"""
-            array = np.array(array, dtype=np.float64).reshape(n_candidates,
-                                                              n_splits)
+            # When iterated first by splits, then by parameters
+            array = np.array(array, dtype=np.float64).reshape(n_splits,
+                                                              n_candidates).T
             if splits:
                 for split_i in range(n_splits):
                     results["split%d_%s"
@@ -111,7 +135,7 @@ class MemGridSearchCV(GridSearchCV):
 
         # Computed the (weighted) mean and std for test scores alone
         # NOTE test_sample counts (weights) remain the same for all candidates
-        test_sample_counts = np.array(test_sample_counts[:n_splits],
+        test_sample_counts = np.array(test_sample_counts[::n_candidates],
                                       dtype=np.int)
 
         _store('test_score', test_scores, splits=True, rank=True,
@@ -128,7 +152,7 @@ class MemGridSearchCV(GridSearchCV):
         # applicable for that candidate. Use defaultdict as each candidate may
         # not contain all the params
         param_results = defaultdict(partial(MaskedArray,
-                                            np.empty(n_candidates, ),
+                                            np.empty(n_candidates,),
                                             mask=True,
                                             dtype=object))
         for cand_i, params in enumerate(candidate_params):
@@ -162,9 +186,9 @@ class MemGridSearchCV(GridSearchCV):
             best_estimator = clone(base_estimator).set_params(
                 **best_parameters)
             if y is not None:
-                best_estimator.fit(X, y, **self.fit_params)
+                best_estimator.fit(X, y, **fit_params)
             else:
-                best_estimator.fit(X, **self.fit_params)
+                best_estimator.fit(X, **fit_params)
             self.best_estimator_ = best_estimator
         return self
 
@@ -244,13 +268,13 @@ def _fit_and_score(estimator, X, y, scorer, train, test, verbose,
             msg = ''
         else:
             msg = '%s' % (', '.join('%s=%s' % (k, v)
-                                    for k, v in parameters.items()))
+                          for k, v in parameters.items()))
         print("[CV] %s %s" % (msg, (64 - len(msg)) * '.'))
 
     # Adjust length of sample weights
     fit_params = fit_params if fit_params is not None else {}
     fit_params = dict([(k, _index_param_value(X, v, train))
-                       for k, v in fit_params.items()])
+                      for k, v in fit_params.items()])
 
     if parameters is not None:
         estimator.set_params(**parameters)

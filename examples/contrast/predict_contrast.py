@@ -8,14 +8,16 @@ from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import make_pipeline
+from sklearn.pipeline import make_pipeline, Pipeline
 from sklearn.preprocessing import LabelEncoder
 
-from modl.classification import MultiProjectionTransformer, \
-    OurLogisticRegressionCV
+from modl.classification import OurLogisticRegressionCV, \
+    make_loadings_extractor
 from modl.datasets import get_data_dirs
 from modl.input_data.fmri.unmask import get_raw_contrast_data
 from modl.utils.system import get_cache_dirs
+
+from sklearn.externals.joblib import dump
 
 predict_contrast = Experiment('predict_contrast')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
@@ -24,28 +26,26 @@ predict_contrast.observers.append(observer)
 
 @predict_contrast.config
 def config():
-    standardize = True
-    alphas = np.logspace(-2, 2, 10).tolist()
+    alphas = np.logspace(-4, 4, 20).tolist()
     n_jobs = 30
     verbose = 2
     seed = 2
-    max_iter = 1000
+    max_iter = 3000
     tol = 1e-7
     alpha = 1e-4
-    identity = False
-    multi_class = 'multinomial'
-    refit = False
+    multi_class = 'ovr'
+    fit_intercept = False
+    refit = True
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
     n_subjects = 788
     penalty = 'l2'
-    solver = 'sag_sklearn'
-
+    solver = 'saga'
 
 
 @predict_contrast.automain
-def run(standardize, alphas, tol,
+def run(alphas, tol,
         n_components_list,
         alpha,
         max_iter, n_jobs,
@@ -53,10 +53,10 @@ def run(standardize, alphas, tol,
         solver,
         train_size,
         verbose,
+        fit_intercept,
         multi_class,
         n_subjects,
         refit,
-        identity,
         penalty,
         _run,
         _seed):
@@ -102,13 +102,13 @@ def run(standardize, alphas, tol,
                    y.loc[test_subjects]], keys=['train', 'test'],
                   names=['fold'])
 
-    l1_log_classifier = OurLogisticRegressionCV(
+    classifier = OurLogisticRegressionCV(
         solver=solver,
         memory=memory,
         memory_level=2,
         alphas=alphas,
         penalty=penalty,
-        standardize=standardize,
+        fit_intercept=fit_intercept,
         multi_class=multi_class,
         refit=refit,
         random_state=_seed,
@@ -117,17 +117,18 @@ def run(standardize, alphas, tol,
         n_jobs=n_jobs,
         verbose=verbose,
     )
-    imgs_transformer = MultiProjectionTransformer(identity=identity,
-                                                  bases=components,
-                                                  memory=memory,
-                                                  memory_level=1,
-                                                  n_jobs=n_jobs)
-    piped_classifier = make_pipeline(imgs_transformer, l1_log_classifier)
+    pipeline = make_loadings_extractor(components,
+                                       standardize=True,
+                                       scale_importance=True,
+                                       scale_bases=True,
+                                       n_jobs=n_jobs,
+                                       memory=memory)
+    pipeline.append(('logistic_regression', classifier))
+    estimator = Pipeline(pipeline, memory=memory)
     print('Transform and fit data')
-    piped_classifier.fit(X.loc['train'].values,
-                         y.loc['train'].values)
+    estimator.fit(X.loc['train'].values, y.loc['train'].values)
 
-    predicted_y = piped_classifier.predict(X.values)
+    predicted_y = estimator.predict(X.values)
     predicted_labels = label_encoder.inverse_transform(predicted_y)
     true_labels = label_encoder.inverse_transform(y.values)
     prediction = pd.DataFrame(data=list(zip(true_labels, predicted_labels)),
@@ -158,3 +159,6 @@ def run(standardize, alphas, tol,
     prediction.to_csv(join(artifact_dir, 'prediction.csv'))
     _run.add_artifact(join(artifact_dir, 'prediction.csv'),
                       name='prediction.csv')
+
+    dump(label_encoder, join(artifact_dir, 'label_encoder.pkl'))
+    dump(estimator, join(artifact_dir, 'estimator.pkl'))
