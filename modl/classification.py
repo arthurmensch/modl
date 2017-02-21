@@ -2,6 +2,7 @@ import copy
 import warnings
 
 from math import ceil, sqrt
+from numpy import linalg
 
 import numpy as np
 from lightning.impl.sag import SAGAClassifier
@@ -49,13 +50,15 @@ def _project(X, basis, n_jobs=1):
     batch_size = int(ceil(n_samples / n_jobs))
     batches = gen_batches(n_samples, batch_size)
     loadings = Parallel(n_jobs=n_jobs)(
-        delayed(_dot)(X[batch], basis.T) for batch in batches)
-    loadings = np.vstack(loadings)
+        delayed(_lstsq)(basis.T, X[batch].T) for batch in batches)
+    loadings = np.hstack(loadings).T
     return loadings
 
 
-def _dot(x, y):
-    return x.dot(y)
+def _lstsq(a, b):
+    out, _, _, _ = linalg.lstsq(a, b)
+    print('out', out)
+    return out
 
 
 class FeatureImportanceTransformer(TransformerMixin, BaseEstimator):
@@ -84,6 +87,7 @@ def make_loadings_extractor(bases, scale_bases=True,
     sizes = []
     for basis in bases:
         sizes.append(basis.shape[0])
+    sizes = np.array(sizes)
     if scale_bases:
         for i, basis in enumerate(bases):
             S = np.std(basis, axis=1)
@@ -96,7 +100,8 @@ def make_loadings_extractor(bases, scale_bases=True,
     if standardize:
         pipeline.append(('standard_scaler', StandardScaler()))
     if scale_importance:
-        feature_importance = np.concatenate([np.ones(size)
+        const = np.sum(1. / np.sqrt(sizes))
+        feature_importance = np.concatenate([np.ones(size) * const
                                              / sqrt(size) for size in sizes])
         pipeline.append(('feature_importance', FeatureImportanceTransformer(
             feature_importance=feature_importance)))

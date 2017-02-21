@@ -27,21 +27,23 @@ predict_contrast.observers.append(observer)
 @predict_contrast.config
 def config():
     alphas = np.logspace(-4, 4, 20).tolist()
+    standardize = True
+    scale_importance = True
     n_jobs = 30
     verbose = 2
     seed = 2
     max_iter = 3000
     tol = 1e-7
     alpha = 1e-4
-    multi_class = 'ovr'
-    fit_intercept = False
-    refit = True
-    n_components_list = [16, 64, 256]
+    multi_class = 'multinomial'
+    fit_intercept = True
+    refit = False
+    n_components_list = [16]
     test_size = 0.1
     train_size = None
-    n_subjects = 788
+    n_subjects = 20
     penalty = 'l2'
-    solver = 'saga'
+    solver = 'sag_sklearn'
 
 
 @predict_contrast.automain
@@ -56,6 +58,8 @@ def run(alphas, tol,
         fit_intercept,
         multi_class,
         n_subjects,
+        scale_importance,
+        standardize,
         refit,
         penalty,
         _run,
@@ -118,8 +122,8 @@ def run(alphas, tol,
         verbose=verbose,
     )
     pipeline = make_loadings_extractor(components,
-                                       standardize=True,
-                                       scale_importance=True,
+                                       standardize=standardize,
+                                       scale_importance=scale_importance,
                                        scale_bases=True,
                                        n_jobs=n_jobs,
                                        memory=memory)
