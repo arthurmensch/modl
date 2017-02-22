@@ -28,10 +28,13 @@ _INTERCEPT_SCALER = 100
 class Projector(CacheMixin, TransformerMixin, BaseEstimator):
     def __init__(self, basis,
                  n_jobs=1,
+                 identity=False,
                  memory=Memory(cachedir=None),
                  memory_level=1):
         self.basis = basis
         self.n_jobs = n_jobs
+
+        self.identity = identity
 
         self.memory = memory
         self.memory_level = memory_level
@@ -42,10 +45,14 @@ class Projector(CacheMixin, TransformerMixin, BaseEstimator):
     def transform(self, X, y=None):
         loadings = self._cache(_project)(X, self.basis,
                                          n_jobs=self.n_jobs)
+        if self.identity:
+            loadings = np.concatenate([loadings, X], axis=1)
         return loadings
 
     def inverse_transform(self, Xt):
         rec = Xt.dot(self.basis)
+        if self.identity:
+            rec += Xt
         return rec
 
 
@@ -81,6 +88,7 @@ class FeatureImportanceTransformer(TransformerMixin, BaseEstimator):
 
 
 def make_loadings_extractor(bases, scale_bases=True,
+                            identity=False,
                             standardize=True, scale_importance=True,
                             memory=Memory(cachedir=None),
                             n_jobs=1,
@@ -90,6 +98,8 @@ def make_loadings_extractor(bases, scale_bases=True,
     sizes = []
     for basis in bases:
         sizes.append(basis.shape[0])
+    if identity:
+        sizes.append(bases[0].shape[1])
     sizes = np.array(sizes)
     if scale_bases:
         for i, basis in enumerate(bases):
@@ -99,6 +109,7 @@ def make_loadings_extractor(bases, scale_bases=True,
             bases[i] = basis
     bases = np.vstack(bases)
     pipeline = [('projector', Projector(bases, n_jobs=n_jobs, memory=memory,
+                                        identity=identity,
                                         memory_level=memory_level)),
                 ('standard_scaler', StandardScaler(with_std=standardize))]
     if scale_importance in ['linear', 'sqrt']:

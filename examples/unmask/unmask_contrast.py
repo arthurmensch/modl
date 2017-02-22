@@ -19,7 +19,7 @@ unmask_task.observers.append(observer)
 
 @unmask_task.config
 def config():
-    n_jobs = 30
+    n_jobs = 10
     batch_size = 1200
 
 
@@ -32,7 +32,7 @@ def run(n_jobs, batch_size, _run):
     mask = dataset.mask
 
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
-                        'contrast', 'hcp')
+                        'contrast', 'hcp', '23')
     _run.info['artifact_dir'] = artifact_dir
 
     memory = Memory(cachedir=None)
