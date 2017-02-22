@@ -98,10 +98,13 @@ def make_loadings_extractor(bases, scale_bases=True,
                                         memory_level=memory_level))]
     if standardize:
         pipeline.append(('standard_scaler', StandardScaler()))
-    if scale_importance:
-        const = np.sum(1. / np.sqrt(sizes))
-        feature_importance = np.concatenate([np.ones(size) * const
-                                             / sqrt(size) for size in sizes])
+    if scale_importance in ['linear', 'sqrt']:
+        if scale_importance == 'sqrt':
+            sizes = np.sqrt(sizes)
+        const = np.sum(1. / sizes)
+        feature_importance = np.concatenate([np.ones(size) *
+                                             const / size
+                                             for size in sizes])
         pipeline.append(('feature_importance', FeatureImportanceTransformer(
             feature_importance=feature_importance)))
     return pipeline
@@ -226,7 +229,7 @@ def _logistic_regression(X, y,
                                 loss='log',
                                 alpha=0,
                                 penalty='l1',
-                                verbose=verbose,
+                                verbose=0,
                                 tol=early_tol,
                                 max_iter=early_max_iter,
                                 random_state=random_state)
@@ -244,7 +247,7 @@ def _logistic_regression(X, y,
                                 penalty=None,
                                 tol=early_tol,
                                 max_iter=early_max_iter,
-                                verbose=verbose,
+                                verbose=0,
                                 random_state=random_state)
             lr = MemGridSearchCV(lr,
                                  {'alpha': alphas},
@@ -260,7 +263,7 @@ def _logistic_regression(X, y,
                            fit_intercept=fit_intercept,
                            penalty=penalty,
                            epsilon=early_tol,
-                           verbose=verbose,
+                           verbose=0,
                            max_iter=early_max_iter,
                            alpha=0)
         lr = MemGridSearchCV(lr,

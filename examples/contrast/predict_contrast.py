@@ -28,7 +28,7 @@ predict_contrast.observers.append(observer)
 def config():
     alphas = np.logspace(-4, 4, 20).tolist()
     standardize = True
-    scale_importance = True
+    scale_importance = False
     n_jobs = 30
     verbose = 2
     seed = 2
@@ -37,8 +37,8 @@ def config():
     alpha = 1e-4
     multi_class = 'multinomial'
     fit_intercept = True
-    refit = False
-    n_components_list = [16]
+    refit = True
+    n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
     n_subjects = 788
