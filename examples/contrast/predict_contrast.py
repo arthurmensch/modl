@@ -37,6 +37,7 @@ def config():
     alpha = 1e-4
     multi_class = 'ovr'
     fit_intercept = True
+    identity = False
     refit = True
     n_components_list = [16, 64, 256]
     test_size = 0.1
@@ -55,6 +56,7 @@ def run(alphas, tol,
         solver,
         train_size,
         verbose,
+        identity,
         fit_intercept,
         multi_class,
         n_subjects,
