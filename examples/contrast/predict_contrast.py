@@ -41,7 +41,7 @@ def config():
     n_components_list = [16]
     test_size = 0.1
     train_size = None
-    n_subjects = 20
+    n_subjects = 788
     penalty = 'l2'
     solver = 'sag_sklearn'
 

@@ -57,7 +57,6 @@ def _project(X, basis, n_jobs=1):
 
 def _lstsq(a, b):
     out, _, _, _ = linalg.lstsq(a, b)
-    print('out', out)
     return out
 
 
