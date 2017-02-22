@@ -9,7 +9,7 @@ from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 monkey_patch_nifti_image()
 
 from modl.datasets import get_data_dirs
-from modl.datasets.hcp import fetch_hcp, INTERESTING_CONTRASTS
+from modl.datasets.hcp import fetch_hcp, INTERESTING_CONTRASTS_EXTENDED
 from modl.input_data.fmri.unmask import create_raw_contrast_data
 
 unmask_task = Experiment('unmask_task')
@@ -19,7 +19,7 @@ unmask_task.observers.append(observer)
 
 @unmask_task.config
 def config():
-    n_jobs = 10
+    n_jobs = 30
     batch_size = 1200
 
 
@@ -27,7 +27,7 @@ def config():
 def run(n_jobs, batch_size, _run):
     dataset = fetch_hcp()
     imgs = dataset.contrasts
-    interesting_con = list(INTERESTING_CONTRASTS.keys())
+    interesting_con = INTERESTING_CONTRASTS_EXTENDED
     imgs = imgs.loc[(slice(None), slice(None), interesting_con), :]
     mask = dataset.mask
 

@@ -5,10 +5,11 @@ import pytest
 from modl.classification import OurLogisticRegressionCV
 
 
-@pytest.mark.parametrize("solver", ['cd', 'saga', 'sag_sklearn'])
+@pytest.mark.parametrize("solver", ['sgd_sklearn'])
 @pytest.mark.parametrize("penalty", ['l1', 'l2'])
 @pytest.mark.parametrize("refit", [False, True])
-def test_our_logistic_regression_cv(penalty, refit, solver):
+@pytest.mark.parametrize("fit_intercept", [True])
+def test_our_logistic_regression_cv(penalty, refit, solver, fit_intercept):
     if solver == 'sag_sklearn' and penalty == 'l1':
         pytest.skip()
     digits = datasets.load_digits()
@@ -26,6 +27,7 @@ def test_our_logistic_regression_cv(penalty, refit, solver):
         solver=solver,
         tol=0.001,
         max_iter=100, cv=4, penalty=penalty,
+        fit_intercept=fit_intercept,
         verbose=0,
         random_state=0)
     classifier.fit(X_train, y_train)

@@ -20,6 +20,10 @@ from sklearn.utils import gen_batches
 
 from lightning.classification import CDClassifier
 
+from sklearn.linear_model import SGDClassifier as sklearn_SGDClassifier
+
+_INTERCEPT_SCALER = 100
+
 
 class Projector(CacheMixin, TransformerMixin, BaseEstimator):
     def __init__(self, basis,
@@ -95,16 +99,18 @@ def make_loadings_extractor(bases, scale_bases=True,
             bases[i] = basis
     bases = np.vstack(bases)
     pipeline = [('projector', Projector(bases, n_jobs=n_jobs, memory=memory,
-                                        memory_level=memory_level))]
-    if standardize:
-        pipeline.append(('standard_scaler', StandardScaler()))
+                                        memory_level=memory_level)),
+                ('standard_scaler', StandardScaler(with_std=standardize))]
     if scale_importance in ['linear', 'sqrt']:
         if scale_importance == 'sqrt':
-            sizes = np.sqrt(sizes)
-        const = np.sum(1. / sizes)
+            scales = np.sqrt(sizes)
+        else:
+            scales = sizes
+        const = 1. / np.sum(1. / scales)
         feature_importance = np.concatenate([np.ones(size) *
-                                             const / size
-                                             for size in sizes])
+                                             const / scale
+                                             for size, scale in
+                                             zip(sizes, scales)])
         pipeline.append(('feature_importance', FeatureImportanceTransformer(
             feature_importance=feature_importance)))
     return pipeline
@@ -185,11 +191,14 @@ def _logistic_regression(X, y,
     n_samples = X.shape[0]
     cv = check_cv(cv, y=y, classifier=True)
 
+    if fit_intercept:
+        if solver not in ['sgd', 'sag_sklearn', 'sgd_sklearn']:
+            X = np.concatenate(
+                [X, np.ones((n_samples, 1)) * _INTERCEPT_SCALER], axis=1)
+
     if solver == 'cd':
         if multi_class != 'ovr':
             raise ValueError('Unsupported multiclass for solver `cd`.')
-        if fit_intercept:
-            raise ValueError('Unsupported intercept for solver `cd`.')
         lr = CDClassifier(loss='log', penalty=penalty,
                           C=1 / n_samples,
                           multiclass=False,
@@ -222,8 +231,6 @@ def _logistic_regression(X, y,
         if multi_class != 'ovr':
             raise ValueError("Unsupported multiclass != 'ovr'"
                              "for solver `saga`.")
-        if fit_intercept:
-            raise ValueError("Unsupported intercept for solver `saga`.")
         if penalty == 'l1':
             lr = SAGAClassifier(eta='auto',
                                 loss='log',
@@ -262,10 +269,25 @@ def _logistic_regression(X, y,
         lr = SGDClassifier(loss='log', multiclass=multi_class,
                            fit_intercept=fit_intercept,
                            penalty=penalty,
-                           epsilon=early_tol,
                            verbose=0,
                            max_iter=early_max_iter,
                            alpha=0)
+        lr = MemGridSearchCV(lr,
+                             {'alpha': alphas},
+                             cv=cv,
+                             refit=False,
+                             keep_best=not refit,
+                             verbose=verbose,
+                             n_jobs=n_jobs)
+    elif solver == 'sgd_sklearn':
+        if multi_class != 'ovr':
+            raise ValueError("Unsupported multiclass != 'ovr'"
+                             "for solver `sklearn_sgd`.")
+        lr = sklearn_SGDClassifier(loss='log',
+                                   fit_intercept=fit_intercept,
+                                   penalty=penalty,
+                                   verbose=0,
+                                   n_iter=early_max_iter)
         lr = MemGridSearchCV(lr,
                              {'alpha': alphas},
                              cv=cv,
@@ -278,13 +300,22 @@ def _logistic_regression(X, y,
     lr.fit(X, y)
     if refit:
         lr = clone(lr.estimator).set_params(**lr.best_params_)
-        lr.set_params(tol=tol, max_iter=max_iter)
+        if isinstance(lr, SGDClassifier):
+            lr.set_params(max_iter=max_iter)
+        elif isinstance(lr, sklearn_SGDClassifier):
+            lr.set_params(n_iter=max_iter)
+        else:
+            lr.set_params(tol=tol, max_iter=max_iter)
         lr.fit(X, y)
         coef = lr.coef_
         classes = lr.classes_
         n_classes = classes.shape[0]
-        if hasattr(lr, 'intercept_'):
-            intercept = lr.intercept_
+        if fit_intercept:
+            if solver in ['sgd', 'sag_sklearn', 'sgd_sklearn']:
+                intercept = lr.intercept_
+            else:
+                intercept = coef[:, -1] * _INTERCEPT_SCALER
+                coef = coef[:, :-1]
         else:
             intercept = np.zeros(n_classes)
     else:
@@ -293,10 +324,14 @@ def _logistic_regression(X, y,
         coef = [best_estimator.coef_[..., np.newaxis]
                 for best_estimator in lr.best_estimators_]
         coef = np.mean(np.concatenate(coef, axis=2), axis=2)
-        if hasattr(lr.best_estimators_[0], 'intercept_'):
-            intercept = [best_estimator.intercept_[..., np.newaxis]
-                         for best_estimator in lr.best_estimators_]
-            intercept = np.mean(np.concatenate(intercept, axis=1), axis=1)
+        if fit_intercept:
+            if solver in ['sgd', 'sag_sklearn', 'sgd_sklearn']:
+                intercept = [best_estimator.intercept_[..., np.newaxis]
+                             for best_estimator in lr.best_estimators_]
+                intercept = np.mean(np.concatenate(intercept, axis=1), axis=1)
+            else:
+                intercept = coef[:, -1] * _INTERCEPT_SCALER
+                coef = coef[:, :-1]
         else:
             intercept = np.zeros(n_classes)
     return coef, intercept, classes
