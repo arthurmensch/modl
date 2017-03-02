@@ -16,7 +16,7 @@ from sklearn.linear_model.base import LinearClassifierMixin
 from sklearn.model_selection import check_cv
 from sklearn.externals.joblib import Parallel, delayed, Memory
 from sklearn.preprocessing import StandardScaler
-from sklearn.utils import gen_batches
+from sklearn.utils import gen_batches, check_array
 
 from lightning.classification import CDClassifier
 
@@ -208,6 +208,11 @@ def _logistic_regression(X, y,
                 [X, np.ones((n_samples, 1)) * _INTERCEPT_SCALER], axis=1)
 
     if solver == 'cd':
+        X = check_array(X, order='F', dtype=np.float64)
+    else:
+        X = check_array(X, order='C', dtype=np.float64)
+
+    if solver == 'cd':
         if multi_class != 'ovr':
             raise ValueError('Unsupported multiclass for solver `cd`.')
         lr = CDClassifier(loss='log', penalty=penalty,
@@ -227,6 +232,23 @@ def _logistic_regression(X, y,
     elif solver == 'sag_sklearn':
         Cs = 1. / (np.array(alphas) * n_samples)
         lr = LogisticRegression(penalty=penalty, solver='sag',
+                                fit_intercept=fit_intercept,
+                                multi_class=multi_class,
+                                tol=early_tol,
+                                max_iter=early_max_iter, )
+        lr = MemGridSearchCV(lr,
+                             {'C': Cs},
+                             cv=cv,
+                             refit=False,
+                             keep_best=not refit,
+                             verbose=verbose,
+                             n_jobs=n_jobs)
+    elif solver == 'liblinear':
+        if multi_class != 'ovr':
+            raise ValueError('Unsupported multiclass for solver `liblinear`.')
+        Cs = 1. / (np.array(alphas) * n_samples)
+        lr = LogisticRegression(penalty=penalty,
+                                solver='liblinear',
                                 fit_intercept=fit_intercept,
                                 multi_class=multi_class,
                                 tol=early_tol,

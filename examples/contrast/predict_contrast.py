@@ -28,7 +28,7 @@ predict_contrast.observers.append(observer)
 def config():
     alphas = np.logspace(-4, 4, 20).tolist()
     standardize = True
-    scale_importance = None
+    scale_importance = 'sqrt'
     n_jobs = 30
     verbose = 2
     seed = 2
@@ -38,13 +38,14 @@ def config():
     multi_class = 'ovr'
     fit_intercept = True
     identity = False
-    refit = True
+    refit = False
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
     n_subjects = 788
     penalty = 'l1'
     solver = 'sgd_sklearn'
+    n_contrasts = 23
 
 
 @predict_contrast.automain
@@ -61,6 +62,7 @@ def run(alphas, tol,
         multi_class,
         n_subjects,
         scale_importance,
+        n_contrasts,
         standardize,
         refit,
         penalty,
@@ -69,7 +71,7 @@ def run(alphas, tol,
     memory = Memory(cachedir=get_cache_dirs()[0])
 
     unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                               'unmask', 'contrast', 'hcp', '18')
+                               'unmask', 'contrast', 'hcp', str(n_contrasts))
 
     _run.info['resource_dir'] = {'unmask_contrast': unmask_contrast_dir}
 

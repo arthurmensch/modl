@@ -62,7 +62,7 @@ INTERESTING_CONTRASTS_DICT = {'2BK': {'Cognitive Task': 'Two-Back Memory',
 
 INTERESTING_CONTRASTS = list(INTERESTING_CONTRASTS_DICT.keys())
 
-INTERESTING_CONTRASTS_EXTENDED = ['FACES', 'SHAPE', 'PUNISH', 'REWARD',
+INTERESTING_CONTRASTS_EXTENDED = ['FACES', 'SHAPES', 'PUNISH', 'REWARD',
                                   'MATH', 'STORY', 'MATCH', 'REL',
                                   'RANDOM', 'TOM',
                                   'LF', 'RF', 'LH', 'RH', 'CUE',
@@ -73,9 +73,11 @@ INTERESTING_CONTRASTS_EXTENDED = ['FACES', 'SHAPE', 'PUNISH', 'REWARD',
                                   ]
 
 
-def fetch_hcp(data_dir=None, n_subjects=None, subjects=None):
+def fetch_hcp(data_dir=None, n_subjects=None, subjects=None,
+              from_file=True):
     data_dir = join(get_data_dirs(data_dir)[0], 'HCP900')
     res = _hcpbuild_fetch_hcp(data_dir=data_dir, n_subjects=n_subjects,
+                              from_file=from_file,
                               subjects=subjects, on_disk=True)
     rest = res.rest.assign(confounds=[None] * res.rest.shape[0])
     task = res.task.assign(confounds=[None] * res.task.shape[0])

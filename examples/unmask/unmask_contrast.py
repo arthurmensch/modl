@@ -19,7 +19,7 @@ unmask_task.observers.append(observer)
 
 @unmask_task.config
 def config():
-    n_jobs = 10
+    n_jobs = 30
     batch_size = 1200
 
 
