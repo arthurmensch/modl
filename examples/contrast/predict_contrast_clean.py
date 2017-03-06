@@ -20,16 +20,6 @@ predict_contrast = Experiment('predict_contrast')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 predict_contrast.observers.append(observer)
 
-hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                               'unmask', 'contrast', 'hcp',
-                               '18')
-archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                 'unmask', 'contrast', 'archi',
-                                 '38')
-
-unmask_contrast_dir = {'archi': archi_unmask_contrast_dir,
-                       'hcp': hcp_unmask_contrast_dir}
-
 
 @predict_contrast.config
 def config():
@@ -46,18 +36,17 @@ def config():
     fit_intercept = True
     identity = False
     refit = False
-    n_components_list = [16]
+    n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
     n_subjects = 788
     penalty = 'l2'
-    datasets = ['archi', 'hcp']
 
 
 @predict_contrast.automain
 def run(alphas,
-        alpha,
         n_components_list,
+        alpha,
         max_iter, n_jobs,
         test_size,
         train_size,
@@ -69,38 +58,29 @@ def run(alphas,
         scale_importance,
         standardize,
         penalty,
-        datasets,
         _run,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
+
+    hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
+                                   'unmask', 'contrast', 'hcp',
+                                   '23')
+
     print('Fetch data')
-    X = []
-    for dataset in datasets:
-        masker, this_X = get_raw_contrast_data(unmask_contrast_dir[dataset])
-        subjects = this_X.index.get_level_values('subject').unique().values.tolist()
+    masker, X = get_raw_contrast_data(hcp_unmask_contrast_dir)
+    subjects = X.index.get_level_values('subject').unique().values.tolist()
 
-        subjects = subjects[:n_subjects]
-        X.append(this_X.loc[subjects])
-
-    X = pd.concat(X, keys=datasets, names=['dataset'])
+    subjects = subjects[:n_subjects]
+    X_hcp = X.loc[subjects]
 
     print('Split data')
     # Stratify datasets
-    df = X[0].groupby(level=['dataset', 'subject']).agg('first')
-    datasets = df.index.get_level_values('dataset').tolist()
-    subjects = df.index.tolist()
     train_subjects, test_subjects = train_test_split(subjects,
                                                      random_state=0,
-                                                     test_size=test_size,
-                                                     stratify=datasets)
+                                                     test_size=test_size)
     train_subjects = train_subjects[:train_size]
-    X_train = pd.concat(
-        [X.loc[(*train_subject, slice(None), slice(None)), :] for train_subject
-         in train_subjects])
-
-    X_test = pd.concat(
-        [X.loc[(*test_subject, slice(None), slice(None)), :] for test_subject
-         in test_subjects])
+    X_train = X.loc[train_subjects]
+    X_test = X.loc[test_subjects]
 
     X = pd.concat([X_train,
                    X_test], keys=['train', 'test'],
@@ -109,9 +89,6 @@ def run(alphas,
 
     X_train = X.loc['train']
     n_samples = len(X_train)
-    sample_weight = 1 / X_train[0].groupby(
-        level=['dataset', 'contrast']).transform('count')
-    sample_weight /= np.sum(sample_weight)
 
     print('Retrieve components')
     components_dir = join(get_data_dirs()[0], 'pipeline', 'components', 'hcp')
@@ -151,8 +128,7 @@ def run(alphas,
     y = pd.Series(index=X.index, data=y, name='label')
     y_train = y.loc['train']
 
-    estimator.fit(X_train, y_train,
-                  **dict(logistic_regression__sample_weight=sample_weight))
+    estimator.fit(X_train, y_train)
     predicted_y = estimator.predict(X)
     predicted_labels = label_encoder.inverse_transform(predicted_y)
     prediction = pd.DataFrame({'true_label': true_labels,
@@ -167,7 +143,7 @@ def run(alphas,
     _run.info['train_score'] = train_score
 
     test_score = np.sum(prediction.loc['test']['predicted_label']
-                        == prediction.loc['test']['predicted_label'])
+                        == prediction.loc['test']['true_label'])
     test_score /= prediction.loc['test'].shape[0]
 
     _run.info['test_score'] = test_score

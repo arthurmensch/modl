@@ -30,7 +30,7 @@ def run(n_jobs, batch_size, _run):
     imgs = dataset.contrasts
     interesting_con = INTERESTING_CONTRASTS_EXTENDED
     imgs = imgs.loc[(slice(None), slice(None), interesting_con), :]
-    mask = load_mni152_brain_mask()
+    mask = fetch_hcp().mask
 
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
                         'contrast', 'hcp', '23')

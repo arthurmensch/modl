@@ -203,7 +203,8 @@ def _logistic_regression(X, y,
     cv = check_cv(cv, y=y, classifier=True)
 
     if fit_intercept:
-        if solver not in ['sgd', 'sag_sklearn', 'sgd_sklearn']:
+        if solver not in ['sgd', 'saga_sklearn',
+                          'sag_sklearn', 'sgd_sklearn']:
             X = np.concatenate(
                 [X, np.ones((n_samples, 1)) * _INTERCEPT_SCALER], axis=1)
 
