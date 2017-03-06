@@ -2,7 +2,7 @@
 # License: BSD
 import time
 
-from modl.input_data.fmri import monkey_patch_nifti_image
+from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 
@@ -12,29 +12,9 @@ from sklearn.model_selection import train_test_split
 
 from modl.datasets import fetch_adhd
 from modl.datasets.fmri import load_atlas_init
-from modl.decomposition.fmri import fMRIDictFact
+from modl.decomposition.fmri import fMRIDictFact, rfMRIDictionaryScorer
 from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
-
-
-class rfMRIDictionaryScorer:
-    def __init__(self, test_data):
-        self.start_time = time.perf_counter()
-        self.test_data = test_data
-        self.test_time = 0
-        self.score = []
-        self.iter = []
-        self.time = []
-
-    def __call__(self, dict_fact):
-        test_time = time.perf_counter()
-        test_imgs, test_confounds = zip(*self.test_data)
-        score = dict_fact.score(test_imgs, confounds=test_confounds)
-        self.test_time += time.perf_counter() - test_time
-        this_time = time.perf_counter() - self.start_time - self.test_time
-        self.score.append(score)
-        self.time.append(this_time)
-        self.iter.append(dict_fact.n_iter_)
 
 
 def main():
@@ -55,12 +35,12 @@ def main():
     data = dataset.rest.values
     train_data, test_data = train_test_split(data, test_size=1, random_state=0)
     train_imgs, train_confounds = zip(*train_data)
+    test_imgs, test_confounds = zip(*test_data)
     mask = dataset.mask
     memory = Memory(cachedir=get_cache_dirs()[0],
                     verbose=2)
 
-    cb = rfMRIDictionaryScorer(test_data)
-    cb = None
+    cb = rfMRIDictionaryScorer(test_imgs, test_confounds=test_confounds)
     dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                              method=method,
                              mask=mask,
@@ -78,14 +58,14 @@ def main():
                              alpha=alpha,
                              callback=cb,
                              )
-    dict_fact.fit(train_imgs, train_confounds)
+    dict_fact.fit(train_imgs, confounds=train_confounds)
 
-    dict_fact.components_.to_filename('components.nii.gz')
+    dict_fact.components_img_.to_filename('components.nii.gz')
     fig = plt.figure()
-    display_maps(fig, dict_fact.components_)
-    # fig, ax = plt.subplots(1, 1)
-    # ax.plot(cb.time, cb.score, marker='o')
-    # plt.show()
+    display_maps(fig, dict_fact.components_img_)
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(cb.time, cb.score, marker='o')
+    plt.show()
 
 if __name__ == '__main__':
     main()

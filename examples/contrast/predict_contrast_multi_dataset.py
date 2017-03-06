@@ -26,7 +26,7 @@ predict_contrast.observers.append(observer)
 
 @predict_contrast.config
 def config():
-    alphas = np.logspace(-4, 4, 20).tolist()
+    alphas = np.logspace(0, 3, 6).tolist()
     standardize = True
     scale_importance = 'sqrt'
     n_jobs = 30
@@ -39,11 +39,11 @@ def config():
     fit_intercept = True
     identity = False
     refit = False
-    n_components_list = [16, 64, 256]
+    n_components_list = [16]
     test_size = 0.1
     train_size = None
     n_subjects = 788
-    penalty = 'l2'
+    penalty = 'l1'
     solver = 'saga_sklearn'
     n_contrasts = 23
 
@@ -62,7 +62,6 @@ def run(alphas, tol,
         multi_class,
         n_subjects,
         scale_importance,
-        n_contrasts,
         standardize,
         refit,
         penalty,
@@ -70,17 +69,29 @@ def run(alphas, tol,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0])
 
-    unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                               'unmask', 'contrast', 'hcp', str(n_contrasts))
+    hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
+                                   'unmask', 'contrast', 'hcp',
+                                   '23')
+    archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
+                                     'unmask', 'contrast', 'archi',
+                                     '38')
 
-    _run.info['resource_dir'] = {'unmask_contrast': unmask_contrast_dir}
+    _run.info['resource_dir'] = {'hcp_unmask_contrast':
+                                     hcp_unmask_contrast_dir}
+    _run.info['resource_dir'] = {'hcp_unmask_contrast':
+                                     archi_unmask_contrast_dir}
 
     print('Fetch data')
-    masker, X = get_raw_contrast_data(unmask_contrast_dir)
+    masker, X_hcp = get_raw_contrast_data(hcp_unmask_contrast_dir)
+    _, X_archi = get_raw_contrast_data(archi_unmask_contrast_dir)
+
+    X = pd.concat([X_hcp, X_archi], keys=['hcp', 'archi'],
+                  names=['dataset'])
 
     subjects = X.index.get_level_values('subject').unique().values.tolist()
 
     subjects = subjects[:n_subjects]
+    datasets = X.index.get_level_values('dataset').unique().values.tolist()
     X = X.loc[subjects]
 
     labels = X.index.get_level_values('contrast').values
@@ -98,7 +109,10 @@ def run(alphas, tol,
 
     print('Split data')
     train_subjects, test_subjects = \
-        train_test_split(subjects, random_state=_seed, test_size=test_size)
+        train_test_split(subjects,
+                         random_state=_seed,
+                         test_size=test_size,
+                         stratify=datasets)
     train_subjects = train_subjects[:train_size]
     _run.info['train_subject'] = train_subjects
     _run.info['test_subjects'] = test_subjects

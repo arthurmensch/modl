@@ -243,6 +243,20 @@ def _logistic_regression(X, y,
                              keep_best=not refit,
                              verbose=verbose,
                              n_jobs=n_jobs)
+    elif solver == 'saga_sklearn':
+        Cs = 1. / (np.array(alphas) * n_samples)
+        lr = LogisticRegression(penalty=penalty, solver='saga',
+                                fit_intercept=fit_intercept,
+                                multi_class=multi_class,
+                                tol=early_tol,
+                                max_iter=early_max_iter, )
+        lr = MemGridSearchCV(lr,
+                             {'C': Cs},
+                             cv=cv,
+                             refit=False,
+                             keep_best=not refit,
+                             verbose=verbose,
+                             n_jobs=n_jobs)
     elif solver == 'liblinear':
         if multi_class != 'ovr':
             raise ValueError('Unsupported multiclass for solver `liblinear`.')
@@ -344,7 +358,7 @@ def _logistic_regression(X, y,
         classes = lr.classes_
         n_classes = classes.shape[0]
         if fit_intercept:
-            if solver in ['sgd', 'sag_sklearn', 'sgd_sklearn']:
+            if solver in ['sgd', 'sag_sklearn', 'saga_sklearn', 'sgd_sklearn']:
                 intercept = lr.intercept_
             else:
                 intercept = coef[:, -1] * _INTERCEPT_SCALER
@@ -358,7 +372,7 @@ def _logistic_regression(X, y,
                 for best_estimator in lr.best_estimators_]
         coef = np.mean(np.concatenate(coef, axis=2), axis=2)
         if fit_intercept:
-            if solver in ['sgd', 'sag_sklearn', 'sgd_sklearn']:
+            if solver in ['sgd', 'sag_sklearn', 'saga_sklearn', 'sgd_sklearn']:
                 intercept = [best_estimator.intercept_[..., np.newaxis]
                              for best_estimator in lr.best_estimators_]
                 intercept = np.mean(np.concatenate(intercept, axis=1), axis=1)

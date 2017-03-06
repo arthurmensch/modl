@@ -14,8 +14,6 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('plotting')
     config.add_subpackage('feature_extraction')
     config.add_subpackage('input_data')
-    config.add_subpackage('components')
-    config.add_subpackage('classification')
 
     config.ext_modules = cythonize(config.ext_modules, nthreads=4)
 

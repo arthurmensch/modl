@@ -6,7 +6,7 @@ from nilearn.datasets import fetch_atlas_smith_2009
 from sklearn.model_selection import train_test_split
 
 from modl.datasets import get_data_dirs
-from . import fetch_hcp_rest, fetch_adhd
+from . import fetch_hcp, fetch_adhd
 
 
 # XXX: this should be trashed
@@ -33,13 +33,11 @@ def load_rest_func(dataset='adhd',
                     'Please unmask the data using hcp_prepare.py first.')
             data = sorted(list(mapping.values()))
         else:
-            hcp_dataset = fetch_hcp_rest(data_dir=data_dir,
+            hcp_dataset = fetch_hcp(data_dir=data_dir,
                                          n_subjects=n_subjects)
             mask = hcp_dataset.mask
             # list of 4D nifti files for each subject
-            data = hcp_dataset.func
-            # Flatten it
-            data = [(record for record in subject) for subject in data]
+            data = hcp_dataset.rest
     else:
         raise NotImplementedError
     train_data, test_data = train_test_split(data,
