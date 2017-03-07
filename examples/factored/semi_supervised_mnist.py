@@ -23,7 +23,8 @@ autoencoder = Experiment('autoencoder')
 def config():
     encoding_dim = 32
     supervision = True
-    n_epochs = 1
+    n_epochs = 3
+    supervision_ratio = 1
 
 
 def init_tensorflow(n_jobs=1):
@@ -61,37 +62,42 @@ def test(supervision):
 
     output_dir = join(expanduser('~/models'))
 
-    autoencoder = keras.models.load(join(output_dir, 'autoencoder.keras'))
+    autoencoder = keras.models.load_model(
+        join(output_dir, 'autoencoder.keras'))
 
-    (X_train, y_train), (X_test, y_test) = mnist.load_data()
+    (_, _), (X_test, y_test) = mnist.load_data()
+    X_test = X_test.astype('float32') / 255.
+    X_test = X_test.reshape((len(X_test), np.prod(X_test.shape[1:])))
 
+    input_imgs = autoencoder.input
+    encoded = autoencoder.layers_by_depth[1][0](input_imgs)
+    encoder = Model(input=input_imgs, output=encoded)
 
-    # this model maps an input to its encoded representation
-    encoder = Model(input=input_img, output=encoded)
     # create a placeholder for an encoded (32-dimensional) input
-    encoded_input = Input(shape=(encoding_dim,))
+    encoded_input = Input(shape=encoder.output_shape)
     # retrieve the last layer of the autoencoder model
-    decoder_layer = autoencoder.layers_by_depth[0][0]
+    decoder_layer = autoencoder.output_layers[0]
     # create the decoder model
-    decoder = Model(input=encoded_input,
-                          output=decoder_layer(encoded_input))
-
-    encoded_imgs = encoder.predict(X_test)
-    decoded_imgs = decoder.predict(encoded_imgs)
+    # decoder = Model(input=encoded_input, output=decoder_layer(encoded_input))
 
     if supervision:
-        classifier = Model(input=input_img, output=supervised)
+        supervised = autoencoder.output_layers[1](encoded)
+        classifier = Model(input=input_imgs, output=supervised)
+        predicted_labels = classifier.predict(X_test)
+        predicted_labels = np.argmax(predicted_labels, axis=1)
+        accuracy = np.sum(predicted_labels == y_test) / predicted_labels.shape[0]
+        print('Accuracy', accuracy)
 
+    rec_X_test = autoencoder.predict(X_test)[0]
+    rec_X_test = rec_X_test.reshape(len(X_test), 28, 28)
+    plot_images(X_test, rec_X_test, supervision)
+    return 0
 
-    decoded_test = autoencoder.predict(X_test)
-    predicted_labels = autoencoder.predict_label(X_test)
-    accuracy = np.sum(predicted_labels == y_test) / predicted_labels.shape[0]
-    print(accuracy)
-    plot_images(X_test, decoded_test, supervision)
 
 @autoencoder.automain
-def train(supervision, encoding_dim, n_epochs, _run):
-    init_tensorflow(n_jobs=2)
+def train(supervision, encoding_dim, n_epochs, supervision_ratio,
+          _run):
+    init_tensorflow(n_jobs=3)
 
     (X_train, y_train), (_, _) = mnist.load_data()
 
@@ -114,14 +120,15 @@ def train(supervision, encoding_dim, n_epochs, _run):
         output = [decoded, supervised]
         loss = ['binary_crossentropy',
                 'sparse_categorical_crossentropy']
+        loss_weights = [1 - supervision_ratio, supervision_ratio]
     else:
         output = decoded
         loss = 'binary_crossentropy'
-
+        loss_weights = 1
     autoencoder = Model(input=input_img,
-                        output=output)
+                        output=output, name='autoencoder')
     autoencoder.compile(optimizer='adadelta',
-                        loss=loss)
+                        loss=loss, metrics=['accuracy'], loss_weights=loss_weights)
 
     autoencoder.fit(X_train, [X_train, y_train] if supervision else X_train,
                     batch_size=256,

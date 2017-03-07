@@ -23,13 +23,13 @@ predict_contrast.observers.append(observer)
 
 @predict_contrast.config
 def config():
-    alphas = np.logspace(-3, 2, 4).tolist()
+    alphas = np.logspace(-3, 2, 6).tolist()
     standardize = True
-    scale_importance = None
+    scale_importance = 'sqrt'
     n_jobs = 30
     verbose = 2
     seed = 2
-    max_iter = 20
+    max_iter = 30
     tol = 1e-7
     alpha = 1e-4
     multi_class = 'multinomial'
@@ -40,18 +40,18 @@ def config():
     test_size = 0.1
     train_size = None
     n_subjects = 788
-    penalty = 'l2'
-    datasets = ['hcp']
+    penalty = 'l1'
+    datasets = ['archi', 'hcp']
 
     hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                   'unmask', 'contrast', 'hcp',
-                                   '18')
+                                   'unmask', 'contrast', 'hcp', '18')
     archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                     'unmask', 'contrast', 'archi',
-                                     '38')
-
+                                     'unmask', 'contrast', 'archi', '38')
     datasets_dir = {'archi': archi_unmask_contrast_dir,
                     'hcp': hcp_unmask_contrast_dir}
+
+    del hcp_unmask_contrast_dir
+    del archi_unmask_contrast_dir
 
 
 @predict_contrast.automain
@@ -106,12 +106,12 @@ def run(alphas,
                                       multi_class=multi_class,
                                       fit_intercept=fit_intercept,
                                       random_state=_seed,
-                                      refit=False,
+                                      refit=True,
                                       tol=tol,
                                       max_iter=max_iter,
                                       n_jobs=n_jobs,
                                       penalty=penalty,
-                                      verbose=True,
+                                      cv=10,
                                       Cs=1. / train_samples / np.array(alphas))
 
     pipeline.append(('logistic_regression', classifier))
@@ -124,7 +124,8 @@ def run(alphas,
     y_train = y.loc['train']
 
     estimator.fit(X_train, y_train,
-                  **dict(logistic_regression__sample_weight=sample_weight))
+                  # **dict(logistic_regression__sample_weight=sample_weight)
+                  )
     
     predicted_proba = pd.DataFrame(index=X.index,
                                    data=estimator.predict_proba(X))
