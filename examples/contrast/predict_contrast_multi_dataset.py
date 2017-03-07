@@ -20,17 +20,6 @@ predict_contrast = Experiment('predict_contrast')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 predict_contrast.observers.append(observer)
 
-hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                               'unmask', 'contrast', 'hcp',
-                               '18')
-archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                 'unmask', 'contrast', 'archi',
-                                 '38')
-
-unmask_contrast_dir = {'archi': archi_unmask_contrast_dir,
-                       'hcp': hcp_unmask_contrast_dir}
-
-
 @predict_contrast.config
 def config():
     alphas = np.logspace(-3, 3, 7).tolist()
@@ -49,9 +38,19 @@ def config():
     n_components_list = [16]
     test_size = 0.1
     train_size = None
-    n_subjects = 788
+    n_subjects = 20
     penalty = 'l2'
     datasets = ['archi', 'hcp']
+
+    hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
+                                   'unmask', 'contrast', 'hcp',
+                                   '18')
+    archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
+                                     'unmask', 'contrast', 'archi',
+                                     '38')
+
+    datasets_dir = {'archi': archi_unmask_contrast_dir,
+                           'hcp': hcp_unmask_contrast_dir}
 
 
 @predict_contrast.automain
@@ -70,13 +69,14 @@ def run(alphas,
         standardize,
         penalty,
         datasets,
+        datasets_dir,
         _run,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
     print('Fetch data')
     X = []
     for dataset in datasets:
-        masker, this_X = get_raw_contrast_data(unmask_contrast_dir[dataset])
+        masker, this_X = get_raw_contrast_data(datasets_dir[dataset])
         subjects = this_X.index.get_level_values('subject').unique().values.tolist()
 
         subjects = subjects[:n_subjects]
