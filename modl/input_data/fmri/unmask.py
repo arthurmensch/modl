@@ -10,6 +10,7 @@ from nilearn._utils.compat import _basestring
 from nilearn.input_data import MultiNiftiMasker
 from sklearn.externals.joblib import Memory, Parallel, delayed, dump, load
 import pandas as pd
+from sklearn.model_selection import train_test_split
 from sklearn.utils import gen_batches
 
 
@@ -282,3 +283,36 @@ def get_raw_contrast_data(raw_dir):
     index = load(join(raw_dir, 'index.pkl'))
     imgs = pd.DataFrame(data=data, index=index)
     return masker, imgs
+
+
+def build_design(datasets, datasets_dir, n_subjects, test_size, train_size):
+    X = []
+    for dataset in datasets:
+        masker, this_X = get_raw_contrast_data(datasets_dir[dataset])
+        subjects = this_X.index.get_level_values(
+            'subject').unique().values.tolist()
+
+        subjects = subjects[:n_subjects]
+        X.append(this_X.loc[subjects])
+    X = pd.concat(X, keys=datasets, names=['dataset'])
+    # Stratify datasets
+    df = X[0].groupby(level=['dataset', 'subject']).agg('first')
+    datasets = df.index.get_level_values('dataset').tolist()
+    subjects = df.index.tolist()
+    train_subjects, test_subjects = train_test_split(subjects,
+                                                     random_state=0,
+                                                     test_size=test_size,
+                                                     stratify=datasets)
+    train_subjects = train_subjects[:train_size]
+    X_train = pd.concat(
+        [X.loc[(*train_subject, slice(None), slice(None)), :] for train_subject
+         in train_subjects])
+    X_test = pd.concat(
+        [X.loc[(*test_subject, slice(None), slice(None)), :] for test_subject
+         in test_subjects])
+    X = pd.concat([X_train,
+                   X_test], keys=['train', 'test'],
+                  names=['fold'])
+    X.sort_index(inplace=True)
+
+    return X, masker
