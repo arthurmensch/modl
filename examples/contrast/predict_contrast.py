@@ -3,12 +3,11 @@ from os.path import join
 
 import numpy as np
 import pandas as pd
-from keras.backend import set_session
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
-from sklearn.grid_search import GridSearchCV
+from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
@@ -19,13 +18,14 @@ from modl.factored_logistic import FactoredLogistic
 from modl.input_data.fmri.unmask import build_design
 from modl.utils.system import get_cache_dirs
 
-import tensorflow as tf
-
 predict_contrast = Experiment('predict_contrast')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 predict_contrast.observers.append(observer)
 
 def init_tensorflow(n_jobs=1):
+    from keras.backend import set_session
+    import tensorflow as tf
+
     sess = tf.Session(config=tf.ConfigProto(
         inter_op_parallelism_threads=n_jobs,
         intra_op_parallelism_threads=n_jobs,
@@ -84,6 +84,7 @@ def run(alphas,
         penalty,
         datasets,
         datasets_dir,
+        factored,
         _run,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)

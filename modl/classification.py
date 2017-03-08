@@ -1,28 +1,23 @@
-import copy
-import warnings
-
-from math import ceil, sqrt
-from numpy import linalg
+import numbers
+from math import ceil
+from tempfile import NamedTemporaryFile
 
 import numpy as np
-from lightning.impl.sag import SAGAClassifier
-from lightning.impl.sgd import SGDClassifier
-from sklearn.linear_model import LogisticRegression
-
-from modl.model_selection import MemGridSearchCV
+from keras.engine import Input, Model
+from keras.layers import Dense
+from keras.models import load_model
+from keras.regularizers import l2
+from lightning.impl.base import BaseEstimator
 from nilearn._utils import CacheMixin
-from sklearn.base import TransformerMixin, BaseEstimator, clone
-from sklearn.linear_model.base import LinearClassifierMixin
-from sklearn.model_selection import check_cv
+from numpy import linalg
+from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Parallel, delayed, Memory
+from sklearn.linear_model.base import LinearClassifierMixin, SparseCoefMixin
+from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import StandardScaler
-from sklearn.utils import gen_batches, check_array
-
-from lightning.classification import CDClassifier
-
-from sklearn.linear_model import SGDClassifier as sklearn_SGDClassifier
-
-_INTERCEPT_SCALER = 100
+from sklearn.utils import check_X_y
+from sklearn.utils import gen_batches
+from sklearn.utils.multiclass import check_classification_targets
 
 
 class Projector(CacheMixin, TransformerMixin, BaseEstimator):
@@ -127,259 +122,110 @@ def make_loadings_extractor(bases, scale_bases=True,
     return pipeline
 
 
-class OurLogisticRegressionCV(CacheMixin, BaseEstimator,
-                              LinearClassifierMixin):
-    def __init__(self,
-                 alphas=[1],
-                 cv=10,
-                 max_iter=100,
-                 tol=1e-4,
-                 random_state=None,
-                 multi_class='ovr',
-                 solver='cd',
-                 penalty='l2',
-                 refit=False,
-                 fit_intercept=False,
-                 n_jobs=1,
-                 memory=Memory(cachedir=None),
-                 memory_level=1,
-                 verbose=0):
-        self.memory = memory
+class FactoredLogistic(BaseEstimator, LinearClassifierMixin,
+                       SparseCoefMixin):
+    """
+    Parameters
+    ----------
 
-        self.alphas = alphas
-        self.tol = tol
+    latent_dim: int,
+
+    activation: str, Keras activation
+
+    optimizer: str, Keras optimizer
+    """
+
+    def __init__(self, latent_dim=10, activation='linear',
+                 optimizer='adam', max_iter=100, batch_size=256,
+                 alpha=0.01,
+                 ):
+        self.latent_dim = latent_dim
+        self.activation = activation
+        self.optimizer = optimizer
         self.max_iter = max_iter
-        self.n_jobs = n_jobs
-        self.random_state = random_state
+        self.batch_size = batch_size
+        self.shuffle = True
+        self.alpha = alpha
 
-        self.penalty = penalty
+    def fit(self, X, y, sample_weight=None):
+        """Fit the model according to the given training data.
 
-        self.refit = refit
-        self.multi_class = multi_class
-        self.solver = solver
-        self.fit_intercept = fit_intercept
+        Parameters
+        ----------
+        X : {array-like, sparse matrix}, shape (n_samples, n_features)
+            Training vector, where n_samples is the number of samples and
+            n_features is the number of features.
 
-        self.cv = cv
+        y : array-like, shape (n_samples,)
+            Target vector relative to X.
 
-        self.memory = memory
-        self.memory_level = memory_level
-        self.verbose = verbose
+        sample_weight : array-like, shape (n_samples,) optional
+            Array of weights that are assigned to individual samples.
+            If not provided, then each sample is given unit weight.
 
-    def fit(self, X, y):
-        self.coef_, self.intercept_, self.classes_ = \
-            self._cache(_logistic_regression,
-                        ignore=['n_jobs', 'verbose'],
-                        func_memory_level=1)(
-                X, y, alphas=self.alphas,
-                solver=self.solver,
-                multi_class=self.multi_class,
-                tol=self.tol, max_iter=self.max_iter,
-                fit_intercept=self.fit_intercept,
-                refit=self.refit,
-                penalty=self.penalty,
-                cv=self.cv,
-                n_jobs=self.n_jobs, random_state=self.random_state,
-                verbose=self.verbose)
-        return self
+            .. versionadded:: 0.17
+               *sample_weight* support to LogisticRegression.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+        if not isinstance(self.max_iter, numbers.Number) or self.max_iter < 0:
+            raise ValueError("Maximum number of iteration must be positive;"
+                             " got (max_iter=%r)" % self.max_iter)
+
+        X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float64,
+                         order="C")
+        self.label_binarizer_ = LabelBinarizer()
+        check_classification_targets(y)
+        self.classes_ = np.unique(y)
+        y_bin = self.label_binarizer_.fit_transform(y)
+
+        n_samples, n_features = X.shape
+
+        self.model_ = make_model(n_features, self.classes_.shape[0],
+                                 self.alpha,
+                                 self.latent_dim,
+                                 self.activation, self.optimizer)
+        self.model_.fit(X, y_bin, nb_epoch=self.max_iter,
+                        batch_size=self.batch_size,
+                        shuffle=self.shuffle)
+
+    def predict_proba(self, X):
+        return self.model_.predict(X)
+
+    def predict(self, X):
+        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
+
+    def __setstate__(self, state):
+        if 'model_' in state:
+            model = state.pop('model_')
+            with NamedTemporaryFile(dir='/tmp') as f:
+                f.write(model)
+                state['model_'] = load_model(f.name)
+        super().__setstate__(state)
+
+    def __getstate__(self):
+        state = super().__getstate__()
+        if hasattr(self, 'model_'):
+            with NamedTemporaryFile(dir='/tmp') as f:
+                self.model_.save(f.name)
+                data = f.read()
+            state['model_'] = data
+        return state
 
 
-def _logistic_regression(X, y,
-                         solver='cd',
-                         alphas=[1],
-                         fit_intercept=False,
-                         tol=1e-7,
-                         max_iter=1000,
-                         multi_class='ovr',
-                         penalty='l2',
-                         n_jobs=1,
-                         cv=10,
-                         verbose=0,
-                         refit=False,
-                         random_state=None):
-    """Function to be cached"""
-    early_tol = tol * 10 if refit else tol
-    early_max_iter = max_iter / 2 if refit else max_iter
-    n_samples = X.shape[0]
-    cv = check_cv(cv, y=y, classifier=True)
-
-    if fit_intercept:
-        if solver not in ['sgd', 'saga_sklearn',
-                          'sag_sklearn', 'sgd_sklearn']:
-            X = np.concatenate(
-                [X, np.ones((n_samples, 1)) * _INTERCEPT_SCALER], axis=1)
-
-    if solver == 'cd':
-        X = check_array(X, order='F', dtype=np.float64)
-    else:
-        X = check_array(X, order='C', dtype=np.float64)
-
-    if solver == 'cd':
-        if multi_class != 'ovr':
-            raise ValueError('Unsupported multiclass for solver `cd`.')
-        lr = CDClassifier(loss='log', penalty=penalty,
-                          C=1 / n_samples,
-                          multiclass=False,
-                          verbose=verbose,
-                          tol=early_tol,
-                          max_iter=early_max_iter,
-                          random_state=random_state)
-        lr = MemGridSearchCV(lr,
-                             {'alpha': alphas},
-                             cv=cv,
-                             refit=False,
-                             keep_best=not refit,
-                             verbose=verbose,
-                             n_jobs=n_jobs)
-    elif solver == 'sag_sklearn':
-        Cs = 1. / (np.array(alphas) * n_samples)
-        lr = LogisticRegression(penalty=penalty, solver='sag',
-                                fit_intercept=fit_intercept,
-                                multi_class=multi_class,
-                                tol=early_tol,
-                                max_iter=early_max_iter, )
-        lr = MemGridSearchCV(lr,
-                             {'C': Cs},
-                             cv=cv,
-                             refit=False,
-                             keep_best=not refit,
-                             verbose=verbose,
-                             n_jobs=n_jobs)
-    elif solver == 'saga_sklearn':
-        Cs = 1. / (np.array(alphas) * n_samples)
-        lr = LogisticRegression(penalty=penalty, solver='saga',
-                                fit_intercept=fit_intercept,
-                                multi_class=multi_class,
-                                tol=early_tol,
-                                max_iter=early_max_iter, )
-        lr = MemGridSearchCV(lr,
-                             {'C': Cs},
-                             cv=cv,
-                             refit=False,
-                             keep_best=not refit,
-                             verbose=verbose,
-                             n_jobs=n_jobs)
-    elif solver == 'liblinear':
-        if multi_class != 'ovr':
-            raise ValueError('Unsupported multiclass for solver `liblinear`.')
-        Cs = 1. / (np.array(alphas) * n_samples)
-        lr = LogisticRegression(penalty=penalty,
-                                solver='liblinear',
-                                fit_intercept=fit_intercept,
-                                multi_class=multi_class,
-                                tol=early_tol,
-                                max_iter=early_max_iter, )
-        lr = MemGridSearchCV(lr,
-                             {'C': Cs},
-                             cv=cv,
-                             refit=False,
-                             keep_best=not refit,
-                             verbose=verbose,
-                             n_jobs=n_jobs)
-    elif solver == 'saga':
-        if multi_class != 'ovr':
-            raise ValueError("Unsupported multiclass != 'ovr'"
-                             "for solver `saga`.")
-        if penalty == 'l1':
-            lr = SAGAClassifier(eta='auto',
-                                loss='log',
-                                alpha=0,
-                                penalty='l1',
-                                verbose=0,
-                                tol=early_tol,
-                                max_iter=early_max_iter,
-                                random_state=random_state)
-            lr = MemGridSearchCV(lr,
-                                 {'beta': alphas},
-                                 cv=cv,
-                                 refit=False,
-                                 keep_best=not refit,
-                                 verbose=verbose,
-                                 n_jobs=n_jobs)
-        elif penalty == 'l2':
-            lr = SAGAClassifier(eta='auto',
-                                loss='log',
-                                beta=0,
-                                penalty=None,
-                                tol=early_tol,
-                                max_iter=early_max_iter,
-                                verbose=0,
-                                random_state=random_state)
-            lr = MemGridSearchCV(lr,
-                                 {'alpha': alphas},
-                                 cv=cv,
-                                 refit=False,
-                                 keep_best=not refit,
-                                 verbose=verbose,
-                                 n_jobs=n_jobs)
-        else:
-            raise ValueError('Non valid penalty %s' % penalty)
-    elif solver == 'sgd':
-        lr = SGDClassifier(loss='log', multiclass=multi_class,
-                           fit_intercept=fit_intercept,
-                           penalty=penalty,
-                           verbose=0,
-                           max_iter=early_max_iter,
-                           alpha=0)
-        lr = MemGridSearchCV(lr,
-                             {'alpha': alphas},
-                             cv=cv,
-                             refit=False,
-                             keep_best=not refit,
-                             verbose=verbose,
-                             n_jobs=n_jobs)
-    elif solver == 'sgd_sklearn':
-        if multi_class != 'ovr':
-            raise ValueError("Unsupported multiclass != 'ovr'"
-                             "for solver `sklearn_sgd`.")
-        lr = sklearn_SGDClassifier(loss='log',
-                                   fit_intercept=fit_intercept,
-                                   penalty=penalty,
-                                   verbose=0,
-                                   n_iter=early_max_iter)
-        lr = MemGridSearchCV(lr,
-                             {'alpha': alphas},
-                             cv=cv,
-                             refit=False,
-                             keep_best=not refit,
-                             verbose=verbose,
-                             n_jobs=n_jobs)
-    else:
-        raise ValueError('Wrong solver %s' % solver)
-    lr.fit(X, y)
-    if refit:
-        lr = clone(lr.estimator).set_params(**lr.best_params_)
-        if isinstance(lr, SGDClassifier):
-            lr.set_params(max_iter=max_iter)
-        elif isinstance(lr, sklearn_SGDClassifier):
-            lr.set_params(n_iter=max_iter)
-        else:
-            lr.set_params(tol=tol, max_iter=max_iter)
-        lr.fit(X, y)
-        coef = lr.coef_
-        classes = lr.classes_
-        n_classes = classes.shape[0]
-        if fit_intercept:
-            if solver in ['sgd', 'sag_sklearn', 'saga_sklearn', 'sgd_sklearn']:
-                intercept = lr.intercept_
-            else:
-                intercept = coef[:, -1] * _INTERCEPT_SCALER
-                coef = coef[:, :-1]
-        else:
-            intercept = np.zeros(n_classes)
-    else:
-        classes = lr.best_estimators_[0].classes_
-        n_classes = classes.shape[0]
-        coef = [best_estimator.coef_[..., np.newaxis]
-                for best_estimator in lr.best_estimators_]
-        coef = np.mean(np.concatenate(coef, axis=2), axis=2)
-        if fit_intercept:
-            if solver in ['sgd', 'sag_sklearn', 'saga_sklearn', 'sgd_sklearn']:
-                intercept = [best_estimator.intercept_[..., np.newaxis]
-                             for best_estimator in lr.best_estimators_]
-                intercept = np.mean(np.concatenate(intercept, axis=1), axis=1)
-            else:
-                intercept = coef[:, -1] * _INTERCEPT_SCALER
-                coef = coef[:, :-1]
-        else:
-            intercept = np.zeros(n_classes)
-    return coef, intercept, classes
+def make_model(n_features, n_classes, alpha=0.01,
+               latent_dim=10, activation='linear', optimizer='adam'):
+    input = Input(shape=(n_features,), name='input')
+    encoded = Dense(latent_dim, activation=activation,
+                    bias=False, W_regularizer=l2(alpha),
+                    name='encoded')(input)
+    supervised = Dense(n_classes, activation='softmax',
+                       W_regularizer=l2(alpha),
+                       name='classifier')(encoded)
+    model = Model(input=input, output=supervised, name='factored_lr')
+    model.compile(optimizer=optimizer, loss='categorical_crossentropy',
+                  metrics=['accuracy'])
+    return model
