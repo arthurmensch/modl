@@ -40,7 +40,7 @@ def config():
     test_size = 0.1
     train_size = None
     n_subjects = 788
-    penalty = 'l2'
+    penalty = 'l1'
     datasets = ['archi']
 
     hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
