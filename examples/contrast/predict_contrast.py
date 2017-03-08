@@ -46,7 +46,7 @@ def config():
     hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
                                    'unmask', 'contrast', 'hcp', '18')
     archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                     'unmask', 'contrast', 'archi', '38')
+                                     'unmask', 'contrast', 'archi', '18')
     datasets_dir = {'archi': archi_unmask_contrast_dir,
                     'hcp': hcp_unmask_contrast_dir}
 
