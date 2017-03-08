@@ -3,22 +3,34 @@ from os.path import join
 
 import numpy as np
 import pandas as pd
+from keras.backend import set_session
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
+from sklearn.grid_search import GridSearchCV
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 
 from modl.classification import make_loadings_extractor
 from modl.datasets import get_data_dirs
+from modl.factored_logistic import FactoredLogistic
 from modl.input_data.fmri.unmask import build_design
 from modl.utils.system import get_cache_dirs
+
+import tensorflow as tf
 
 predict_contrast = Experiment('predict_contrast')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 predict_contrast.observers.append(observer)
+
+def init_tensorflow(n_jobs=1):
+    sess = tf.Session(config=tf.ConfigProto(
+        inter_op_parallelism_threads=n_jobs,
+        intra_op_parallelism_threads=n_jobs,
+        use_per_session_threads=True))
+    set_session(sess)
 
 
 @predict_contrast.config
@@ -34,14 +46,15 @@ def config():
     alpha = 1e-4
     multi_class = 'multinomial'
     fit_intercept = True
-    identity = True
+    identity = False
     refit = False
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
-    n_subjects = 788
+    n_subjects = 50
     penalty = 'l1'
-    datasets = ['archi']
+    datasets = ['hcp']
+    factored = True
 
     hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
                                    'unmask', 'contrast', 'hcp', '23')
@@ -102,19 +115,33 @@ def run(alphas,
                                        scale_bases=True,
                                        n_jobs=n_jobs,
                                        memory=memory)
+    if not factored:
+        classifier = LogisticRegressionCV(solver='saga',
+                                          multi_class=multi_class,
+                                          fit_intercept=fit_intercept,
+                                          random_state=_seed,
+                                          refit=True,
+                                          tol=tol,
+                                          max_iter=max_iter,
+                                          n_jobs=n_jobs,
+                                          penalty=penalty,
+                                          cv=10,
+                                          verbose=True,
+                                          Cs=1. / train_samples / np.array(alphas))
 
-    classifier = LogisticRegressionCV(solver='saga',
-                                      multi_class=multi_class,
-                                      fit_intercept=fit_intercept,
-                                      random_state=_seed,
-                                      refit=True,
-                                      tol=tol,
+    else:
+        init_tensorflow(n_jobs=1)
+        classifier = FactoredLogistic(optimizer='adagrad', latent_dim=50,
                                       max_iter=max_iter,
-                                      n_jobs=n_jobs,
-                                      penalty=penalty,
-                                      cv=10,
-                                      verbose=True,
-                                      Cs=1. / train_samples / np.array(alphas))
+                                      activation='relu',
+                                      alpha=0.1,
+                                      batch_size=200, )
+        classifier = GridSearchCV(classifier,
+                                  {'alpha': alphas},
+                                  cv=10,
+                                  refit=True,
+                                  verbose=1,
+                                  n_jobs=n_jobs)
 
     pipeline.append(('logistic_regression', classifier))
     estimator = Pipeline(pipeline, memory=memory)
@@ -128,7 +155,7 @@ def run(alphas,
     estimator.fit(X_train, y_train,
                   **dict(logistic_regression__sample_weight=sample_weight)
                   )
-    
+
     predicted_proba = pd.DataFrame(index=X.index,
                                    data=estimator.predict_proba(X))
     predictions = []
