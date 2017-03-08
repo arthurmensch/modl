@@ -27,13 +27,13 @@ def config():
 @unmask_task.automain
 def run(n_jobs, batch_size, _run):
     imgs = fetch_archi()
-    interesting_con = INTERESTING_CONTRASTS
-    imgs = imgs.loc[(slice(None), slice(None), interesting_con), :]
+#    interesting_con = INTERESTING_CONTRASTS
+#    imgs = imgs.loc[(slice(None), slice(None), interesting_con), :]
 
     mask = fetch_hcp(n_subjects=1).mask
 
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
-                        'contrast', 'archi', '18')
+                        'contrast', 'archi', '30')
     _run.info['artifact_dir'] = artifact_dir
 
     memory = Memory(cachedir=None)

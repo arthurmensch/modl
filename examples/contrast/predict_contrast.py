@@ -34,7 +34,7 @@ def config():
     alpha = 1e-4
     multi_class = 'multinomial'
     fit_intercept = True
-    identity = False
+    identity = True
     refit = False
     n_components_list = [16, 64, 256]
     test_size = 0.1
