@@ -13,7 +13,7 @@ from modl.datasets import get_data_dirs
 from modl.datasets.hcp import fetch_hcp, INTERESTING_CONTRASTS_EXTENDED
 from modl.input_data.fmri.unmask import create_raw_contrast_data
 
-unmask_task = Experiment('unmask_task')
+unmask_task = Experiment('unmask_contrast_hcp')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 unmask_task.observers.append(observer)
 

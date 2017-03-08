@@ -10,10 +10,10 @@ from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 monkey_patch_nifti_image()
 
 from modl.datasets import get_data_dirs, fetch_hcp
-from modl.datasets.archi import fetch_archi
+from modl.datasets.archi import fetch_archi, INTERESTING_CONTRASTS
 from modl.input_data.fmri.unmask import create_raw_contrast_data
 
-unmask_task = Experiment('unmask_archi')
+unmask_task = Experiment('unmask_contrast_archi')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 unmask_task.observers.append(observer)
 
@@ -27,10 +27,13 @@ def config():
 @unmask_task.automain
 def run(n_jobs, batch_size, _run):
     imgs = fetch_archi()
+    interesting_con = INTERESTING_CONTRASTS
+    imgs = imgs.loc[(slice(None), slice(None), interesting_con), :]
+
     mask = fetch_hcp(n_subjects=1).mask
 
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
-                        'contrast', 'archi', '38')
+                        'contrast', 'archi', '18')
     _run.info['artifact_dir'] = artifact_dir
 
     memory = Memory(cachedir=None)

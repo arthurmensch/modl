@@ -23,13 +23,13 @@ predict_contrast.observers.append(observer)
 
 @predict_contrast.config
 def config():
-    alphas = np.logspace(-3, 2, 6).tolist()
+    alphas = np.logspace(-4, 1, 10).tolist()
     standardize = True
     scale_importance = 'sqrt'
     n_jobs = 30
     verbose = 2
     seed = 2
-    max_iter = 30
+    max_iter = 100
     tol = 1e-7
     alpha = 1e-4
     multi_class = 'multinomial'
@@ -92,7 +92,8 @@ def run(alphas,
     train_samples = len(X_train)
     sample_weight = 1 / X_train[0].groupby(
         level=['dataset', 'contrast']).transform('count')
-    sample_weight /= np.sum(sample_weight)
+    sample_weight /= np.min(sample_weight)
+    print('sample_weight', sample_weight)
 
     pipeline = make_loadings_extractor(components,
                                        standardize=standardize,
@@ -112,6 +113,7 @@ def run(alphas,
                                       n_jobs=n_jobs,
                                       penalty=penalty,
                                       cv=10,
+                                      verbose=True,
                                       Cs=1. / train_samples / np.array(alphas))
 
     pipeline.append(('logistic_regression', classifier))
@@ -124,7 +126,7 @@ def run(alphas,
     y_train = y.loc['train']
 
     estimator.fit(X_train, y_train,
-                  # **dict(logistic_regression__sample_weight=sample_weight)
+                  **dict(logistic_regression__sample_weight=sample_weight)
                   )
     
     predicted_proba = pd.DataFrame(index=X.index,

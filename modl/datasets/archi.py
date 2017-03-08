@@ -8,6 +8,16 @@ from modl.datasets import get_data_dirs
 import numpy as np
 import re
 
+INTERESTING_CONTRASTS = ["face_sex", "face_trusty",
+                         "false_belief_audio", "triangle_random",
+                         "object_grasp",
+                         "object_orientation", "rotation_hand",
+                         "rotation_side",
+                         "motor-cognitive", "clicGaudio", "clicDaudio",
+                         "saccade", "sentences", "phraseaudio",
+                         "phrasevideo",
+                         "computation", "audio", "video"]
+
 
 def fetch_archi(data_dir=None, n_subjects=None):
     base_contrast = re.compile(r'^[^-]*$')
@@ -28,7 +38,7 @@ def fetch_archi(data_dir=None, n_subjects=None):
         dirname, contrast = os.path.split(z_map)
         contrast = contrast[2:-7]
         res = re.match(base_contrast, contrast)
-        if res is not None:
+        if contrast == 'motor-cognitive' or res is not None:
             dirname, _ = os.path.split(dirname)
             dirname, task = os.path.split(dirname)
             dirname, subject = os.path.split(dirname)
@@ -42,7 +52,7 @@ def fetch_archi(data_dir=None, n_subjects=None):
                             'task': tasks,
                             'contrast': contrasts,
                             'direction': directions,
-                            'z_map': filtered_z_maps,})
+                            'z_map': filtered_z_maps, })
     df.set_index(['subject', 'task', 'contrast', 'direction'], inplace=True)
     df.sort_index(inplace=True)
     subjects = df.index.get_level_values('subject').unique().values.tolist()
