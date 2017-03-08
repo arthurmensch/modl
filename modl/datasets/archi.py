@@ -18,10 +18,24 @@ INTERESTING_CONTRASTS = ["face_sex", "face_trusty",
                          "phrasevideo",
                          "computation", "audio", "video"]
 
+INTERESTING_CONTRASTS_EXTENDED = ["expression_control", "expression_intention",
+                                  "expression_sex", "face_control",
+                                  "face_sex",
+                                  "face_trusty", "audio", "calculaudio",
+                                  "calculvideo",
+                                  "clicDaudio", "clicDvideo", "clicGaudio",
+                                  "clicGvideo", "computation",
+                                  "damier_H", "damier_V", "object_grasp",
+                                  "object_orientation", "rotation_hand",
+                                  "rotation_side", "saccade",
+                                  "motor-cognitive",
+                                  "false_belief_audio", "false_belief_video",
+                                  "mecanistic_audio", "mecanistic_video",
+                                  "non_speech", "speech", "triangle_intention",
+                                  "triangle_random"]
+
 
 def fetch_archi(data_dir=None, n_subjects=None):
-    base_contrast = re.compile(r'^[^-]*$')
-
     data_dir = get_data_dirs(data_dir)[0]
     source_dir = join(data_dir, 'archi', 'glm')
     if not os.path.exists(source_dir):
@@ -37,8 +51,7 @@ def fetch_archi(data_dir=None, n_subjects=None):
     for z_map in z_maps:
         dirname, contrast = os.path.split(z_map)
         contrast = contrast[2:-7]
-        res = re.match(base_contrast, contrast)
-        if contrast == 'motor-cognitive' or res is not None:
+        if contrast in INTERESTING_CONTRASTS_EXTENDED:
             dirname, _ = os.path.split(dirname)
             dirname, task = os.path.split(dirname)
             dirname, subject = os.path.split(dirname)

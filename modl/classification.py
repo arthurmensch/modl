@@ -43,8 +43,8 @@ class Projector(CacheMixin, TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X, y=None):
-        loadings = self._cache(_project)(X, self.basis,
-                                         n_jobs=self.n_jobs)
+        loadings = self._cache(_project, ignore=['n_jobs'])(X, self.basis,
+                                                          n_jobs=self.n_jobs)
         if self.identity:
             loadings = np.concatenate([loadings, X], axis=1)
         return loadings
@@ -60,7 +60,7 @@ def _project(X, basis, n_jobs=1):
     n_samples = X.shape[0]
     batch_size = int(ceil(n_samples / n_jobs))
     batches = gen_batches(n_samples, batch_size)
-    loadings = Parallel(n_jobs=n_jobs)(
+    loadings = Parallel(n_jobs=n_jobs, backend='threading')(
         delayed(_lstsq)(basis.T, X[batch].T) for batch in batches)
     loadings = np.hstack(loadings).T
     return loadings

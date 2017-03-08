@@ -40,13 +40,13 @@ def config():
     test_size = 0.1
     train_size = None
     n_subjects = 788
-    penalty = 'l1'
-    datasets = ['archi', 'hcp']
+    penalty = 'l2'
+    datasets = ['archi']
 
     hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                   'unmask', 'contrast', 'hcp', '18')
+                                   'unmask', 'contrast', 'hcp', '23')
     archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                     'unmask', 'contrast', 'archi', '18')
+                                     'unmask', 'contrast', 'archi', '30')
     datasets_dir = {'archi': archi_unmask_contrast_dir,
                     'hcp': hcp_unmask_contrast_dir}
 
