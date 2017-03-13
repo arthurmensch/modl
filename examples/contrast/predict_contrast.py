@@ -25,7 +25,7 @@ predict_contrast.observers.append(observer)
 
 @predict_contrast.config
 def config():
-    alphas = np.logspace(-6, -3, 4)
+    alphas = [0.01]
     standardize = True
     scale_importance = 'sqrt'
     n_jobs = 30
@@ -43,7 +43,7 @@ def config():
     train_size = None
     n_subjects = 788
     penalty = 'l1'
-    datasets = ['archi']
+    datasets = ['hcp']
     factored = True
     latent_dim_list = [100]
 

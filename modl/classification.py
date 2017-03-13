@@ -177,6 +177,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
         n_samples, n_features = X.shape
 
         init_tensorflow(n_jobs=self.n_jobs)
+
         self.model_ = make_model(n_features, self.classes_.shape[0],
                                  self.alpha,
                                  self.latent_dim,
@@ -231,9 +232,9 @@ def make_model(n_features, n_classes, alpha=0.01,
         W_regularizer_sup = l2(alpha)
         activity_regularizer_enc = None
     elif penalty == 'l1':
-        W_regularizer_enc = None
+        W_regularizer_enc = l1(alpha)
         W_regularizer_sup = None
-        activity_regularizer_enc = activity_l1(alpha)
+        activity_regularizer_enc = None # activity_l1(alpha)
     else:
         raise ValueError()
     encoded = Dense(latent_dim, activation=activation,
