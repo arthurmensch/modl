@@ -1,23 +1,25 @@
 import numbers
-from math import ceil
-from tempfile import NamedTemporaryFile
+from os.path import expanduser, join
 
+import mkl
 import numpy as np
+import tensorflow as tf
+from keras.backend import set_session
+from keras.callbacks import EarlyStopping, TensorBoard
 from keras.engine import Input, Model
 from keras.layers import Dense
 from keras.models import load_model
-from keras.regularizers import l2
-from lightning.impl.base import BaseEstimator
+from keras.regularizers import l2, l1, activity_l1
 from nilearn._utils import CacheMixin
-from numpy import linalg
-from sklearn.base import TransformerMixin
+from scipy.linalg import lstsq
+from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.externals.joblib import Parallel, delayed, Memory
 from sklearn.linear_model.base import LinearClassifierMixin, SparseCoefMixin
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import check_X_y
-from sklearn.utils import gen_batches
 from sklearn.utils.multiclass import check_classification_targets
+from tempfile import NamedTemporaryFile
 
 
 class Projector(CacheMixin, TransformerMixin, BaseEstimator):
@@ -38,8 +40,11 @@ class Projector(CacheMixin, TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X, y=None):
-        loadings = self._cache(_project, ignore=['n_jobs'])(X, self.basis,
-                                                          n_jobs=self.n_jobs)
+        current_n_threads = mkl.get_max_threads()
+        mkl.set_num_threads(self.n_jobs)
+        loadings, _, _, _ = self._cache(lstsq)(self.basis.T, X.T)
+        mkl.set_num_threads(current_n_threads)
+        loadings = loadings.T
         if self.identity:
             loadings = np.concatenate([loadings, X], axis=1)
         return loadings
@@ -49,21 +54,6 @@ class Projector(CacheMixin, TransformerMixin, BaseEstimator):
         if self.identity:
             rec += Xt
         return rec
-
-
-def _project(X, basis, n_jobs=1):
-    n_samples = X.shape[0]
-    batch_size = int(ceil(n_samples / n_jobs))
-    batches = gen_batches(n_samples, batch_size)
-    loadings = Parallel(n_jobs=n_jobs, backend='threading')(
-        delayed(_lstsq)(basis.T, X[batch].T) for batch in batches)
-    loadings = np.hstack(loadings).T
-    return loadings
-
-
-def _lstsq(a, b):
-    out, _, _, _ = linalg.lstsq(a, b)
-    return out
 
 
 class FeatureImportanceTransformer(TransformerMixin, BaseEstimator):
@@ -122,8 +112,7 @@ def make_loadings_extractor(bases, scale_bases=True,
     return pipeline
 
 
-class FactoredLogistic(BaseEstimator, LinearClassifierMixin,
-                       SparseCoefMixin):
+class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
     """
     Parameters
     ----------
@@ -135,9 +124,9 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin,
     optimizer: str, Keras optimizer
     """
 
-    def __init__(self, latent_dim=10, activation='linear',
-                 optimizer='adam', max_iter=100, batch_size=256,
-                 alpha=0.01,
+    def __init__(self, latent_dim=10, activation='linear', optimizer='adam',
+                 max_iter=100, batch_size=256, n_jobs=1, alpha=0.01,
+                 penalty='l2', log_dir=None
                  ):
         self.latent_dim = latent_dim
         self.activation = activation
@@ -146,6 +135,9 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin,
         self.batch_size = batch_size
         self.shuffle = True
         self.alpha = alpha
+        self.penalty = penalty
+        self.log_dir = log_dir
+        self.n_jobs = n_jobs
 
     def fit(self, X, y, sample_weight=None):
         """Fit the model according to the given training data.
@@ -184,13 +176,27 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin,
 
         n_samples, n_features = X.shape
 
+        init_tensorflow(n_jobs=self.n_jobs)
         self.model_ = make_model(n_features, self.classes_.shape[0],
                                  self.alpha,
                                  self.latent_dim,
-                                 self.activation, self.optimizer)
+                                 self.activation, self.optimizer,
+                                 penalty=self.penalty)
+        callbacks = [EarlyStopping(monitor='val_acc', min_delta=1e-5,
+                                   patience=20)]
+        if self.log_dir is not None:
+            tensorboard = TensorBoard(log_dir=join(self.log_dir,
+                                                   str(self.latent_dim),
+                                                   str(self.penalty), str(self.alpha))
+                                      )
+            callbacks.append(tensorboard)
         self.model_.fit(X, y_bin, nb_epoch=self.max_iter,
+                        validation_split=0.1,
+                        callbacks=callbacks,
+                        verbose=False,
                         batch_size=self.batch_size,
-                        shuffle=self.shuffle)
+                        shuffle=self.shuffle,
+                        sample_weight=sample_weight)
 
     def predict_proba(self, X):
         return self.model_.predict(X)
@@ -217,15 +223,38 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin,
 
 
 def make_model(n_features, n_classes, alpha=0.01,
-               latent_dim=10, activation='linear', optimizer='adam'):
+               latent_dim=10, activation='linear', optimizer='adam',
+               penalty='l2'):
     input = Input(shape=(n_features,), name='input')
+    if penalty == 'l2':
+        W_regularizer_enc = l2(alpha)
+        W_regularizer_sup = l2(alpha)
+        activity_regularizer_enc = None
+    elif penalty == 'l1':
+        W_regularizer_enc = None
+        W_regularizer_sup = None
+        activity_regularizer_enc = activity_l1(alpha)
+    else:
+        raise ValueError()
     encoded = Dense(latent_dim, activation=activation,
-                    bias=False, W_regularizer=l2(alpha),
+                    bias=False, W_regularizer=W_regularizer_enc,
+                    activity_regularizer=activity_regularizer_enc,
                     name='encoded')(input)
     supervised = Dense(n_classes, activation='softmax',
-                       W_regularizer=l2(alpha),
+                       W_regularizer=W_regularizer_sup,
                        name='classifier')(encoded)
     model = Model(input=input, output=supervised, name='factored_lr')
     model.compile(optimizer=optimizer, loss='categorical_crossentropy',
                   metrics=['accuracy'])
     return model
+
+
+def init_tensorflow(n_jobs=1):
+    sess = tf.Session(
+        config=tf.ConfigProto(
+            device_count={'CPU': n_jobs},
+            inter_op_parallelism_threads=n_jobs,
+            intra_op_parallelism_threads=n_jobs,
+            use_per_session_threads=True)
+    )
+    set_session(sess)

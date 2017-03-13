@@ -8,13 +8,13 @@ from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
 from sklearn.model_selection import GridSearchCV
-from sklearn.linear_model import LogisticRegressionCV
+from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 
 from modl.classification import make_loadings_extractor
 from modl.datasets import get_data_dirs
-from modl.factored_logistic import FactoredLogistic
+from modl.classification import FactoredLogistic
 from modl.input_data.fmri.unmask import build_design
 from modl.utils.system import get_cache_dirs
 
@@ -22,26 +22,16 @@ predict_contrast = Experiment('predict_contrast')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 predict_contrast.observers.append(observer)
 
-def init_tensorflow(n_jobs=1):
-    from keras.backend import set_session
-    import tensorflow as tf
-
-    sess = tf.Session(config=tf.ConfigProto(
-        inter_op_parallelism_threads=n_jobs,
-        intra_op_parallelism_threads=n_jobs,
-        use_per_session_threads=True))
-    set_session(sess)
-
 
 @predict_contrast.config
 def config():
-    alphas = np.logspace(-4, 1, 10).tolist()
+    alphas = np.logspace(-6, -3, 4)
     standardize = True
     scale_importance = 'sqrt'
     n_jobs = 30
     verbose = 2
     seed = 2
-    max_iter = 100
+    max_iter = 300
     tol = 1e-7
     alpha = 1e-4
     multi_class = 'multinomial'
@@ -51,10 +41,11 @@ def config():
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
-    n_subjects = 50
+    n_subjects = 788
     penalty = 'l1'
-    datasets = ['hcp']
+    datasets = ['archi']
     factored = True
+    latent_dim_list = [100]
 
     hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
                                    'unmask', 'contrast', 'hcp', '23')
@@ -85,6 +76,7 @@ def run(alphas,
         datasets,
         datasets_dir,
         factored,
+        latent_dim_list,
         _run,
         _seed):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
@@ -116,33 +108,57 @@ def run(alphas,
                                        scale_bases=True,
                                        n_jobs=n_jobs,
                                        memory=memory)
+
+    artifact_dir = join(get_data_dirs()[0], 'pipeline',
+                        'contrast', 'prediction', str(_run._id))
+
     if not factored:
-        classifier = LogisticRegressionCV(solver='saga',
-                                          multi_class=multi_class,
-                                          fit_intercept=fit_intercept,
-                                          random_state=_seed,
-                                          refit=True,
-                                          tol=tol,
-                                          max_iter=max_iter,
-                                          n_jobs=n_jobs,
-                                          penalty=penalty,
-                                          cv=10,
-                                          verbose=True,
-                                          Cs=1. / train_samples / np.array(alphas))
+        if len(alphas) > 1 or len(latent_dim_list) > 1:
+            classifier = LogisticRegressionCV(solver='saga',
+                                              multi_class=multi_class,
+                                              fit_intercept=fit_intercept,
+                                              random_state=_seed,
+                                              refit=True,
+                                              tol=tol,
+                                              max_iter=max_iter,
+                                              n_jobs=n_jobs,
+                                              penalty=penalty,
+                                              cv=10,
+                                              verbose=True,
+                                              Cs=1. / train_samples / np.array(
+                                                  alphas))
+        else:
+            classifier = LogisticRegression(solver='saga',
+                                            multi_class=multi_class,
+                                            fit_intercept=fit_intercept,
+                                            random_state=_seed,
+                                            tol=tol,
+                                            max_iter=max_iter,
+                                            n_jobs=n_jobs,
+                                            penalty=penalty,
+                                            verbose=True,
+                                            C=1. / train_samples / alphas[0])
 
     else:
-        init_tensorflow(n_jobs=1)
-        classifier = FactoredLogistic(optimizer='adagrad', latent_dim=50,
+        classifier = FactoredLogistic(optimizer='adam',
+                                      latent_dim=latent_dim_list[0],
                                       max_iter=max_iter,
-                                      activation='relu',
-                                      alpha=0.1,
-                                      batch_size=200, )
-        classifier = GridSearchCV(classifier,
-                                  {'alpha': alphas},
-                                  cv=10,
-                                  refit=True,
-                                  verbose=1,
-                                  n_jobs=n_jobs)
+                                      activation='linear',
+                                      penalty=penalty,
+                                      alpha=alphas[0],
+                                      batch_size=200,
+                                      n_jobs=n_jobs,
+                                      log_dir=join(artifact_dir,
+                                                   'logs'))
+        if len(alphas) > 1 or len(latent_dim_list) > 1:
+            classifier.set_params(n_jobs=1)
+            classifier = GridSearchCV(classifier,
+                                      {'alpha': alphas,
+                                       'latent_dim': latent_dim_list},
+                                      cv=10,
+                                      refit=True,
+                                      verbose=1,
+                                      n_jobs=n_jobs)
 
     pipeline.append(('logistic_regression', classifier))
     estimator = Pipeline(pipeline, memory=memory)
@@ -154,7 +170,7 @@ def run(alphas,
     y_train = y.loc['train']
 
     estimator.fit(X_train, y_train,
-                  **dict(logistic_regression__sample_weight=sample_weight)
+                  logistic_regression__sample_weight=sample_weight
                   )
 
     predicted_proba = pd.DataFrame(index=X.index,
@@ -182,16 +198,14 @@ def run(alphas,
                          == prediction.loc['train']['true_label'])
     train_score /= prediction.loc['train'].shape[0]
 
-    _run.info['train_score'] = train_score
+    _run.info['train_score'] = float(train_score)
 
     test_score = np.sum(prediction.loc['test']['predicted_label']
-                        == prediction.loc['test']['predicted_label'])
+                        == prediction.loc['test']['true_label'])
     test_score /= prediction.loc['test'].shape[0]
 
-    _run.info['test_score'] = test_score
+    _run.info['test_score'] = float(test_score)
 
-    _run.info['train_score'] = train_score
-    _run.info['test_score'] = test_score
     print('Write task prediction artifacts')
     artifact_dir = join(get_data_dirs()[0], 'pipeline',
                         'contrast', 'prediction', str(_run._id))
