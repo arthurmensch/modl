@@ -3,6 +3,7 @@ import numbers
 import mkl
 import numpy as np
 import tensorflow as tf
+from keras.callbacks import Callback
 
 from .fixes import Model
 
@@ -210,8 +211,10 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
         # Optimization loop
         n_epochs = np.zeros(n_datasets)
         batches_list = []
-        for i, this_X in enumerate(X_list):
-            self.random_state.shuffle(this_X)
+        for i, (this_X, this_y_bin) in enumerate(zip(X_list, y_bin_list)):
+            permutation = self.random_state.permutation(len(this_X))
+            this_X[:] = this_X[permutation]
+            this_y_bin[:] = this_y_bin[permutation]
             batches = gen_batches(len(this_X), self.batch_size)
             batches_list.append(batches)
         while np.min(n_epochs) < self.max_iter:
@@ -222,10 +225,15 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
                     batch = next(batches_list[i])
                 except StopIteration:
                     this_X = X_list[i]
-                    self.random_state.shuffle(this_X)
+                    permutation = self.random_state.permutation(len(this_X))
+                    this_X[:] = this_X[permutation]
+                    this_y_bin[:] = this_y_bin[permutation]
                     batches_list[i] = gen_batches(len(this_X), self.batch_size)
                     n_epochs[i] += 1
-                    print('Epoch %s' % n_epochs)
+                    metrics = model.evaluate(this_X, this_y_bin, verbose=0)
+                    print('Epoch %i, dataset %i, loss: %.4f,'
+                          ' acc: %.4f' % (n_epochs[i], self.datasets_[i],
+                                          *tuple(metrics)))
                     batch = next(batches_list[i])
                 model.train_on_batch(this_X[batch], this_y_bin[batch])
 
@@ -248,7 +256,6 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
                 pred[indices] = these_classes[np.argmax(self.predict_proba(
                     this_X, dataset=this_dataset), axis=1)]
             return pred
-
 
 def make_model(n_features, classes_list, alpha=0.01,
                latent_dim=10, activation='linear', optimizer='adam',

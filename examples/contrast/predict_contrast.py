@@ -52,7 +52,7 @@ def config():
     train_size = None
     n_subjects = 30
     penalty = 'l2'
-    datasets = ['hcp']
+    datasets = ['archi', 'hcp']
     factored = True
     latent_dim_list = [100]
 
