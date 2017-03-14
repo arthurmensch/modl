@@ -1,25 +1,24 @@
 import numbers
-from os.path import expanduser, join
 
 import mkl
 import numpy as np
 import tensorflow as tf
+
+from .fixes import Model
+
 from keras.backend import set_session
-from keras.callbacks import EarlyStopping, TensorBoard
-from keras.engine import Input, Model
-from keras.layers import Dense
-from keras.models import load_model
-from keras.regularizers import l2, l1, activity_l1
+from keras.engine import Input, Merge, merge
+from keras.layers import Dense, Activation
+from keras.regularizers import l2, l1
 from nilearn._utils import CacheMixin
 from scipy.linalg import lstsq
 from sklearn.base import TransformerMixin, BaseEstimator
-from sklearn.externals.joblib import Parallel, delayed, Memory
+from sklearn.externals.joblib import Memory
 from sklearn.linear_model.base import LinearClassifierMixin, SparseCoefMixin
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import StandardScaler
-from sklearn.utils import check_X_y
-from sklearn.utils.multiclass import check_classification_targets
-from tempfile import NamedTemporaryFile
+from sklearn.utils import check_array, gen_batches, \
+    check_random_state
 
 
 class Projector(CacheMixin, TransformerMixin, BaseEstimator):
@@ -126,7 +125,9 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
 
     def __init__(self, latent_dim=10, activation='linear', optimizer='adam',
                  max_iter=100, batch_size=256, n_jobs=1, alpha=0.01,
-                 penalty='l2', log_dir=None
+                 label_to_dataset=None,
+                 penalty='l2', log_dir=None,
+                 random_state=None,
                  ):
         self.latent_dim = latent_dim
         self.activation = activation
@@ -138,6 +139,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
         self.penalty = penalty
         self.log_dir = log_dir
         self.n_jobs = n_jobs
+        self.label_to_dataset = label_to_dataset
+        self.random_state = random_state
 
     def fit(self, X, y, sample_weight=None):
         """Fit the model according to the given training data.
@@ -167,66 +170,91 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
             raise ValueError("Maximum number of iteration must be positive;"
                              " got (max_iter=%r)" % self.max_iter)
 
-        X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float64,
-                         order="C")
-        self.label_binarizer_ = LabelBinarizer()
-        check_classification_targets(y)
-        self.classes_ = np.unique(y)
-        y_bin = self.label_binarizer_.fit_transform(y)
+        X = check_array(X, accept_sparse='csr', dtype=np.float32,
+                        order="C")
 
         n_samples, n_features = X.shape
+        y = check_array(y, ensure_2d=True)
+        assert (y.shape[1] == 2)
 
+        self.datasets_ = np.unique(y[:, 0])
+        n_datasets = self.datasets_.shape[0]
+
+        X_list = []
+        y_bin_list = []
+        self.classes_list_ = []
+
+        for dataset in self.datasets_:
+            indices = y[:, 0] == dataset
+            this_X = X[indices]
+            this_y = y[indices, 1]
+            label_binarizer = LabelBinarizer()
+            classes = np.unique(this_y)
+            self.classes_list_.append(classes)
+            this_y_bin = label_binarizer.fit_transform(this_y)
+            y_bin_list.append(this_y_bin)
+            X_list.append(this_X)
+
+        self.classes_ = np.concatenate(self.classes_list_)
+
+        self.random_state = check_random_state(self.random_state)
+
+        # Model construction
         init_tensorflow(n_jobs=self.n_jobs)
 
-        self.model_ = make_model(n_features, self.classes_.shape[0],
-                                 self.alpha,
-                                 self.latent_dim,
-                                 self.activation, self.optimizer,
-                                 penalty=self.penalty)
-        callbacks = [EarlyStopping(monitor='val_acc', min_delta=1e-5,
-                                   patience=20)]
-        if self.log_dir is not None:
-            tensorboard = TensorBoard(log_dir=join(self.log_dir,
-                                                   str(self.latent_dim),
-                                                   str(self.penalty), str(self.alpha))
-                                      )
-            callbacks.append(tensorboard)
-        self.model_.fit(X, y_bin, nb_epoch=self.max_iter,
-                        validation_split=0.1,
-                        callbacks=callbacks,
-                        verbose=False,
-                        batch_size=self.batch_size,
-                        shuffle=self.shuffle,
-                        sample_weight=sample_weight)
+        self.models_, self.stacked_model_ =\
+            make_model(n_features, self.classes_list_, self.alpha,
+                       self.latent_dim, self.activation,
+                       self.optimizer, penalty=self.penalty)
 
-    def predict_proba(self, X):
-        return self.model_.predict(X)
+        # Optimization loop
+        n_epochs = np.zeros(n_datasets)
+        batches_list = []
+        for i, this_X in enumerate(X_list):
+            self.random_state.shuffle(this_X)
+            batches = gen_batches(len(this_X), self.batch_size)
+            batches_list.append(batches)
+        while np.min(n_epochs) < self.max_iter:
+            for i, model in enumerate(self.models_):
+                this_X = X_list[i]
+                this_y_bin = y_bin_list[i]
+                try:
+                    batch = next(batches_list[i])
+                except StopIteration:
+                    this_X = X_list[i]
+                    self.random_state.shuffle(this_X)
+                    batches_list[i] = gen_batches(len(this_X), self.batch_size)
+                    n_epochs[i] += 1
+                    print('Epoch %s' % n_epochs)
+                    batch = next(batches_list[i])
+                model.train_on_batch(this_X[batch], this_y_bin[batch])
 
-    def predict(self, X):
-        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
+    def predict_proba(self, X, dataset=None):
+        if dataset is None:
+            return self.stacked_model_.predict(X)
+        else:
+            idx = np.where(self.datasets_ == dataset)[0][0]
+            return self.models_[idx].predict(X)
 
-    def __setstate__(self, state):
-        if 'model_' in state:
-            model = state.pop('model_')
-            with NamedTemporaryFile(dir='/tmp') as f:
-                f.write(model)
-                state['model_'] = load_model(f.name)
-        super().__setstate__(state)
-
-    def __getstate__(self):
-        state = super().__getstate__()
-        if hasattr(self, 'model_'):
-            with NamedTemporaryFile(dir='/tmp') as f:
-                self.model_.save(f.name)
-                data = f.read()
-            state['model_'] = data
-        return state
+    def predict(self, X, dataset=None):
+        if dataset is None:
+            return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
+        else:
+            pred = np.zeros(X.shape[0], dtype='int')
+            for this_dataset in self.datasets_:
+                indices = dataset == this_dataset
+                this_X = X[indices]
+                these_classes = self.classes_list_[this_dataset]
+                pred[indices] = these_classes[np.argmax(self.predict_proba(
+                    this_X, dataset=this_dataset), axis=1)]
+            return pred
 
 
-def make_model(n_features, n_classes, alpha=0.01,
+def make_model(n_features, classes_list, alpha=0.01,
                latent_dim=10, activation='linear', optimizer='adam',
                penalty='l2'):
     input = Input(shape=(n_features,), name='input')
+
     if penalty == 'l2':
         W_regularizer_enc = l2(alpha)
         W_regularizer_sup = l2(alpha)
@@ -234,20 +262,33 @@ def make_model(n_features, n_classes, alpha=0.01,
     elif penalty == 'l1':
         W_regularizer_enc = l1(alpha)
         W_regularizer_sup = None
-        activity_regularizer_enc = None # activity_l1(alpha)
+        activity_regularizer_enc = None
     else:
         raise ValueError()
     encoded = Dense(latent_dim, activation=activation,
                     bias=False, W_regularizer=W_regularizer_enc,
                     activity_regularizer=activity_regularizer_enc,
                     name='encoded')(input)
-    supervised = Dense(n_classes, activation='softmax',
-                       W_regularizer=W_regularizer_sup,
-                       name='classifier')(encoded)
-    model = Model(input=input, output=supervised, name='factored_lr')
-    model.compile(optimizer=optimizer, loss='categorical_crossentropy',
-                  metrics=['accuracy'])
-    return model
+    models = []
+    supervised_list = []
+    for classes in classes_list:
+        n_classes = len(classes)
+        supervised = Dense(n_classes, activation='linear',
+                           W_regularizer=W_regularizer_sup)(encoded)
+        supervised_list.append(supervised)
+        softmax = Activation('softmax')(supervised)
+        model = Model(input=input, output=softmax)
+        model.compile(optimizer=optimizer,
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'])
+        models.append(model)
+    if len(supervised_list) > 1:
+        stacked = merge(supervised_list, mode='concat', concat_axis=1)
+    else:
+        stacked = supervised_list[0]
+    softmax = Activation('softmax')(stacked)
+    stacked_model = Model(input=input, output=softmax)
+    return models, stacked_model
 
 
 def init_tensorflow(n_jobs=1):

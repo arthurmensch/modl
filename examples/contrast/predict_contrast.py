@@ -18,17 +18,26 @@ from modl.classification import FactoredLogistic
 from modl.input_data.fmri.unmask import build_design
 from modl.utils.system import get_cache_dirs
 
-predict_contrast = Experiment('predict_contrast')
+predict_contrast = Experiment('predict_contrast', interactive=True)
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 predict_contrast.observers.append(observer)
 
 
+def retrieve_components(alpha, masker, n_components_list):
+    components_dir = join(get_data_dirs()[0], 'pipeline', 'components', 'hcp')
+    components_imgs = [join(components_dir, str(this_n_components), str(alpha),
+                            'components.nii.gz')
+                       for this_n_components in n_components_list]
+    components = masker.transform(components_imgs)
+    return components
+
+
 @predict_contrast.config
 def config():
-    alphas = [0.01]
+    alphas = [.001]
     standardize = True
     scale_importance = 'sqrt'
-    n_jobs = 30
+    n_jobs = 5
     verbose = 2
     seed = 2
     max_iter = 300
@@ -41,8 +50,8 @@ def config():
     n_components_list = [16, 64, 256]
     test_size = 0.1
     train_size = None
-    n_subjects = 788
-    penalty = 'l1'
+    n_subjects = 30
+    penalty = 'l2'
     datasets = ['hcp']
     factored = True
     latent_dim_list = [100]
@@ -86,12 +95,8 @@ def run(alphas,
                                            n_subjects, test_size,
                                            train_size)
     print('Retrieve components')
-    components_dir = join(get_data_dirs()[0], 'pipeline', 'components', 'hcp')
-    components_imgs = [join(components_dir, str(this_n_components), str(alpha),
-                            'components.nii.gz')
-                       for this_n_components in n_components_list]
-
-    components = masker.transform(components_imgs)
+    components = memory.cache(retrieve_components)(
+        alpha, masker, n_components_list)
 
     print('Transform and fit data')
     X_train = X.loc['train']
@@ -99,7 +104,16 @@ def run(alphas,
     sample_weight = 1 / X_train[0].groupby(
         level=['dataset', 'contrast']).transform('count')
     sample_weight /= np.min(sample_weight)
-    print('sample_weight', sample_weight)
+
+    labels = X.index.get_level_values('contrast').values
+    datasets = X.index.get_level_values('dataset').values
+    label_encoder = LabelEncoder()
+    labels = label_encoder.fit_transform(labels)
+    labels = pd.Series(index=X.index, data=labels, name='label')
+    dataset_encoder = LabelEncoder()
+    datasets = dataset_encoder.fit_transform(datasets)
+    datasets = pd.Series(index=X.index, data=datasets, name='dataset')
+    y = pd.concat([datasets, labels], axis=1)
 
     pipeline = make_loadings_extractor(components,
                                        standardize=standardize,
@@ -134,7 +148,7 @@ def run(alphas,
                                             random_state=_seed,
                                             tol=tol,
                                             max_iter=max_iter,
-                                            n_jobs=n_jobs,
+                                                n_jobs=n_jobs,
                                             penalty=penalty,
                                             verbose=True,
                                             C=1. / train_samples / alphas[0])
@@ -163,33 +177,26 @@ def run(alphas,
     pipeline.append(('logistic_regression', classifier))
     estimator = Pipeline(pipeline, memory=memory)
 
-    true_labels = X.index.get_level_values('contrast').values
-    label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(true_labels)
-    y = pd.Series(index=X.index, data=y, name='label')
-    y_train = y.loc['train']
+    y_train = y.loc['train'].values
 
-    estimator.fit(X_train, y_train,
-                  logistic_regression__sample_weight=sample_weight
-                  )
+    if factored:
+        estimator.fit(X_train, y_train,
+                      logistic_regression__sample_weight=sample_weight)
+        Xt = X
+        for name, transform in estimator.steps[:-1]:
+            if transform is not None:
+                Xt = transform.transform(Xt)
+        predicted_labels = estimator.steps[-1][-1].predict(
+            Xt, dataset=y['dataset'])
+    else:
+        estimator.fit(X_train, y_train,
+                      logistic_regression__sample_weight=sample_weight)
+        predicted_labels = \
+            estimator.predict(X)
+    predicted_labels = label_encoder.inverse_transform(predicted_labels)
+    labels = label_encoder.inverse_transform(labels)
 
-    predicted_proba = pd.DataFrame(index=X.index,
-                                   data=estimator.predict_proba(X))
-    predictions = []
-    datasets = []
-    for dataset, group in predicted_proba.groupby(level='dataset'):
-        labels = group.index.get_level_values('contrast').unique().values
-        idx_labels = label_encoder.transform(labels)
-        proba_subset = group.values[:, idx_labels]
-        prediction = np.argmax(proba_subset, axis=1)
-        prediction = idx_labels[prediction]
-        predictions.append(pd.Series(prediction, index=group.index))
-        datasets.append(dataset)
-    predicted_y = pd.concat(predictions)
-    predicted_y = predicted_y.reindex(X.index)
-
-    predicted_labels = label_encoder.inverse_transform(predicted_y)
-    prediction = pd.DataFrame({'true_label': true_labels,
+    prediction = pd.DataFrame({'true_label': labels,
                                'predicted_label': predicted_labels},
                               index=X.index)
 
