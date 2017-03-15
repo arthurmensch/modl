@@ -285,7 +285,8 @@ def get_raw_contrast_data(raw_dir):
     return masker, imgs
 
 
-def build_design(datasets, datasets_dir, n_subjects, test_size, train_size):
+def build_design(datasets, datasets_dir, n_subjects, test_size, train_size,
+                 random_state=None):
     X = []
     for dataset in datasets:
         masker, this_X = get_raw_contrast_data(datasets_dir[dataset])
@@ -300,7 +301,7 @@ def build_design(datasets, datasets_dir, n_subjects, test_size, train_size):
     datasets = df.index.get_level_values('dataset').tolist()
     subjects = df.index.tolist()
     train_subjects, test_subjects = train_test_split(subjects,
-                                                     random_state=0,
+                                                     random_state=random_state,
                                                      test_size=test_size,
                                                      stratify=datasets)
     train_subjects = train_subjects[:train_size]
