@@ -29,16 +29,11 @@ from sklearn.utils import check_array, gen_batches, \
 class Projector(CacheMixin, TransformerMixin, BaseEstimator):
     def __init__(self, basis,
                  n_jobs=1,
-                 identity=False,
-                 memory=Memory(cachedir=None),
-                 memory_level=1):
+                 identity=False):
         self.basis = basis
         self.n_jobs = n_jobs
 
         self.identity = identity
-
-        self.memory = memory
-        self.memory_level = memory_level
 
     def fit(self, X=None, y=None):
         return self
@@ -98,48 +93,61 @@ def make_loadings_extractor(bases, scale_bases=True,
                             factored=False,
                             standardize=True, scale_importance=True,
                             memory=Memory(cachedir=None),
-                            n_jobs=1,
-                            memory_level=1):
+                            n_jobs=1,):
     if not isinstance(bases, list):
         bases = [bases]
-    sizes = []
-    for basis in bases:
-        sizes.append(basis.shape[0])
-    if identity:
-        sizes.append(bases[0].shape[1])
-    sizes = np.array(sizes)
     if scale_bases:
         for i, basis in enumerate(bases):
             S = np.std(basis, axis=1)
             S[S == 0] = 0
             basis = basis / S[:, np.newaxis]
             bases[i] = basis
-    bases = np.vstack(bases)
-    if factored:
-        pipeline = [('label_dropper', LabelDropper())]
+    feature_union = []
+    for i, base in enumerate(bases):
+        projection_pipeline = Pipeline([('projector',
+                                         Projector(base, n_jobs=n_jobs)),
+                                        ('standard_scaler',
+                                         StandardScaler(
+                                             with_std=standardize))],
+                                       memory=memory)
+        feature_union.append(('scaled_projector_%i' % i, projection_pipeline))
+    if identity:
+        feature_union.append(('scaled_identity',
+                              StandardScaler(with_std=standardize)))
+
+    # Weighting
+    transformer_weights = {}
+    sizes = np.array([base.shape[0] for base in bases])
+    if scale_importance is None:
+        scales = np.ones(len(bases))
+    elif scale_importance == 'sqrt':
+        scales = np.sqrt(sizes)
+    elif scale_importance == 'linear':
+        scales = sizes
     else:
-        pipeline = []
-    pipeline += [('projector', Projector(bases, n_jobs=n_jobs, memory=memory,
-                                         identity=identity,
-                                         memory_level=memory_level)),
-                 ('standard_scaler', StandardScaler(with_std=standardize))]
-    if scale_importance in ['linear', 'sqrt']:
-        if scale_importance == 'sqrt':
-            scales = np.sqrt(sizes)
-        else:
-            scales = sizes
-        const = 1. / np.sum(1. / scales)
-        feature_importance = np.concatenate([np.ones(size) *
-                                             const / scale
-                                             for size, scale in
-                                             zip(sizes, scales)])
-        pipeline.append(('feature_importance', FeatureImportanceTransformer(
-            feature_importance=feature_importance)))
-    pipeline = Pipeline(pipeline)
+        raise ValueError
+    for i in range(len(bases)):
+        transformer_weights['scaled_projector_%i' % i] = 1. / scales[
+            i] / np.sum(1. / scales)
+    if identity:
+        n_features = bases[0].shape[1]
+        transformer_weights['scaled_identity'] = 1. / n_features
+
+    projector = FeatureUnion(feature_union,
+                             transformer_weights=transformer_weights)
+
     if factored:
-        pipeline = FeatureUnion([('data', pipeline),
-                                 ('label', LabelGetter())])
-    return pipeline
+        projector = Pipeline([('label_dropper', LabelDropper),
+                              ('concatenated_projector', projector)],
+                             memory=memory)
+    else:
+        projector = Pipeline([('concatenated_projector', projector)],
+                             memory=memory)
+
+    transformer = FeatureUnion([('projector', projector),
+                                ('label_getter', LabelGetter())])
+
+    return transformer
 
 
 def make_classifier(alphas,
