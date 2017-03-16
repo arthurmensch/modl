@@ -20,6 +20,8 @@ from sklearn.utils.fixes import rankdata
 from sklearn.utils.metaestimators import _safe_split
 from sklearn.utils.validation import _num_samples
 
+from modl.classification import FactoredLogistic
+
 
 class MemGridSearchCV(GridSearchCV):
     def __init__(self, estimator, param_grid, scoring=None, fit_params=None,
@@ -283,7 +285,8 @@ def _fit_and_score(estimator, X, y, scorer, train, test, verbose,
 
     X_train, y_train = _safe_split(estimator, X, y, train)
     X_test, y_test = _safe_split(estimator, X, y, test, train)
-
+    if isinstance(estimator, FactoredLogistic):
+        fit_params['validation_data'] = (X_test, y_test)
     try:
         if y_train is None:
             estimator.fit(X_train, **fit_params)

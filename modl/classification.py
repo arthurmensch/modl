@@ -4,29 +4,29 @@ import keras
 import mkl
 import numpy as np
 import tensorflow as tf
-from keras.callbacks import CallbackList
-from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
-from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.pipeline import FeatureUnion, Pipeline
 
-from .fixes import Model
+from .fixes import OurModel
 
 from keras.backend import set_session
 from keras.engine import Input
 from keras.layers import Dense, Activation, Concatenate, Dropout
 from keras.regularizers import l2, l1
-from nilearn._utils import CacheMixin
 from scipy.linalg import lstsq
+
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.externals.joblib import Memory
-from sklearn.linear_model.base import LinearClassifierMixin, SparseCoefMixin
+from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
+from sklearn.linear_model.base import LinearClassifierMixin
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import check_array, gen_batches, \
     check_random_state, check_X_y
 
 
-class Projector(CacheMixin, TransformerMixin, BaseEstimator):
+class Projector(TransformerMixin, BaseEstimator):
     def __init__(self, basis,
                  n_jobs=1,
                  identity=False):
@@ -38,49 +38,29 @@ class Projector(CacheMixin, TransformerMixin, BaseEstimator):
     def fit(self, X=None, y=None):
         return self
 
-    def transform(self, X, y=None):
+    def transform(self, X):
         current_n_threads = mkl.get_max_threads()
         mkl.set_num_threads(self.n_jobs)
-        loadings, _, _, _ = self._cache(lstsq)(self.basis.T, X.T)
+        loadings, _, _, _ = lstsq(self.basis.T, X.T)
         mkl.set_num_threads(current_n_threads)
         loadings = loadings.T
-        if self.identity:
-            loadings = np.concatenate([loadings, X], axis=1)
         return loadings
 
     def inverse_transform(self, Xt):
         rec = Xt.dot(self.basis)
-        if self.identity:
-            rec += Xt
         return rec
 
 
-class FeatureImportanceTransformer(TransformerMixin, BaseEstimator):
-    def __init__(self, feature_importance):
-        self.feature_importance = feature_importance
-
+class LabelDropper(TransformerMixin, BaseEstimator):
     def fit(self, X=None, y=None):
         return self
 
-    def transform(self, X, y=None):
-        X *= self.feature_importance[np.newaxis, :]
-        return X
-
-    def inverse_transform(self, Xt):
-        Xt /= self.feature_importance[np.newaxis, :]
-        return Xt
-
-
-class LabelDropper(TransformerMixin):
-    def fit(self, X=None, y=None):
-        return self
-
-    def transform(self, X, y=None):
+    def transform(self, X):
         X = X.drop('dataset', axis=1)
         return X
 
 
-class LabelGetter(TransformerMixin):
+class LabelGetter(TransformerMixin, BaseEstimator):
     def fit(self, X=None, y=None):
         return self
 
@@ -93,7 +73,7 @@ def make_loadings_extractor(bases, scale_bases=True,
                             factored=False,
                             standardize=True, scale_importance=True,
                             memory=Memory(cachedir=None),
-                            n_jobs=1,):
+                            n_jobs=1, ):
     if not isinstance(bases, list):
         bases = [bases]
     if scale_bases:
@@ -102,10 +82,11 @@ def make_loadings_extractor(bases, scale_bases=True,
             S[S == 0] = 0
             basis = basis / S[:, np.newaxis]
             bases[i] = basis
+
     feature_union = []
-    for i, base in enumerate(bases):
+    for i, basis in enumerate(bases):
         projection_pipeline = Pipeline([('projector',
-                                         Projector(base, n_jobs=n_jobs)),
+                                         Projector(basis, n_jobs=n_jobs)),
                                         ('standard_scaler',
                                          StandardScaler(
                                              with_std=standardize))],
@@ -117,7 +98,7 @@ def make_loadings_extractor(bases, scale_bases=True,
 
     # Weighting
     transformer_weights = {}
-    sizes = np.array([base.shape[0] for base in bases])
+    sizes = np.array([basis.shape[0] for basis in bases])
     if scale_importance is None:
         scales = np.ones(len(bases))
     elif scale_importance == 'sqrt':
@@ -126,26 +107,28 @@ def make_loadings_extractor(bases, scale_bases=True,
         scales = sizes
     else:
         raise ValueError
-    for i in range(len(bases)):
-        transformer_weights['scaled_projector_%i' % i] = 1. / scales[
-            i] / np.sum(1. / scales)
     if identity:
         n_features = bases[0].shape[1]
-        transformer_weights['scaled_identity'] = 1. / n_features
+        scales = np.concatenate([scales, np.array(1. / n_features)])
+    for i in range(len(bases)):
+        transformer_weights[
+            'scaled_projector_%i' % i] = 1. / scales[i] / np.sum(1. / scales)
+    if identity:
+        transformer_weights[
+            'scaled_identity'] = 1. / scales[-1] / np.sum(1. / scales)
 
-    projector = FeatureUnion(feature_union,
-                             transformer_weights=transformer_weights)
+    concatenated_projector = FeatureUnion(feature_union,
+                                          transformer_weights=
+                                          transformer_weights)
 
     if factored:
-        projector = Pipeline([('label_dropper', LabelDropper),
-                              ('concatenated_projector', projector)],
-                             memory=memory)
+        projector = Pipeline([('label_dropper', LabelDropper()),
+                              ('concatenated_projector',
+                               concatenated_projector)])
+        transformer = FeatureUnion([('projector', projector),
+                                    ('label_getter', LabelGetter())])
     else:
-        projector = Pipeline([('concatenated_projector', projector)],
-                             memory=memory)
-
-    transformer = FeatureUnion([('projector', projector),
-                                ('label_getter', LabelGetter())])
+        transformer = concatenated_projector
 
     return transformer
 
@@ -169,6 +152,7 @@ def make_classifier(alphas,
                                       latent_dim=latent_dims[0],
                                       max_iter=max_iter,
                                       activation=activation,
+                                      fit_intercept=fit_intercept,
                                       penalty=penalty,
                                       dropout=dropout,
                                       alpha=alphas[0],
@@ -212,7 +196,7 @@ def make_classifier(alphas,
     return classifier
 
 
-class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
+class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
     """
     Parameters
     ----------
@@ -230,6 +214,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
                  penalty='l2',
                  validation_split=0,
                  dropout=False,
+                 validation_data=None,
                  random_state=None,
                  ):
         self.latent_dim = latent_dim
@@ -246,7 +231,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
         self.fit_intercept = fit_intercept
         self.validation_split = validation_split
 
-    def fit(self, X, y):
+    def fit(self, X, y, validation_data=None):
         """Fit the model according to the given training data.
 
         Parameters
@@ -281,19 +266,21 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
 
         self.random_state = check_random_state(self.random_state)
 
-        if 0 < self.validation_split < 1:
+        if validation_data is not None:
+            X_val, y_val = validation_data
+            X_val, y_val = check_X_y(X_val, y_val,
+                                     accept_sparse='csr', dtype=np.float32,
+                                     order="C")
+            datasets_val = X_val[:, -1].astype('int')
+            X_val = X_val[:, :-1]
+            do_validation = True
+        elif 0 < self.validation_split < 1:
             (X, X_val, y, y_val, datasets,
              datasets_val) = train_test_split(X, y, datasets,
                                               stratify=y,
                                               test_size=self.validation_split,
                                               random_state=self.random_state)
             do_validation = True
-            early_stopping = keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                           min_delta=1e-2,
-                                                           patience=2,
-                                                           verbose=1,
-                                                           mode='auto')
-            early_stopping.set_model(self)
 
         else:
             do_validation = False
@@ -346,6 +333,18 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
                        fit_intercept=self.fit_intercept,
                        penalty=self.penalty)
 
+        if do_validation:
+            early_stoppings = []
+            for model in self.models_:
+                early_stopping = keras.callbacks.EarlyStopping(
+                    monitor='val_loss',
+                    min_delta=1e-3,
+                    patience=0,
+                    verbose=1,
+                    mode='auto')
+                early_stopping.set_model(model)
+                early_stoppings.append(early_stopping)
+
         # Optimization loop
         n_epochs = np.zeros(n_datasets)
         batches_list = []
@@ -356,17 +355,19 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
             batches = gen_batches(len(this_X), self.batch_size)
             batches_list.append(batches)
         epoch_logs = {}
-        if do_validation:
-            early_stopping.on_train_begin()
         stop_training = False
-        for model in self.models_:
-            model.stop_training = False
+        if do_validation:
+            for model in self.models_:
+                model.stop_training = False
+            for early_stopping in early_stoppings:
+                early_stopping.on_train_begin()
         while not stop_training and np.min(n_epochs) < self.max_iter:
             for i, model in enumerate(self.models_):
                 this_X = X_list[i]
                 this_y_bin = y_bin_list[i]
-                this_X_val = X_val_list[i]
-                this_y_bin_val = y_bin_val_list[i]
+                if do_validation:
+                    this_X_val = X_val_list[i]
+                    this_y_bin_val = y_bin_val_list[i]
                 try:
                     batch = next(batches_list[i])
                 except StopIteration:
@@ -385,18 +386,24 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
                                                            verbose=0)
                         epoch_logs['val_loss'] = val_loss
                         epoch_logs['val_acc'] = val_acc
-                        early_stopping.on_epoch_end(n_epochs[i], epoch_logs)
+                        early_stoppings[i].on_epoch_end(n_epochs[i],
+                                                        epoch_logs)
                     else:
                         val_acc = 0
                         val_loss = 0
-                    print('Epoch %i, dataset %i, loss: %.4f, acc: %.4f, '
-                          'val_acc: %.4f, val_loss: %.4f' %
-                          (n_epochs[i], self.datasets_[i],
-                           loss, acc, val_acc, val_loss))
+                    # print('Epoch %i, dataset %i, loss: %.4f, acc: %.4f, '
+                    #       'val_acc: %.4f, val_loss: %.4f' %
+                    #       (n_epochs[i], self.datasets_[i],
+                    #        loss, acc, val_acc, val_loss))
                     batch = next(batches_list[i])
                 model.train_on_batch(this_X[batch], this_y_bin[batch])
-                stop_training = np.all(np.array([model.stop_training
-                                                 for model in self.models_]))
+                if do_validation:
+                    stop_training = np.all(np.array([model.stop_training
+                                                     for model in
+                                                     self.models_]))
+        if do_validation:
+            for early_stopping in early_stoppings:
+                early_stopping.on_train_end()
 
     def predict_proba(self, X, dataset=None):
         if dataset is None:
@@ -424,6 +431,23 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin, SparseCoefMixin):
                 pred[indices] = these_classes[np.argmax(self.predict_proba(
                     this_X, dataset=this_dataset), axis=1)]
         return pred
+
+    def score(self, X, y, **kwargs):
+        X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float32,
+                         order="C")
+        datasets = X[:, -1].astype('int')
+        X = X[:, :-1]
+        accs = []
+        for i, this_dataset in enumerate(self.datasets_):
+            indices = datasets == this_dataset
+            this_X = X[indices]
+            this_y = y[indices]
+            label_binarizer = LabelBinarizer().fit(self.classes_list_[i])
+            model = self.models_[i]
+            this_y_bin = label_binarizer.fit_transform(this_y)
+            loss, acc = model.evaluate(this_X, this_y_bin, verbose=0)
+            accs.append(acc)
+        return np.mean(np.array(accs))
 
 
 def make_model(n_features, classes_list, alpha=0.01,
@@ -458,7 +482,7 @@ def make_model(n_features, classes_list, alpha=0.01,
                            kernel_regularizer=kernel_regularizer_sup)(encoded)
         supervised_list.append(supervised)
         softmax = Activation('softmax')(supervised)
-        model = Model(inputs=input, outputs=softmax)
+        model = OurModel(inputs=input, outputs=softmax)
         model.compile(optimizer=optimizer,
                       loss='categorical_crossentropy',
                       metrics=['accuracy'])
@@ -468,7 +492,7 @@ def make_model(n_features, classes_list, alpha=0.01,
     else:
         stacked = supervised_list[0]
     softmax = Activation('softmax')(stacked)
-    stacked_model = Model(inputs=input, outputs=softmax)
+    stacked_model = OurModel(inputs=input, outputs=softmax)
     stacked_model.compile(optimizer=optimizer,
                           loss='categorical_crossentropy',
                           metrics=['accuracy'])

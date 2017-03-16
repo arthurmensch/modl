@@ -39,9 +39,9 @@ def config():
     datasets = ['hcp', 'archi']
     test_size = 0.1
     train_size = None
-    n_subjects = 788
+    n_subjects = 30
 
-    factored = False
+    factored = True
 
     alphas = np.logspace(-4, -1, 4)
     latent_dims = [100]  # Factored only
