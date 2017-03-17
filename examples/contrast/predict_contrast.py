@@ -114,8 +114,8 @@ def run(dictionary_penalty,
         X = pd.concat([X, datasets], axis=1)
 
     print('Split data')
-    single_X = X[0].reset_index()
-    single_X[0] = np.arange(single_X.shape[0])
+    single_X = X.iloc[:, 0].reset_index()
+    single_X.iloc[:, 0][0] = np.arange(single_X.shape[0])
     train = []
     test = []
     for idx, df in single_X.groupby(by='dataset'):
