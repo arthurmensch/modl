@@ -24,26 +24,18 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 1
-    loss_list = ['l1', 'l2']
+    penalty_list = ['l1', 'l2']
+    dropout_list = [True, False]
+    latent_dim_list = [30, 100, 200]
+    alpha_list = np.logspace(-4, -1, 4)
+    activation_list = ['linear', 'relu']
     n_seeds = 5
 
 
 @predict_contrast.config
 def config():
-    standardize = True
-    Cs = np.logspace(-2, 2, 10).tolist()
-    n_jobs = 30
-    verbose = 2
-    max_iter = 1000
-    tol = 1e-5
-    alpha = 1e-4
-    identity = False
-    refit = False
-    n_components_list = [16, 64, 256]
-    test_size = 0.1
-    train_size = None
-    n_subjects = 788
-    loss = 'l1'  # Overriden
+    n_subjects = 30
+    n_jobs = 1
 
 
 def single_run(config_updates, _id):
@@ -57,15 +49,28 @@ def single_run(config_updates, _id):
 
 
 @multi_predict_task.automain
-def run(loss_list, n_seeds, n_jobs, _seed):
+def run(penalty_list,
+        dropout_list,
+        alpha_list,
+        activation_list,
+        latent_dim_list,
+        n_seeds, n_jobs, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     update_list = []
     for seed in seed_list:
-        for loss in loss_list:
-            config_updates = {'loss': loss,
-                              'seed': seed}
-            update_list.append(config_updates)
+        for penalty in penalty_list:
+            for dropout in dropout_list:
+                for latent_dim in latent_dim_list:
+                    for alpha in alpha_list:
+                        for activation in activation_list:
+                            config_updates = {'penalty': penalty,
+                                              'dropout': dropout,
+                                              'latent_dim': latent_dim,
+                                              'alpha': alpha,
+                                              'activation': activation,
+                                              'seed': seed}
+                            update_list.append(config_updates)
 
     # Robust labelling of experiments
     client = pymongo.MongoClient()

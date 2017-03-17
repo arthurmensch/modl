@@ -3,19 +3,19 @@ from os.path import join
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import GroupKFold, GroupShuffleSplit
-
-from modl.utils import concatenated_cv
-from modl.classification import make_loadings_extractor, make_classifier
-from modl.datasets import get_data_dirs
-from modl.input_data.fmri.unmask import build_design, retrieve_components
-from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred.observers import FileStorageObserver, MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
+from sklearn.externals.joblib import load
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
+
+from modl.classification import make_loadings_extractor, make_classifier
+from modl.datasets import get_data_dirs
+from modl.input_data.fmri.unmask import build_design, retrieve_components
+from modl.model_selection import StratifiedGroupShuffleSplit
+from modl.utils.system import get_cache_dirs
 
 predict_contrast = Experiment('predict_contrast')
 
@@ -94,6 +94,8 @@ def run(dictionary_penalty,
         datasets_dir,
         factored,
         activation,
+        from_loadings,
+        loadings_dir,
         _run,
         _seed):
     artifact_dir = join(global_artifact_dir, str(_run._id), '_artifacts')
@@ -101,63 +103,60 @@ def run(dictionary_penalty,
         os.makedirs(artifact_dir)
 
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
+
     print('Fetch data')
-    X, masker = memory.cache(build_design)(datasets,
-                                           datasets_dir,
-                                           n_subjects)
-    if factored:
-        # Add a dataset column to the X matrix
-        datasets = X.index.get_level_values('dataset').values
-        dataset_encoder = LabelEncoder()
-        datasets = dataset_encoder.fit_transform(datasets)
-        datasets = pd.Series(index=X.index, data=datasets, name='dataset')
-        X = pd.concat([X, datasets], axis=1)
+    if not from_loadings:
+        X, masker = memory.cache(build_design)(datasets,
+                                               datasets_dir,
+                                               n_subjects)
+        if factored:
+            # Add a dataset column to the X matrix
+            datasets = X.index.get_level_values('dataset').values
+            dataset_encoder = LabelEncoder()
+            datasets = dataset_encoder.fit_transform(datasets)
+            datasets = pd.Series(index=X.index, data=datasets, name='dataset')
+            X = pd.concat([X, datasets], axis=1)
+
+        labels = X.index.get_level_values('contrast').values
+        label_encoder = LabelEncoder()
+        labels = label_encoder.fit_transform(labels)
+        y = pd.Series(index=X.index, data=labels, name='label')
+    else:
+        X = load(join(loadings_dir, 'X.pkl'))
+        y = load(join(loadings_dir, 'y.pkl'))
 
     print('Split data')
     single_X = X.iloc[:, 0].reset_index()
     single_X.iloc[:, 0][0] = np.arange(single_X.shape[0])
-    train = []
-    test = []
-    for idx, df in single_X.groupby(by='dataset'):
-        cv = GroupShuffleSplit(n_splits=1, test_size=test_size,
-                               train_size=train_size, random_state=0)
-        splitter = cv.split(df.index.tolist(), groups=df['subject'].values)
-        group_train, group_test = next(splitter)
-        this_train, this_test = df[0].iloc[group_train], df[0].iloc[group_test]
-        train.append(this_train)
-        test.append(this_test)
-    train = np.concatenate(train)
-    test = np.concatenate(test)
-
+    cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
+                                     group_name='subject',
+                                     test_size=test_size,
+                                     train_size=train_size,
+                                     n_splits=1,
+                                     random_state=_seed)
+    train, test = next(cv.split(X))
     train_samples = len(train)
 
     X_train = X.iloc[train]
     X_test = X.iloc[test]
 
-    _run.info['train'] = train
-    _run.info['test'] = test
+    y_train = y.iloc[train]
+    y_test = y.iloc[test]
 
     print('Retrieve components')
     components = memory.cache(retrieve_components)(dictionary_penalty, masker,
                                                    n_components_list)
 
     print('Transform and fit data')
-    labels = X.index.get_level_values('contrast').values
-    label_encoder = LabelEncoder()
-    labels = label_encoder.fit_transform(labels)
-    y = pd.Series(index=X.index, data=labels, name='label')
-
-    y_train = y.iloc[train]
-    y_test = y.iloc[test]
-
-    pipeline = make_loadings_extractor(components,
-                                       standardize=standardize,
-                                       scale_importance=scale_importance,
-                                       identity=identity,
-                                       factored=factored,
-                                       scale_bases=True,
-                                       n_jobs=n_jobs,
-                                       memory=memory)
+    if not from_loadings:
+        transformer = make_loadings_extractor(components,
+                                              standardize=standardize,
+                                              scale_importance=scale_importance,
+                                              identity=identity,
+                                              factored=factored,
+                                              scale_bases=True,
+                                              n_jobs=n_jobs,
+                                              memory=memory)
     classifier = make_classifier(alpha, latent_dim,
                                  factored=factored,
                                  fit_intercept=fit_intercept,
@@ -170,12 +169,18 @@ def run(dictionary_penalty,
                                  tol=tol,
                                  train_samples=train_samples,
                                  random_state=_seed)
-    estimator = Pipeline([('transformer', pipeline),
-                          ('classifier', classifier)],
-                         memory=memory)
+    if not from_loadings:
+        estimator = Pipeline([('transformer', transformer),
+                              ('classifier', classifier)],
+                             memory=memory)
+    else:
+        estimator = Pipeline(['classifier', classifier])
 
     if factored:
-        Xt_test = pipeline.fit_transform(X_test, y_test)
+        if not from_loadings:
+            Xt_test = transformer.fit_transform(X_test, y_test)
+        else:
+            Xt_test = X_test
         estimator.fit(X_train, y_train, classifier__validation_data=
         (Xt_test, y_test))
     else:
@@ -187,7 +192,7 @@ def run(dictionary_penalty,
 
     predicted_labels = estimator.predict(X)
     predicted_labels = label_encoder.inverse_transform(predicted_labels)
-    labels = label_encoder.inverse_transform(labels)
+    labels = label_encoder.inverse_transform(y)
 
     prediction = pd.DataFrame({'true_label': labels,
                                'predicted_label': predicted_labels},
