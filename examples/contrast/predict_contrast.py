@@ -164,14 +164,14 @@ def run(dictionary_penalty,
     train = sub_train
 
     if verbose:
-        print('Retrieve components')
-    components = memory.cache(retrieve_components)(dictionary_penalty, masker,
-                                                   n_components_list)
-
-    if verbose:
         print('Transform and fit data')
     pipeline = []
     if not from_loadings:
+        if verbose:
+            print('Retrieve components')
+        components = memory.cache(retrieve_components)(dictionary_penalty,
+                                                       masker,
+                                                       n_components_list)
         transformer = make_loadings_extractor(components,
                                               standardize=standardize,
                                               scale_importance=scale_importance,
