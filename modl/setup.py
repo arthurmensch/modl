@@ -13,6 +13,7 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('datasets')
     config.add_subpackage('plotting')
     config.add_subpackage('feature_extraction')
+    config.add_subpackage('decomposition')
     config.add_subpackage('input_data')
 
     config.ext_modules = cythonize(config.ext_modules, nthreads=4)

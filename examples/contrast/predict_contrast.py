@@ -3,8 +3,9 @@ from os.path import join
 
 import numpy as np
 import pandas as pd
+import time
 from sacred import Experiment
-from sacred.observers import FileStorageObserver, MongoObserver
+from sacred.observers import FileStorageObserver #, MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
 from sklearn.externals.joblib import load
@@ -22,8 +23,8 @@ predict_contrast = Experiment('predict_contrast')
 global_artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                            'prediction')
 
-observer = MongoObserver.create(db_name='amensch', collection='runs')
-predict_contrast.observers.append(observer)
+# observer = MongoObserver.create(db_name='amensch', collection='runs')
+# predict_contrast.observers.append(observer)
 
 observer = FileStorageObserver.create(basedir=global_artifact_dir)
 predict_contrast.observers.append(observer)
@@ -51,7 +52,7 @@ def config():
     dropout = False
     penalty = 'l1'
 
-    max_iter = 50
+    max_iter = 20
     tol = 1e-7  # Non-factored only
 
     standardize = True
@@ -201,8 +202,10 @@ def run(dictionary_penalty,
             Xt_val = transformer.fit_transform(X_val, y_val)
         else:
             Xt_val = X_val
+        t0 = time.time()
         estimator.fit(X_train, y_train,
                       classifier__validation_data=(Xt_val, y_val))
+        print('Fit time: %.2f' % (time.time() - t0))
     else:
         sample_weight = 1 / X_train[0].groupby(
             level=['dataset', 'contrast']).transform('count')

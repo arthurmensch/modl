@@ -10,12 +10,12 @@ def configuration(parent_package='', top_path=None):
     config = Configuration('components', parent_package, top_path)
 
     extensions = [
-        Extension('modl.components.dict_fact_fast',
-                  sources=['modl/components/dict_fact_fast.pyx'],
+        Extension('modl.decomposition.dict_fact_fast',
+                  sources=['modl/decomposition/dict_fact_fast.pyx'],
                   include_dirs=[numpy.get_include()],
                   ),
         Extension('modl.components.recsys_fast',
-                  sources=['modl/components/recsys_fast.pyx'],
+                  sources=['modl/decomposition/recsys_fast.pyx'],
                   include_dirs=[numpy.get_include()],
                   ),
     ]
