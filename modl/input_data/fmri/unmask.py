@@ -287,9 +287,7 @@ def get_raw_contrast_data(raw_dir):
     return masker, imgs
 
 
-def build_design(datasets, datasets_dir, n_subjects,
-                 test_size=None, train_size=None,
-                 random_state=None, split=True):
+def build_design(datasets, datasets_dir, n_subjects):
     X = []
     for dataset in datasets:
         masker, this_X = get_raw_contrast_data(datasets_dir[dataset])
@@ -299,28 +297,6 @@ def build_design(datasets, datasets_dir, n_subjects,
         subjects = subjects[:n_subjects]
         X.append(this_X.loc[subjects])
     X = pd.concat(X, keys=datasets, names=['dataset'])
-
-    # Stratified dataset-wise, grouped subject wise
-    if split:
-        # Stratify datasets
-        df = X[0].groupby(level=['dataset', 'subject']).agg('first')
-        datasets = df.index.get_level_values('dataset').tolist()
-        subjects = df.index.tolist()
-        train_subjects, test_subjects = train_test_split(subjects,
-                                                         random_state=random_state,
-                                                         test_size=test_size,
-                                                         stratify=datasets)
-        train_subjects = train_subjects[:train_size]
-        X_train = pd.concat(
-            [X.loc[(*train_subject, slice(None), slice(None)), :] for train_subject
-             in train_subjects])
-        X_test = pd.concat(
-            [X.loc[(*test_subject, slice(None), slice(None)), :] for test_subject
-             in test_subjects])
-        X = pd.concat([X_train,
-                       X_test], keys=['train', 'test'],
-                      names=['fold'])
-        X.sort_index(inplace=True)
 
     return X, masker
 

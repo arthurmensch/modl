@@ -134,7 +134,7 @@ def make_loadings_extractor(bases, scale_bases=True,
 
 
 def make_classifier(alphas,
-                    latent_dims,
+                    latent_dim,
                     factored=True,
                     fit_intercept=True,
                     max_iter=10,
@@ -147,23 +147,23 @@ def make_classifier(alphas,
                     tol=1e-4,
                     train_samples=1,
                     random_state=None):
+    if not hasattr(alphas, '__iter__'):
+        alphas = [alphas]
     if factored:
         classifier = FactoredLogistic(optimizer='adam',
-                                      latent_dim=latent_dims[0],
                                       max_iter=max_iter,
                                       activation=activation,
                                       fit_intercept=fit_intercept,
                                       penalty=penalty,
+                                      latent_dim=latent_dim,
                                       dropout=dropout,
                                       alpha=alphas[0],
                                       batch_size=200,
-                                      validation_split=0.1,
                                       n_jobs=n_jobs)
-        if len(alphas) > 1 or len(latent_dims) > 1:
+        if len(alphas) > 1:
             classifier.set_params(n_jobs=1)
             classifier = GridSearchCV(classifier,
-                                      {'alpha': alphas,
-                                       'latent_dim': latent_dims},
+                                      {'alpha': alphas},
                                       cv=10,
                                       refit=True,
                                       verbose=1,
@@ -391,10 +391,10 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                     else:
                         val_acc = 0
                         val_loss = 0
-                    # print('Epoch %i, dataset %i, loss: %.4f, acc: %.4f, '
-                    #       'val_acc: %.4f, val_loss: %.4f' %
-                    #       (n_epochs[i], self.datasets_[i],
-                    #        loss, acc, val_acc, val_loss))
+                    print('Epoch %i, dataset %i, loss: %.4f, acc: %.4f, '
+                          'val_acc: %.4f, val_loss: %.4f' %
+                          (n_epochs[i], self.datasets_[i],
+                           loss, acc, val_acc, val_loss))
                     batch = next(batches_list[i])
                 model.train_on_batch(this_X[batch], this_y_bin[batch])
                 if do_validation:

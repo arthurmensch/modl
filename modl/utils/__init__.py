@@ -25,3 +25,14 @@ def get_sub_slice(indices, sub_indices):
                          indices.start + sub_indices.stop)
     else:  # ndarray
         return indices[sub_indices]
+
+
+def concatenated_cv(cvs):
+    for this_train, this_test in cvs[0]:
+        train = [this_train]
+        test = [this_test]
+        for cv in cvs[1:]:
+            this_train, this_test = next(cv)
+            train.append(this_train)
+            test.append(this_test)
+        yield np.concatenate(train), np.concatenate(test)

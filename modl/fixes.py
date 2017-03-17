@@ -172,7 +172,9 @@ class OurModel(Model):
 
     def __getstate__(self):
         with NamedTemporaryFile(dir='/tmp') as f:
+            self.__class__ = Model
             self.save(f.name)
+            self.__class__ = OurModel
             data = f.read()
         state = {'binary': data}
         return state
@@ -321,3 +323,5 @@ class OurGridSearchCV(GridSearchCV):
                 best_estimator.fit(X, **fit_params)
             self.best_estimator_ = best_estimator
         return self
+
+
