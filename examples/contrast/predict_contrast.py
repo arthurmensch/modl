@@ -34,10 +34,14 @@ def config():
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
 
+    from_loadings = True
+    loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
+
     datasets = ['hcp', 'archi']
+    n_subjects = 30
+
     test_size = 0.1
     train_size = None
-    n_subjects = 30
 
     factored = True
 
@@ -47,7 +51,7 @@ def config():
     dropout = False
     penalty = 'l1'
 
-    max_iter = 200
+    max_iter = 50
     tol = 1e-7  # Non-factored only
 
     standardize = True
@@ -96,6 +100,7 @@ def run(dictionary_penalty,
         activation,
         from_loadings,
         loadings_dir,
+        verbose,
         _run,
         _seed):
     artifact_dir = join(global_artifact_dir, str(_run._id), '_artifacts')
@@ -104,30 +109,31 @@ def run(dictionary_penalty,
 
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
 
-    print('Fetch data')
+    if verbose:
+        print('Fetch data')
     if not from_loadings:
         X, masker = memory.cache(build_design)(datasets,
                                                datasets_dir,
                                                n_subjects)
-        if factored:
-            # Add a dataset column to the X matrix
-            datasets = X.index.get_level_values('dataset').values
-            dataset_encoder = LabelEncoder()
-            datasets = dataset_encoder.fit_transform(datasets)
-            datasets = pd.Series(index=X.index, data=datasets, name='dataset')
-            X = pd.concat([X, datasets], axis=1)
+        # Add a dataset column to the X matrix
+        datasets = X.index.get_level_values('dataset').values
+        dataset_encoder = LabelEncoder()
+        datasets = dataset_encoder.fit_transform(datasets)
+        datasets = pd.Series(index=X.index, data=datasets, name='dataset')
+        X = pd.concat([X, datasets], axis=1)
 
         labels = X.index.get_level_values('contrast').values
         label_encoder = LabelEncoder()
         labels = label_encoder.fit_transform(labels)
         y = pd.Series(index=X.index, data=labels, name='label')
     else:
-        X = load(join(loadings_dir, 'X.pkl'))
+        masker = load(join(loadings_dir, 'masker.pkl'))
+        X = load(join(loadings_dir, 'Xt.pkl'))
         y = load(join(loadings_dir, 'y.pkl'))
+        label_encoder = load(join(loadings_dir, 'label_encoder.pkl'))
 
-    print('Split data')
-    single_X = X.iloc[:, 0].reset_index()
-    single_X.iloc[:, 0][0] = np.arange(single_X.shape[0])
+    if verbose:
+        print('Split data')
     cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
                                      group_name='subject',
                                      test_size=test_size,
@@ -135,28 +141,45 @@ def run(dictionary_penalty,
                                      n_splits=1,
                                      random_state=_seed)
     train, test = next(cv.split(X))
-    train_samples = len(train)
-
-    X_train = X.iloc[train]
-    X_test = X.iloc[test]
 
     y_train = y.iloc[train]
-    y_test = y.iloc[test]
+    train_samples = len(train)
 
-    print('Retrieve components')
+    cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
+                                     group_name='subject',
+                                     test_size=test_size,
+                                     train_size=None,
+                                     n_splits=1,
+                                     random_state=_seed)
+    sub_train, val = next(cv.split(y_train))
+
+    sub_train = train[sub_train]
+    val = train[val]
+
+    X_train = X.iloc[sub_train]
+    y_train = y.iloc[sub_train]
+    X_val = X.iloc[val]
+    y_val = y.iloc[val]
+
+    train = sub_train
+
+    if verbose:
+        print('Retrieve components')
     components = memory.cache(retrieve_components)(dictionary_penalty, masker,
                                                    n_components_list)
 
-    print('Transform and fit data')
+    if verbose:
+        print('Transform and fit data')
+    pipeline = []
     if not from_loadings:
         transformer = make_loadings_extractor(components,
                                               standardize=standardize,
                                               scale_importance=scale_importance,
                                               identity=identity,
-                                              factored=factored,
                                               scale_bases=True,
                                               n_jobs=n_jobs,
                                               memory=memory)
+        pipeline.append(('transformer', transformer))
     classifier = make_classifier(alpha, latent_dim,
                                  factored=factored,
                                  fit_intercept=fit_intercept,
@@ -168,21 +191,18 @@ def run(dictionary_penalty,
                                  penalty=penalty,
                                  tol=tol,
                                  train_samples=train_samples,
-                                 random_state=_seed)
-    if not from_loadings:
-        estimator = Pipeline([('transformer', transformer),
-                              ('classifier', classifier)],
-                             memory=memory)
-    else:
-        estimator = Pipeline(['classifier', classifier])
+                                 random_state=_seed,
+                                 verbose=verbose)
+    pipeline.append(('classifier', classifier))
+    estimator = Pipeline(pipeline, memory=memory)
 
     if factored:
         if not from_loadings:
-            Xt_test = transformer.fit_transform(X_test, y_test)
+            Xt_val = transformer.fit_transform(X_val, y_val)
         else:
-            Xt_test = X_test
-        estimator.fit(X_train, y_train, classifier__validation_data=
-        (Xt_test, y_test))
+            Xt_val = X_val
+        estimator.fit(X_train, y_train,
+                      classifier__validation_data=(Xt_val, y_val))
     else:
         sample_weight = 1 / X_train[0].groupby(
             level=['dataset', 'contrast']).transform('count')
@@ -198,24 +218,22 @@ def run(dictionary_penalty,
                                'predicted_label': predicted_labels},
                               index=X.index)
 
-    prediction = pd.concat([prediction.iloc[train], prediction.iloc[test]],
-                           names=['fold'], keys=['train', 'test'])
+
+    prediction = pd.concat([prediction.iloc[train],
+                            prediction.iloc[val],
+                            prediction.iloc[test]],
+                           names=['fold'], keys=['train', 'val', 'test'])
     prediction.sort_index()
+    match = prediction['true_label'] == prediction['predicted_label']
 
-    print('Compute score')
-    train_score = np.sum(prediction.loc['train']['predicted_label']
-                         == prediction.loc['train']['true_label'])
-    train_score /= prediction.loc['train'].shape[0]
-
-    _run.info['train_score'] = float(train_score)
-
-    test_score = np.sum(prediction.loc['test']['predicted_label']
-                        == prediction.loc['test']['true_label'])
-    test_score /= prediction.loc['test'].shape[0]
-
-    _run.info['test_score'] = float(test_score)
-
-    print('Write task prediction artifacts')
+    if verbose:
+        print('Compute score')
+    for fold, sub_match in match.groupby(level='fold'):
+        _run.info['%s_score' % fold] = np.mean(sub_match)
+    for (fold, dataset), sub_match in match.groupby(level=['fold', 'dataset']):
+        _run.info['%s_%s_score' % (fold, dataset)] = np.mean(sub_match)
+    if verbose:
+        print('Write task prediction artifacts')
     prediction.to_csv(join(artifact_dir, 'prediction.csv'))
     _run.add_artifact(join(artifact_dir, 'prediction.csv'),
                       name='prediction.csv')

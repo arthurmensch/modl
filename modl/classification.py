@@ -1,18 +1,8 @@
 import numbers
 
-import keras
 import mkl
 import numpy as np
-import tensorflow as tf
-
-from .fixes import OurModel
-
-from keras.backend import set_session
-from keras.engine import Input
-from keras.layers import Dense, Activation, Concatenate, Dropout
-from keras.regularizers import l2, l1
 from scipy.linalg import lstsq
-
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.externals.joblib import Memory
 from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
@@ -24,7 +14,6 @@ from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import check_array, gen_batches, \
     check_random_state, check_X_y
-
 
 class Projector(TransformerMixin, BaseEstimator):
     def __init__(self, basis,
@@ -70,7 +59,6 @@ class LabelGetter(TransformerMixin, BaseEstimator):
 
 def make_loadings_extractor(bases, scale_bases=True,
                             identity=False,
-                            factored=False,
                             standardize=True, scale_importance=True,
                             memory=Memory(cachedir=None),
                             n_jobs=1, ):
@@ -121,14 +109,11 @@ def make_loadings_extractor(bases, scale_bases=True,
                                           transformer_weights=
                                           transformer_weights)
 
-    if factored:
-        projector = Pipeline([('label_dropper', LabelDropper()),
-                              ('concatenated_projector',
-                               concatenated_projector)])
-        transformer = FeatureUnion([('projector', projector),
-                                    ('label_getter', LabelGetter())])
-    else:
-        transformer = concatenated_projector
+    projector = Pipeline([('label_dropper', LabelDropper()),
+                          ('concatenated_projector',
+                           concatenated_projector)])
+    transformer = FeatureUnion([('projector', projector),
+                                ('label_getter', LabelGetter())])
 
     return transformer
 
@@ -146,7 +131,8 @@ def make_classifier(alphas,
                     multi_class='multinomial',
                     tol=1e-4,
                     train_samples=1,
-                    random_state=None):
+                    random_state=None,
+                    verbose=0):
     if not hasattr(alphas, '__iter__'):
         alphas = [alphas]
     if factored:
@@ -159,14 +145,15 @@ def make_classifier(alphas,
                                       dropout=dropout,
                                       alpha=alphas[0],
                                       batch_size=200,
-                                      n_jobs=n_jobs)
+                                      n_jobs=n_jobs,
+                                      verbose=verbose)
         if len(alphas) > 1:
             classifier.set_params(n_jobs=1)
             classifier = GridSearchCV(classifier,
                                       {'alpha': alphas},
                                       cv=10,
                                       refit=True,
-                                      verbose=1,
+                                      verbose=verbose,
                                       n_jobs=n_jobs)
     else:
         if len(alphas) > 1:
@@ -180,7 +167,7 @@ def make_classifier(alphas,
                                               n_jobs=n_jobs,
                                               penalty=penalty,
                                               cv=10,
-                                              verbose=True,
+                                              verbose=verbose,
                                               Cs=1. / train_samples / np.array(
                                                   alphas))
         else:
@@ -191,7 +178,7 @@ def make_classifier(alphas,
                                             tol=tol,
                                             max_iter=max_iter, n_jobs=n_jobs,
                                             penalty=penalty,
-                                            verbose=True,
+                                            verbose=verbose,
                                             C=1. / train_samples / alphas[0])
     return classifier
 
@@ -212,10 +199,9 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                  fit_intercept=True,
                  max_iter=100, batch_size=256, n_jobs=1, alpha=0.01,
                  penalty='l2',
-                 validation_split=0,
                  dropout=False,
-                 validation_data=None,
                  random_state=None,
+                 verbose=0
                  ):
         self.latent_dim = latent_dim
         self.activation = activation
@@ -229,7 +215,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self.dropout = dropout
         self.random_state = random_state
         self.fit_intercept = fit_intercept
-        self.validation_split = validation_split
+        self.verbose = verbose
 
     def fit(self, X, y, validation_data=None):
         """Fit the model according to the given training data.
@@ -274,14 +260,6 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             datasets_val = X_val[:, -1].astype('int')
             X_val = X_val[:, :-1]
             do_validation = True
-        elif 0 < self.validation_split < 1:
-            (X, X_val, y, y_val, datasets,
-             datasets_val) = train_test_split(X, y, datasets,
-                                              stratify=y,
-                                              test_size=self.validation_split,
-                                              random_state=self.random_state)
-            do_validation = True
-
         else:
             do_validation = False
 
@@ -320,6 +298,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self.classes_ = np.concatenate(self.classes_list_)
 
         # Model construction
+        from keras.callbacks import EarlyStopping, History
         init_tensorflow(n_jobs=self.n_jobs)
 
         self.models_, self.stacked_model_ = \
@@ -332,19 +311,26 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                        optimizer=self.optimizer,
                        fit_intercept=self.fit_intercept,
                        penalty=self.penalty)
+        self.n_samples_ = [len(this_X_list) for this_X_list in X_list]
+
 
         if do_validation:
             early_stoppings = []
             for model in self.models_:
-                early_stopping = keras.callbacks.EarlyStopping(
+                early_stopping = EarlyStopping(
                     monitor='val_loss',
-                    min_delta=1e-3,
-                    patience=0,
+                    min_delta=1e-4,
+                    patience=3,
                     verbose=1,
                     mode='auto')
                 early_stopping.set_model(model)
                 early_stoppings.append(early_stopping)
 
+        self.histories_ = []
+        for model in self.models_:
+            history = History()
+            history.set_model(model)
+            self.histories_.append(history)
         # Optimization loop
         n_epochs = np.zeros(n_datasets)
         batches_list = []
@@ -357,11 +343,14 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         epoch_logs = {}
         stop_training = False
         if do_validation:
-            for model in self.models_:
-                model.stop_training = False
+            for history in self.histories_:
+                history.on_train_begin()
             for early_stopping in early_stoppings:
                 early_stopping.on_train_begin()
         while not stop_training and np.min(n_epochs) < self.max_iter:
+            if do_validation:
+                for model in self.models_:
+                    model.stop_training = stop_training
             for i, model in enumerate(self.models_):
                 this_X = X_list[i]
                 this_y_bin = y_bin_list[i]
@@ -388,13 +377,15 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                         epoch_logs['val_acc'] = val_acc
                         early_stoppings[i].on_epoch_end(n_epochs[i],
                                                         epoch_logs)
+                        self.histories_[i].on_epoch_end(n_epochs[i], epoch_logs)
                     else:
                         val_acc = 0
                         val_loss = 0
-                    print('Epoch %i, dataset %i, loss: %.4f, acc: %.4f, '
-                          'val_acc: %.4f, val_loss: %.4f' %
-                          (n_epochs[i], self.datasets_[i],
-                           loss, acc, val_acc, val_loss))
+                    if self.verbose:
+                        print('Epoch %i, dataset %i, loss: %.4f, acc: %.4f, '
+                              'val_acc: %.4f, val_loss: %.4f' %
+                              (n_epochs[i], self.datasets_[i],
+                               loss, acc, val_acc, val_loss))
                     batch = next(batches_list[i])
                 model.train_on_batch(this_X[batch], this_y_bin[batch])
                 if do_validation:
@@ -455,6 +446,11 @@ def make_model(n_features, classes_list, alpha=0.01,
                fit_intercept=True,
                dropout=False,
                penalty='l2'):
+    from keras.engine import Input
+    from keras.layers import Dense, Activation, Concatenate, Dropout
+    from keras.regularizers import l2, l1
+    from .fixes import OurModel
+
     input = Input(shape=(n_features,), name='input')
 
     if penalty == 'l2':
@@ -500,6 +496,8 @@ def make_model(n_features, classes_list, alpha=0.01,
 
 
 def init_tensorflow(n_jobs=1):
+    import tensorflow as tf
+    from keras.backend import set_session
     sess = tf.Session(
         config=tf.ConfigProto(
             device_count={'CPU': n_jobs},
