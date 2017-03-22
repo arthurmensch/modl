@@ -35,7 +35,7 @@ def config():
 
     identity = False
 
-    projection = False
+    projection = True
 
     n_jobs = 24
     verbose = 2

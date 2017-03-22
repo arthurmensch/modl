@@ -31,26 +31,27 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 30
-    penalty_list = ['trace', 'l2']
+    penalty_list = ['l2']
     alpha_list = [1e-10] + np.logspace(-6, -1, 3).tolist()
     n_seeds = 5
-
-
-@predict_contrast.config
-def config():
-    n_jobs = 1
-    from_loadings = True
-    projection = True
-    factored = False
-    loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
-    verbose = 2
-    max_iter = 200
 
 
 def single_run(config_updates, _id, master_id):
     observer = MongoObserver.create(db_name='amensch',
                                     collection=collection)
     predict_contrast.observers = [observer]
+
+    @predict_contrast.config
+    def config():
+        n_jobs = 1
+        from_loadings = True
+        projection = True
+        factored = False
+        loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
+                            'reduced')
+        verbose = 2
+        multi_class = 'ovr' # To put in cross val
+        max_iter = 200
 
     run = predict_contrast._create_run(config_updates=config_updates)
     run._id = _id

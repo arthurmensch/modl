@@ -159,7 +159,7 @@ def make_classifier(alphas, beta,
     else:
         if penalty == 'trace':
             multiclass = multi_class == 'multinomial'
-            classifier = FistaClassifier(multiclass=multiclass,
+            classifier = FistaClassifier(multiclass=multiclass == 'multinomial',
                                          loss='log', penalty='trace',
                                          max_iter=max_iter,
                                          alpha=alphas[0],

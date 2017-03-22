@@ -28,7 +28,7 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 1
+    n_jobs = 30
     dropout_list = [False, True]
     latent_dim_list = [30, 100, 200]
     alpha_list = [1e-12] + np.logspace(-4, -2, 3).tolist()
@@ -36,23 +36,22 @@ def config():
     activation_list = ['linear', 'relu']
     n_seeds = 5
 
-
-@predict_contrast.config
-def config():
-    n_jobs = 1
-    from_loadings = True
-    projected = True
-    factored = True
-    n_subjects = 788
-    max_iter = 100
-    loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
-    verbose = 0
-
-
 def single_run(config_updates, _id, master_id):
     observer = MongoObserver.create(db_name='amensch',
                                     collection=collection)
     predict_contrast.observers = [observer]
+
+    @predict_contrast.config
+    def config():
+        n_jobs = 1
+        from_loadings = True
+        projected = True
+        factored = True
+        n_subjects = 788
+        max_iter = 100
+        loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
+                            'reduced')
+        verbose = 0
 
     run = predict_contrast._create_run(config_updates=config_updates)
     run._id = _id

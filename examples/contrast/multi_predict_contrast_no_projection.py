@@ -35,20 +35,21 @@ def config():
     n_seeds = 1
 
 
-@predict_contrast.config
-def config():
-    n_jobs = 1
-    from_loadings = True
-    projection = False
-    factored = False
-    loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
-    verbose = 2
-    max_iter = 50
-
-
 def single_run(config_updates, _id, master_id):
     observer = MongoObserver.create(db_name='amensch',
                                     collection=collection)
+
+    @predict_contrast.config
+    def config():
+        n_jobs = 1
+        from_loadings = True
+        projection = False
+        factored = False
+        loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
+                            'reduced')
+        verbose = 2
+        max_iter = 50
+
     predict_contrast.observers = [observer]
 
     run = predict_contrast._create_run(config_updates=config_updates)

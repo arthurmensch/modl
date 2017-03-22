@@ -55,7 +55,7 @@ def config():
     beta = 0.0001 # Factored only
     latent_dim = 100  # Factored only
     activation = 'linear'  # Factored only
-    dropout = False # Factored only
+    dropout = True # Factored only
 
     penalty = 'trace' # Non-factored only
     tol = 1e-7  # Non-factored only
@@ -64,7 +64,7 @@ def config():
 
     standardize = True
     scale_importance = 'sqrt'
-    multi_class = 'multinomial'  # Non-factored only
+    multi_class = 'ovr'  # Non-factored only
 
 
     fit_intercept = True
