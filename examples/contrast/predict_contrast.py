@@ -39,20 +39,21 @@ def config():
     loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
 
     datasets = ['hcp', 'archi']
-    n_subjects = 30
+    n_subjects = 788
 
     test_size = 0.1
     train_size = None
 
-    factored = True
+    factored = False
 
     alpha = 0.0001
+    beta = 0.0001 # Factored only
     latent_dim = 100  # Factored only
     activation = 'linear'  # Factored only
     dropout = False
-    penalty = 'l1'
 
-    max_iter = 20
+    max_iter = 200
+    penalty = 'trace' # Non-factored only
     tol = 1e-7  # Non-factored only
 
     standardize = True
@@ -65,7 +66,7 @@ def config():
 
     n_jobs = 24
     verbose = 2
-    seed = 2
+    seed = 10
 
     hcp_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
                                    'unmask', 'contrast', 'hcp', '23')
@@ -81,6 +82,7 @@ def config():
 @predict_contrast.automain
 def run(dictionary_penalty,
         alpha,
+        beta,
         latent_dim,
         n_components_list,
         max_iter, n_jobs,
@@ -104,7 +106,8 @@ def run(dictionary_penalty,
         verbose,
         _run,
         _seed):
-    artifact_dir = join(global_artifact_dir, str(_run._id), '_artifacts')
+    artifact_dir = join(global_artifact_dir,
+                        str(_run._id), '_artifacts')
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
@@ -130,7 +133,10 @@ def run(dictionary_penalty,
     else:
         masker = load(join(loadings_dir, 'masker.pkl'))
         X = load(join(loadings_dir, 'Xt.pkl'))
+        idx = pd.IndexSlice
+        X = X.loc[idx[datasets, :, :, :, :]]
         y = load(join(loadings_dir, 'y.pkl'))
+        y = y.loc[idx[datasets, :, :, :, :]]
         label_encoder = load(join(loadings_dir, 'label_encoder.pkl'))
 
     if verbose:
@@ -181,7 +187,8 @@ def run(dictionary_penalty,
                                               n_jobs=n_jobs,
                                               memory=memory)
         pipeline.append(('transformer', transformer))
-    classifier = make_classifier(alpha, latent_dim,
+    classifier = make_classifier(alpha, beta,
+                                 latent_dim,
                                  factored=factored,
                                  fit_intercept=fit_intercept,
                                  activation=activation,
@@ -220,7 +227,6 @@ def run(dictionary_penalty,
     prediction = pd.DataFrame({'true_label': labels,
                                'predicted_label': predicted_labels},
                               index=X.index)
-
 
     prediction = pd.concat([prediction.iloc[train],
                             prediction.iloc[val],

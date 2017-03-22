@@ -2,18 +2,19 @@ import numbers
 
 import mkl
 import numpy as np
+from lightning.impl.fista import FistaClassifier
 from scipy.linalg import lstsq
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.externals.joblib import Memory
 from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
 from sklearn.linear_model.base import LinearClassifierMixin
 from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import train_test_split
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import check_array, gen_batches, \
     check_random_state, check_X_y
+
 
 class Projector(TransformerMixin, BaseEstimator):
     def __init__(self, basis,
@@ -118,7 +119,7 @@ def make_loadings_extractor(bases, scale_bases=True,
     return transformer
 
 
-def make_classifier(alphas,
+def make_classifier(alphas, beta,
                     latent_dim,
                     factored=True,
                     fit_intercept=True,
@@ -140,10 +141,10 @@ def make_classifier(alphas,
                                       max_iter=max_iter,
                                       activation=activation,
                                       fit_intercept=fit_intercept,
-                                      penalty=penalty,
                                       latent_dim=latent_dim,
                                       dropout=dropout,
                                       alpha=alphas[0],
+                                      beta=beta,
                                       batch_size=200,
                                       n_jobs=n_jobs,
                                       verbose=verbose)
@@ -156,30 +157,45 @@ def make_classifier(alphas,
                                       verbose=verbose,
                                       n_jobs=n_jobs)
     else:
-        if len(alphas) > 1:
-            classifier = LogisticRegressionCV(solver='saga',
-                                              multi_class=multi_class,
-                                              fit_intercept=fit_intercept,
-                                              random_state=random_state,
-                                              refit=True,
-                                              tol=tol,
-                                              max_iter=max_iter,
-                                              n_jobs=n_jobs,
-                                              penalty=penalty,
-                                              cv=10,
-                                              verbose=verbose,
-                                              Cs=1. / train_samples / np.array(
-                                                  alphas))
+        if penalty == 'trace':
+            multiclass = multi_class == 'multinomial'
+            classifier = FistaClassifier(multiclass=multiclass,
+                                         loss='log', penalty='trace',
+                                         max_iter=max_iter,
+                                         alpha=alphas[0],
+                                         verbose=verbose,
+                                         C=1. / train_samples)
+            if len(alphas) > 1:
+                classifier = GridSearchCV(classifier,
+                                          {'alpha': alphas},
+                                          cv=10,
+                                          refit=True,
+                                          verbose=verbose,
+                                          n_jobs=n_jobs)
         else:
-            classifier = LogisticRegression(solver='saga',
-                                            multi_class=multi_class,
-                                            fit_intercept=fit_intercept,
-                                            random_state=random_state,
-                                            tol=tol,
-                                            max_iter=max_iter, n_jobs=n_jobs,
-                                            penalty=penalty,
-                                            verbose=verbose,
-                                            C=1. / train_samples / alphas[0])
+            if len(alphas) > 1:
+                classifier = LogisticRegressionCV(solver='saga',
+                                                  multi_class=multi_class,
+                                                  fit_intercept=fit_intercept,
+                                                  random_state=random_state,
+                                                  refit=True,
+                                                  tol=tol,
+                                                  max_iter=max_iter,
+                                                  n_jobs=n_jobs,
+                                                  penalty=penalty,
+                                                  cv=10,
+                                                  verbose=verbose,
+                                                  Cs=1. / train_samples / alphas)
+            else:
+                classifier = LogisticRegression(solver='saga',
+                                                multi_class=multi_class,
+                                                fit_intercept=fit_intercept,
+                                                random_state=random_state,
+                                                tol=tol,
+                                                max_iter=max_iter, n_jobs=n_jobs,
+                                                penalty=penalty,
+                                                verbose=verbose,
+                                                C=1. / train_samples / alphas[0])
     return classifier
 
 
@@ -195,12 +211,14 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
     optimizer: str, Keras optimizer
     """
 
-    def __init__(self, latent_dim=10, activation='linear', optimizer='adam',
+    def __init__(self, latent_dim=10, activation='linear',
+                 optimizer='adam',
                  fit_intercept=True,
                  max_iter=100, batch_size=256, n_jobs=1, alpha=0.01,
-                 penalty='l2',
+                 beta=0.01,
                  dropout=False,
                  random_state=None,
+                 early_stop=True,
                  verbose=0
                  ):
         self.latent_dim = latent_dim
@@ -210,12 +228,13 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self.batch_size = batch_size
         self.shuffle = True
         self.alpha = alpha
-        self.penalty = penalty
         self.n_jobs = n_jobs
         self.dropout = dropout
         self.random_state = random_state
         self.fit_intercept = fit_intercept
         self.verbose = verbose
+        self.beta = beta
+        self.early_stop = early_stop
 
     def fit(self, X, y, validation_data=None):
         """Fit the model according to the given training data.
@@ -304,27 +323,26 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self.models_, self.stacked_model_ = \
             make_model(n_features,
                        classes_list=self.classes_list_,
+                       beta=self.beta,
                        alpha=self.alpha,
                        latent_dim=self.latent_dim,
                        activation=self.activation,
                        dropout=self.dropout,
                        optimizer=self.optimizer,
-                       fit_intercept=self.fit_intercept,
-                       penalty=self.penalty)
+                       fit_intercept=self.fit_intercept,)
         self.n_samples_ = [len(this_X_list) for this_X_list in X_list]
 
-
-        if do_validation:
-            early_stoppings = []
-            for model in self.models_:
-                early_stopping = EarlyStopping(
-                    monitor='val_loss',
-                    min_delta=1e-4,
-                    patience=3,
-                    verbose=1,
-                    mode='auto')
-                early_stopping.set_model(model)
-                early_stoppings.append(early_stopping)
+        if do_validation and self.early_stop:
+                early_stoppings = []
+                for model in self.models_:
+                    early_stopping = EarlyStopping(
+                        monitor='val_loss',
+                        min_delta=1e-3,
+                        patience=3,
+                        verbose=1,
+                        mode='auto')
+                    early_stopping.set_model(model)
+                    early_stoppings.append(early_stopping)
 
         self.histories_ = []
         for model in self.models_:
@@ -345,8 +363,9 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         if do_validation:
             for history in self.histories_:
                 history.on_train_begin()
-            for early_stopping in early_stoppings:
-                early_stopping.on_train_begin()
+            if self.early_stop:
+                for early_stopping in early_stoppings:
+                    early_stopping.on_train_begin()
         while not stop_training and np.min(n_epochs) < self.max_iter:
             if do_validation:
                 for model in self.models_:
@@ -375,8 +394,9 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                                                            verbose=0)
                         epoch_logs['val_loss'] = val_loss
                         epoch_logs['val_acc'] = val_acc
-                        early_stoppings[i].on_epoch_end(n_epochs[i],
-                                                        epoch_logs)
+                        if self.early_stop:
+                            early_stoppings[i].on_epoch_end(n_epochs[i],
+                                                            epoch_logs)
                         self.histories_[i].on_epoch_end(n_epochs[i], epoch_logs)
                     else:
                         val_acc = 0
@@ -388,11 +408,11 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                                loss, acc, val_acc, val_loss))
                     batch = next(batches_list[i])
                 model.train_on_batch(this_X[batch], this_y_bin[batch])
-                if do_validation:
+                if do_validation and self.early_stop:
                     stop_training = np.all(np.array([model.stop_training
                                                      for model in
                                                      self.models_]))
-        if do_validation:
+        if do_validation and self.early_stop:
             for early_stopping in early_stoppings:
                 early_stopping.on_train_end()
 
@@ -441,34 +461,24 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         return np.mean(np.array(accs))
 
 
-def make_model(n_features, classes_list, alpha=0.01,
+def make_model(n_features, classes_list, alpha=0.01, beta=0.01,
                latent_dim=10, activation='linear', optimizer='adam',
                fit_intercept=True,
-               dropout=False,
-               penalty='l2'):
+               dropout=False,):
     from keras.engine import Input
     from keras.layers import Dense, Activation, Concatenate, Dropout
-    from keras.regularizers import l2, l1
+    from keras.regularizers import l2, l1_l2
     from .fixes import OurModel
 
     input = Input(shape=(n_features,), name='input')
 
-    if penalty == 'l2':
-        kernel_regularizer_enc = l2(alpha)
-        kernel_regularizer_sup = l2(alpha)
-        activity_regularizer_enc = None
-    elif penalty == 'l1':
-        kernel_regularizer_enc = l1(alpha)
-        kernel_regularizer_sup = None
-        activity_regularizer_enc = None
-    else:
-        raise ValueError()
+    kernel_regularizer_enc = l1_l2(l1=beta, l2=alpha)
+    kernel_regularizer_sup = l2(alpha)
     encoded = Dense(latent_dim, activation=activation,
                     use_bias=False, kernel_regularizer=kernel_regularizer_enc,
-                    activity_regularizer=activity_regularizer_enc,
                     name='encoded')(input)
     if dropout:
-        encoded = Dropout(rate=0.5)(encoded)
+        encoded = Dropout(rate=0.7)(encoded)
     models = []
     supervised_list = []
     for classes in classes_list:

@@ -19,32 +19,29 @@ sys.path.append(path.dirname(path.dirname
 
 from examples.contrast.predict_contrast import predict_contrast
 
-multi_predict_task = Experiment('multi_predict_contrast',
+multi_predict_task = Experiment('multi_predict_contrast_trace',
                                 ingredients=[predict_contrast])
 observer = MongoObserver.create(db_name='amensch', collection='runs')
 multi_predict_task.observers.append(observer)
 
 
+
 @multi_predict_task.config
 def config():
-    n_jobs = 30
-    dropout_list = [False, True]
-    latent_dim_list = [30, 100, 200]
-    alpha_list = [1e-12] + np.logspace(-4, -2, 3).tolist()
-    beta_list = [0] + np.logspace(-4, -2, 3).tolist()
-    activation_list = ['linear', 'relu']
+    n_jobs = 24
+    penalty_list = ['trace', 'l2']
+    alpha_list = [1e-10] + np.logspace(-6, -1, 6).tolist()
     n_seeds = 5
 
 
 @predict_contrast.config
 def config():
-    n_jobs = 1
+    n_jobs = 15
     from_loadings = True
-    factored = True
-    n_subjects = 788
-    max_iter = 30
+    factored = False
     loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
-    verbose = 0
+    verbose = 2
+    max_iter = 300
 
 
 def single_run(config_updates, _id, master_id):
@@ -59,30 +56,21 @@ def single_run(config_updates, _id, master_id):
 
 
 @multi_predict_task.automain
-def run(dropout_list,
+def run(penalty_list,
         alpha_list,
-        beta_list,
-        activation_list,
-        latent_dim_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
-    param_grid = ParameterGrid(
-        {'datasets': [['archi'], ['archi', 'hcp']],
-         'dropout': dropout_list,
-         'latent_dim': latent_dim_list,
-         'alpha': alpha_list,
-         'beta': beta_list,
-         'activation': activation_list,
-         'seed': seed_list})
-
-    # Robust labelling of experiments
+    param_grid = ParameterGrid({'datasets': [['archi', 'hcp'], 'archi'],
+                                'penalty': penalty_list,
+                                'alpha': alpha_list,
+                                'seed': seed_list})
+    # Robust labelling of experim   ents
     client = pymongo.MongoClient()
     database = client['amensch']
     c = database['runs'].find({}, {'_id': 1})
     c = c.sort('_id', pymongo.DESCENDING).limit(1)
     c = c.next()['_id'] + 1 if c.count() else 1
-    c += 100000
 
     Parallel(n_jobs=n_jobs,
              verbose=10)(delayed(single_run)(config_updates, c + i, _run._id)
