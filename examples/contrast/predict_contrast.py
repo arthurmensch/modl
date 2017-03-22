@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 import time
 from sacred import Experiment
-from sacred.observers import FileStorageObserver #, MongoObserver
+from sacred.observers import FileStorageObserver, \
+    MongoObserver  # , MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
 from sklearn.externals.joblib import load
@@ -19,15 +20,16 @@ from modl.model_selection import StratifiedGroupShuffleSplit
 from modl.utils.system import get_cache_dirs
 
 predict_contrast = Experiment('predict_contrast')
+collection = predict_contrast.path
 
 global_artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                            'prediction')
 
-# observer = MongoObserver.create(db_name='amensch', collection='runs')
-# predict_contrast.observers.append(observer)
-
-observer = FileStorageObserver.create(basedir=global_artifact_dir)
+observer = MongoObserver.create(db_name='amensch', collection=collection)
 predict_contrast.observers.append(observer)
+
+# observer = FileStorageObserver.create(basedir=global_artifact_dir)
+# predict_contrast.observers.append(observer)
 
 
 @predict_contrast.config
@@ -41,24 +43,29 @@ def config():
     datasets = ['hcp', 'archi']
     n_subjects = 788
 
-    test_size = 0.1
+    test_size = dict(hcp=0.1, archi=0.5)
     train_size = None
 
     factored = False
 
-    alpha = 0.0001
+    alpha = 0.001
+    max_iter = 10
+
+
     beta = 0.0001 # Factored only
     latent_dim = 100  # Factored only
     activation = 'linear'  # Factored only
-    dropout = False
+    dropout = False # Factored only
 
-    max_iter = 200
     penalty = 'trace' # Non-factored only
     tol = 1e-7  # Non-factored only
+
+    projection = True
 
     standardize = True
     scale_importance = 'sqrt'
     multi_class = 'multinomial'  # Non-factored only
+
 
     fit_intercept = True
     identity = False
@@ -103,6 +110,7 @@ def run(dictionary_penalty,
         activation,
         from_loadings,
         loadings_dir,
+        projection,
         verbose,
         _run,
         _seed):
@@ -131,6 +139,7 @@ def run(dictionary_penalty,
         labels = label_encoder.fit_transform(labels)
         y = pd.Series(index=X.index, data=labels, name='label')
     else:
+        loadings_dir = join(loadings_dir, str(projection))
         masker = load(join(loadings_dir, 'masker.pkl'))
         X = load(join(loadings_dir, 'Xt.pkl'))
         idx = pd.IndexSlice
@@ -152,23 +161,25 @@ def run(dictionary_penalty,
     y_train = y.iloc[train]
     train_samples = len(train)
 
-    cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
-                                     group_name='subject',
-                                     test_size=test_size,
-                                     train_size=None,
-                                     n_splits=1,
-                                     random_state=_seed)
-    sub_train, val = next(cv.split(y_train))
+    if factored:
+        cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
+                                         group_name='subject',
+                                         test_size=.1,
+                                         train_size=None,
+                                         n_splits=1,
+                                         random_state=_seed)
+        sub_train, val = next(cv.split(y_train))
 
-    sub_train = train[sub_train]
-    val = train[val]
+        sub_train = train[sub_train]
+        val = train[val]
 
-    X_train = X.iloc[sub_train]
-    y_train = y.iloc[sub_train]
-    X_val = X.iloc[val]
-    y_val = y.iloc[val]
-
-    train = sub_train
+        X_train = X.iloc[sub_train]
+        y_train = y.iloc[sub_train]
+        X_val = X.iloc[val]
+        y_val = y.iloc[val]
+        train = sub_train
+    else:
+        X_train = X.iloc[train]
 
     if verbose:
         print('Transform and fit data')
@@ -179,13 +190,14 @@ def run(dictionary_penalty,
         components = memory.cache(retrieve_components)(dictionary_penalty,
                                                        masker,
                                                        n_components_list)
-        transformer = make_loadings_extractor(components,
-                                              standardize=standardize,
-                                              scale_importance=scale_importance,
-                                              identity=identity,
-                                              scale_bases=True,
-                                              n_jobs=n_jobs,
-                                              memory=memory)
+        if projection:
+            transformer = make_loadings_extractor(components,
+                                                  standardize=standardize,
+                                                  scale_importance=scale_importance,
+                                                  identity=identity,
+                                                  scale_bases=True,
+                                                  n_jobs=n_jobs,
+                                                  memory=memory)
         pipeline.append(('transformer', transformer))
     classifier = make_classifier(alpha, beta,
                                  latent_dim,
@@ -228,10 +240,15 @@ def run(dictionary_penalty,
                                'predicted_label': predicted_labels},
                               index=X.index)
 
-    prediction = pd.concat([prediction.iloc[train],
-                            prediction.iloc[val],
-                            prediction.iloc[test]],
-                           names=['fold'], keys=['train', 'val', 'test'])
+    if factored:
+        prediction = pd.concat([prediction.iloc[train],
+                                prediction.iloc[val],
+                                prediction.iloc[test]],
+                               names=['fold'], keys=['train', 'val', 'test'])
+    else:
+        prediction = pd.concat([prediction.iloc[train],
+                                prediction.iloc[test]],
+                               names=['fold'], keys=['train', 'test'])
     prediction.sort_index()
     match = prediction['true_label'] == prediction['predicted_label']
 

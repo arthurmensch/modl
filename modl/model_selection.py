@@ -7,8 +7,10 @@ import numpy as np
 class StratifiedGroupShuffleSplit(BaseShuffleSplit):
     def __init__(self, test_size=.1, train_size=None, random_state=None,
                  stratify_name='dataset', group_name='subject', n_splits=3):
-        super().__init__(n_splits, test_size, train_size, random_state)
-
+        self.test_size = test_size
+        self.train_size = train_size
+        self.random_state = random_state
+        self.n_splits = n_splits
         self.stratify_name = stratify_name
         self.group_name = group_name
 
@@ -17,9 +19,17 @@ class StratifiedGroupShuffleSplit(BaseShuffleSplit):
         splitters = []
         indices = []
         for idx, serie in index_series.groupby(level=self.stratify_name):
+            if isinstance(self.test_size, dict):
+                test_size = self.test_size[idx]
+            else:
+                test_size = self.test_size
+            if isinstance(self.train_size, dict):
+                train_size = self.train_size[idx]
+            else:
+                train_size = self.train_size
             cv = GroupShuffleSplit(n_splits=self.n_splits,
-                                   test_size=self.test_size,
-                                   train_size=self.train_size,
+                                   test_size=test_size,
+                                   train_size=train_size,
                                    random_state=self.random_state)
             groups = serie.index.get_level_values(self.group_name).values
             splitter = cv.split(serie, groups=groups)
