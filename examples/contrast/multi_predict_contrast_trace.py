@@ -31,9 +31,10 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 30
-    penalty_list = ['l2']
-    alpha_list = [1e-10] + np.logspace(-6, -1, 3).tolist()
-    n_seeds = 5
+    penalty_list = ['trace', 'l2']
+    alpha_list = [1e-10] + np.logspace(-6, -1, 6).tolist()
+    multi_class_list = ['ovr', 'multinomial']  # To put in cross val
+    n_seeds = 10
 
 
 def single_run(config_updates, _id, master_id):
@@ -50,7 +51,6 @@ def single_run(config_updates, _id, master_id):
         loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                             'reduced')
         verbose = 2
-        multi_class = 'ovr' # To put in cross val
         max_iter = 200
 
     run = predict_contrast._create_run(config_updates=config_updates)
@@ -62,12 +62,14 @@ def single_run(config_updates, _id, master_id):
 @multi_predict_task.automain
 def run(penalty_list,
         alpha_list,
+        multi_class_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid({'datasets': [['archi', 'hcp'], 'archi'],
                                 'penalty': penalty_list,
                                 'alpha': alpha_list,
+                                'multi_class': multi_class_list,
                                 'seed': seed_list})
     # Robust labelling of experim   ents
     client = pymongo.MongoClient()

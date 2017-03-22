@@ -29,8 +29,8 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 6 
-    penalty_list = ['trace']
+    n_jobs = 2 
+    penalty_list = ['l2']
     alpha_list = np.logspace(-6, -1, 3).tolist()
     n_seeds = 1
 
@@ -68,7 +68,7 @@ def run(penalty_list,
                                 'penalty': penalty_list,
                                 'alpha': alpha_list,
                                 'seed': seed_list})
-    # Robust labelling of experim   ents
+    # Robust labelling of experiments
     client = pymongo.MongoClient()
     database = client['amensch']
     c = database[collection].find({}, {'_id': 1})

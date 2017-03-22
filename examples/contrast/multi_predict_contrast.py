@@ -29,12 +29,12 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 30
-    dropout_list = [False, True]
+    dropout_list = [0, 0.3, 0.6, 0.9]
     latent_dim_list = [30, 100, 200]
-    alpha_list = [1e-12] + np.logspace(-4, -2, 3).tolist()
-    beta_list = [0] + np.logspace(-4, -2, 3).tolist()
-    activation_list = ['linear', 'relu']
-    n_seeds = 5
+    alpha_list = np.logspace(-6, -3, 4).tolist()
+    beta_list = [0] + np.logspace(-6, -3, 4).tolist()
+    activation_list = ['linear']
+    n_seeds = 10
 
 def single_run(config_updates, _id, master_id):
     observer = MongoObserver.create(db_name='amensch',

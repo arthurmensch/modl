@@ -127,7 +127,7 @@ def make_classifier(alphas, beta,
                     activation='linear',
                     n_jobs=1,
                     penalty='l2',
-                    dropout=False,
+                    dropout=0,
                     # Useful for non factored LR
                     multi_class='multinomial',
                     tol=1e-4,
@@ -216,7 +216,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                  fit_intercept=True,
                  max_iter=100, batch_size=256, n_jobs=1, alpha=0.01,
                  beta=0.01,
-                 dropout=False,
+                 dropout=0,
                  random_state=None,
                  early_stop=True,
                  verbose=0
@@ -464,7 +464,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
 def make_model(n_features, classes_list, alpha=0.01, beta=0.01,
                latent_dim=10, activation='linear', optimizer='adam',
                fit_intercept=True,
-               dropout=False,):
+               dropout=0,):
     from keras.engine import Input
     from keras.layers import Dense, Activation, Concatenate, Dropout
     from keras.regularizers import l2, l1_l2
@@ -477,8 +477,8 @@ def make_model(n_features, classes_list, alpha=0.01, beta=0.01,
     encoded = Dense(latent_dim, activation=activation,
                     use_bias=False, kernel_regularizer=kernel_regularizer_enc,
                     name='encoded')(input)
-    if dropout:
-        encoded = Dropout(rate=0.7)(encoded)
+    if dropout > 0:
+        encoded = Dropout(rate=dropout)(encoded)
     models = []
     supervised_list = []
     for classes in classes_list:
