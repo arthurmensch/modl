@@ -161,12 +161,13 @@ def make_classifier(alphas, beta,
     else:
         if penalty == 'trace':
             multiclass = multi_class == 'multinomial'
-            classifier = FistaClassifier(multiclass=multiclass == 'multinomial',
-                                         loss='log', penalty='trace',
-                                         max_iter=max_iter,
-                                         alpha=alphas[0],
-                                         verbose=verbose,
-                                         C=1. / train_samples)
+            classifier = FistaClassifier(
+                multiclass=multiclass == 'multinomial',
+                loss='log', penalty='trace',
+                max_iter=max_iter,
+                alpha=alphas[0],
+                verbose=verbose,
+                C=1. / train_samples)
             if len(alphas) > 1:
                 classifier = GridSearchCV(classifier,
                                           {'alpha': alphas},
@@ -194,10 +195,12 @@ def make_classifier(alphas, beta,
                                                 fit_intercept=fit_intercept,
                                                 random_state=random_state,
                                                 tol=tol,
-                                                max_iter=max_iter, n_jobs=n_jobs,
+                                                max_iter=max_iter,
+                                                n_jobs=n_jobs,
                                                 penalty=penalty,
                                                 verbose=verbose,
-                                                C=1. / train_samples / alphas[0])
+                                                C=1. / train_samples / alphas[
+                                                    0])
     return classifier
 
 
@@ -289,6 +292,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         n_samples, n_features = X.shape
 
         self.datasets_ = np.unique(datasets)
+        print('datasets', self.datasets_)
         n_datasets = self.datasets_.shape[0]
 
         X_list = []
@@ -322,31 +326,43 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
 
         # Model construction
         from keras.callbacks import EarlyStopping, History
+        import keras.backend as K
         init_tensorflow(n_jobs=self.n_jobs)
 
-        self.models_, self.stacked_model_ = \
-            make_model(n_features,
-                       classes_list=self.classes_list_,
-                       beta=self.beta,
-                       alpha=self.alpha,
-                       latent_dim=self.latent_dim,
-                       activation=self.activation,
-                       dropout=self.dropout,
-                       optimizer=self.optimizer,
-                       fit_intercept=self.fit_intercept,)
+        if self.latent_dim is not None:
+            self.models_, self.stacked_model_ = \
+                make_factored_model(n_features,
+                                    classes_list=self.classes_list_,
+                                    beta=self.beta,
+                                    alpha=self.alpha,
+                                    latent_dim=self.latent_dim,
+                                    activation=self.activation,
+                                    dropout=self.dropout,
+                                    optimizer=self.optimizer,
+                                    fit_intercept=self.fit_intercept, )
+        else:
+            self.models_, self.stacked_model_ = \
+                make_simple_model(n_features,
+                                  classes_list=self.classes_list_,
+                                  beta=self.beta,
+                                  alpha=self.alpha,
+                                  dropout=self.dropout,
+                                  optimizer=self.optimizer,
+                                  fit_intercept=self.fit_intercept, )
+            self.fine_tune = False
         self.n_samples_ = [len(this_X_list) for this_X_list in X_list]
 
         if do_validation and self.early_stop:
-                early_stoppings = []
-                for model in self.models_:
-                    early_stopping = EarlyStopping(
-                        monitor='val_loss',
-                        min_delta=1e-3,
-                        patience=3,
-                        verbose=1,
-                        mode='auto')
-                    early_stopping.set_model(model)
-                    early_stoppings.append(early_stopping)
+            early_stoppings = []
+            for model in self.models_:
+                early_stopping = EarlyStopping(
+                    monitor='val_loss',
+                    min_delta=1e-3,
+                    patience=3,
+                    verbose=1,
+                    mode='auto')
+                early_stopping.set_model(model)
+                early_stoppings.append(early_stopping)
 
         self.histories_ = []
         for model in self.models_:
@@ -401,7 +417,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                         if self.early_stop:
                             early_stoppings[i].on_epoch_end(n_epochs[i],
                                                             epoch_logs)
-                        self.histories_[i].on_epoch_end(n_epochs[i], epoch_logs)
+                        self.histories_[i].on_epoch_end(n_epochs[i],
+                                                        epoch_logs)
                     else:
                         val_acc = 0
                         val_loss = 0
@@ -420,18 +437,32 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             for early_stopping in early_stoppings:
                 early_stopping.on_train_end()
         self.n_epochs_ = n_epochs
-        if fine_tune:
+        if self.fine_tune:
             print('Fine tuning last layer')
-            self.models_[0].layers_by_depth[3][0].trainable = False
             for i, model in enumerate(self.models_):
+                lr = K.get_value(self.models_[i].optimizer.lr) * 0.1
+                K.set_value(self.models_[i].optimizer.lr, lr)
+                self.models_[i].layers_by_depth[3][0].trainable = False
+                self.models_[i].layers_by_depth[2][0].rate = 0
                 this_X = X_list[i]
                 this_y_bin = y_bin_list[i]
                 if do_validation:
                     this_X_val = X_val_list[i]
                     this_y_bin_val = y_bin_val_list[i]
-                    model.fit(this_X, this_y_bin, validation_data=(this_X_val,
-                                                                   this_y_bin_val),
-                              epochs=30)
+                    if self.early_stop:
+                        callbacks = [EarlyStopping(
+                            monitor='val_loss',
+                            min_delta=1e-3,
+                            patience=3,
+                            verbose=1,
+                            mode='auto')]
+                    else:
+                        callbacks = None
+                    model.fit(this_X, this_y_bin,
+                              validation_data=(this_X_val, this_y_bin_val),
+                              callbacks=callbacks,
+                              epochs=self.max_iter,
+                              verbose=self.verbose)
                 else:
                     model.fit(this_X, this_y_bin, epochs=30)
 
@@ -480,10 +511,12 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         return np.mean(np.array(accs))
 
 
-def make_model(n_features, classes_list, alpha=0.01, beta=0.01,
-               latent_dim=10, activation='linear', optimizer='adam',
-               fit_intercept=True,
-               dropout=0,):
+def make_factored_model(n_features,
+                        classes_list,
+                        alpha=0.01, beta=0.01,
+                        latent_dim=10, activation='linear', optimizer='adam',
+                        fit_intercept=True,
+                        dropout=0, ):
     from keras.engine import Input
     from keras.layers import Dense, Activation, Concatenate, Dropout
     from keras.regularizers import l2, l1_l2
@@ -498,6 +531,48 @@ def make_model(n_features, classes_list, alpha=0.01, beta=0.01,
                     name='encoded')(input)
     if dropout > 0:
         encoded = Dropout(rate=dropout)(encoded)
+    models = []
+    supervised_list = []
+    for classes in classes_list:
+        n_classes = len(classes)
+        supervised = Dense(n_classes, activation='linear',
+                           use_bias=fit_intercept,
+                           kernel_regularizer=kernel_regularizer_sup)(encoded)
+        supervised_list.append(supervised)
+        softmax = Activation('softmax')(supervised)
+        model = OurModel(inputs=input, outputs=softmax)
+        model.compile(optimizer=optimizer,
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'])
+        models.append(model)
+    if len(supervised_list) > 1:
+        stacked = Concatenate(axis=1)(supervised_list)
+    else:
+        stacked = supervised_list[0]
+    softmax = Activation('softmax')(stacked)
+    stacked_model = OurModel(inputs=input, outputs=softmax)
+    stacked_model.compile(optimizer=optimizer,
+                          loss='categorical_crossentropy',
+                          metrics=['accuracy'])
+    return models, stacked_model
+
+
+def make_simple_model(n_features, classes_list, alpha=0.01, beta=0.01,
+                      optimizer='adam',
+                      fit_intercept=True,
+                      dropout=0, ):
+    from keras.engine import Input
+    from keras.layers import Dense, Activation, Concatenate, Dropout
+    from keras.regularizers import l1_l2
+    from .fixes import OurModel
+
+    input = Input(shape=(n_features,), name='input')
+
+    kernel_regularizer_sup = l1_l2(l1=beta, l2=alpha)
+    if dropout > 0:
+        encoded = Dropout(rate=dropout)(input)
+    else:
+        encoded = input
     models = []
     supervised_list = []
     for classes in classes_list:

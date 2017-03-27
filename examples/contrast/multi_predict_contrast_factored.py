@@ -19,7 +19,7 @@ sys.path.append(path.dirname(path.dirname
 
 from examples.contrast.predict_contrast import predict_contrast
 
-multi_predict_task = Experiment('multi_predict_contrast',
+multi_predict_task = Experiment('multi_predict_contrast_factored',
                                 ingredients=[predict_contrast])
 collection = multi_predict_task.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
@@ -29,10 +29,11 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 30
-    dropout_list = [0, 0.3, 0.6, 0.9]
-    latent_dim_list = [30, 100, 200]
+    dropout_list = [0, 0.6]
+    latent_dim_list = [100]
     alpha_list = [1e-4]
     beta_list = [0]
+    fine_tune_list = [True, False]
     activation_list = ['linear']
     n_seeds = 10
 
@@ -65,6 +66,7 @@ def run(dropout_list,
         beta_list,
         activation_list,
         latent_dim_list,
+        fine_tune_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
@@ -75,6 +77,7 @@ def run(dropout_list,
          'alpha': alpha_list,
          'beta': beta_list,
          'activation': activation_list,
+         'fine_tune': fine_tune_list,
          'seed': seed_list})
 
     # Robust labelling of experiments

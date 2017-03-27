@@ -114,6 +114,7 @@ def run(dictionary_penalty,
         loadings_dir,
         projection,
         validation,
+        fine_tune,
         verbose,
         _run,
         _seed):
@@ -150,6 +151,11 @@ def run(dictionary_penalty,
         y = load(join(loadings_dir, 'y.pkl'))
         y = y.loc[idx[datasets, :, :, :, :]]
         label_encoder = load(join(loadings_dir, 'label_encoder.pkl'))
+        X.rename(columns={336: 'dataset'}, inplace=True)
+        datasets = X['dataset']
+        dataset_encoder = LabelEncoder()
+        datasets = dataset_encoder.fit_transform(datasets)
+        X['dataset'] = datasets
 
     if verbose:
         print('Split data')

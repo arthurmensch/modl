@@ -19,7 +19,7 @@ sys.path.append(path.dirname(path.dirname
 
 from examples.contrast.predict_contrast import predict_contrast
 
-multi_predict_task = Experiment('multi_predict_contrast_trace',
+multi_predict_task = Experiment('multi_predict_contrast',
                                 ingredients=[predict_contrast])
 collection = multi_predict_task.path
 observer = MongoObserver.create(db_name='amensch',
