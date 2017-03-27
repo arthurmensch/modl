@@ -412,6 +412,14 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                     stop_training = np.all(np.array([model.stop_training
                                                      for model in
                                                      self.models_]))
+        self.n_epochs_ = n_epochs
+        print(self.models_[0].layers_by_depth[3][0])
+        self.models_[0].layers_by_depth[2].trainable = False
+        for i, model in enumerate(self.models_):
+            this_X = X_list[i]
+            this_y_bin = y_bin_list[i]
+            model.fit(this_X, this_y_bin, n_epochs=30)
+
         if do_validation and self.early_stop:
             for early_stopping in early_stoppings:
                 early_stopping.on_train_end()

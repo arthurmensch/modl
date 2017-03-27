@@ -46,16 +46,16 @@ def config():
     test_size = dict(hcp=0.1, archi=0.5)
     train_size = None
 
-    factored = False
+    validation = True
 
-    alpha = 0.001
+    factored = True
+
     max_iter = 10
-
-
+    alpha = 0.0001
     beta = 0.0001 # Factored only
     latent_dim = 100  # Factored only
     activation = 'linear'  # Factored only
-    dropout = 0.5 # Factored only
+    dropout = 0.6 # Factored only
 
     penalty = 'trace' # Non-factored only
     tol = 1e-7  # Non-factored only
@@ -111,6 +111,7 @@ def run(dictionary_penalty,
         from_loadings,
         loadings_dir,
         projection,
+        validation,
         verbose,
         _run,
         _seed):
@@ -161,25 +162,25 @@ def run(dictionary_penalty,
     y_train = y.iloc[train]
     train_samples = len(train)
 
-    # if factored:
-    #     cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
-    #                                      group_name='subject',
-    #                                      test_size=.1,
-    #                                      train_size=None,
-    #                                      n_splits=1,
-    #                                      random_state=_seed)
-    #     sub_train, val = next(cv.split(y_train))
-    #
-    #     sub_train = train[sub_train]
-    #     val = train[val]
-    #
-    #     X_train = X.iloc[sub_train]
-    #     y_train = y.iloc[sub_train]
-    #     X_val = X.iloc[val]
-    #     y_val = y.iloc[val]
-    #     train = sub_train
-    # else:
-    X_train = X.iloc[train]
+    if validation and factored:
+        cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
+                                         group_name='subject',
+                                         test_size=.1,
+                                         train_size=None,
+                                         n_splits=1,
+                                         random_state=_seed)
+        sub_train, val = next(cv.split(y_train))
+
+        sub_train = train[sub_train]
+        val = train[val]
+
+        X_train = X.iloc[sub_train]
+        y_train = y.iloc[sub_train]
+        X_val = X.iloc[val]
+        y_val = y.iloc[val]
+        train = sub_train
+    else:
+        X_train = X.iloc[train]
 
     if verbose:
         print('Transform and fit data')
@@ -217,15 +218,19 @@ def run(dictionary_penalty,
     estimator = Pipeline(pipeline, memory=memory)
 
     if factored:
-        # if not from_loadings:
-        #     Xt_val = transformer.fit_transform(X_val, y_val)
-        # else:
-        #     Xt_val = X_val
+        if validation:
+            if not from_loadings:
+                Xt_val = transformer.fit_transform(X_val, y_val)
+            else:
+                Xt_val = X_val
         t0 = time.time()
-        estimator.fit(X_train, y_train,
-                      # classifier__validation_data=(Xt_val, y_val)
-                      )
-        print('Fit time: %.2f' % (time.time() - t0))
+        if validation:
+            estimator.fit(X_train, y_train,
+                          classifier__validation_data=(Xt_val, y_val)
+                          )
+        else:
+            estimator.fit(X_train, y_train)
+            print('Fit time: %.2f' % (time.time() - t0))
     else:
         sample_weight = 1 / X_train[0].groupby(
             level=['dataset', 'contrast']).transform('count')
@@ -241,7 +246,7 @@ def run(dictionary_penalty,
                                'predicted_label': predicted_labels},
                               index=X.index)
 
-    if factored:
+    if validation and factored:
         prediction = pd.concat([prediction.iloc[train],
                                 prediction.iloc[val],
                                 prediction.iloc[test]],
@@ -253,6 +258,10 @@ def run(dictionary_penalty,
     prediction.sort_index()
     match = prediction['true_label'] == prediction['predicted_label']
 
+    if factored:
+        _run.info['n_epochs'] = estimator.n_epochs_
+    else:
+        _run.info['n_iter'] = estimator.n_iter_
     if verbose:
         print('Compute score')
     for fold, sub_match in match.groupby(level='fold'):
