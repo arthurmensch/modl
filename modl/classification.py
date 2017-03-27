@@ -125,6 +125,7 @@ def make_classifier(alphas, beta,
                     fit_intercept=True,
                     max_iter=10,
                     activation='linear',
+                    fine_tune=True,
                     n_jobs=1,
                     penalty='l2',
                     dropout=0,
@@ -144,6 +145,7 @@ def make_classifier(alphas, beta,
                                       latent_dim=latent_dim,
                                       dropout=dropout,
                                       alpha=alphas[0],
+                                      fine_tune=fine_tune,
                                       beta=beta,
                                       batch_size=200,
                                       n_jobs=n_jobs,
@@ -214,6 +216,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
     def __init__(self, latent_dim=10, activation='linear',
                  optimizer='adam',
                  fit_intercept=True,
+                 fine_tune=True,
                  max_iter=100, batch_size=256, n_jobs=1, alpha=0.01,
                  beta=0.01,
                  dropout=0,
@@ -223,6 +226,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                  ):
         self.latent_dim = latent_dim
         self.activation = activation
+        self.fine_tune = fine_tune
         self.optimizer = optimizer
         self.max_iter = max_iter
         self.batch_size = batch_size
@@ -412,17 +416,24 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                     stop_training = np.all(np.array([model.stop_training
                                                      for model in
                                                      self.models_]))
-        self.n_epochs_ = n_epochs
-        print(self.models_[0].layers_by_depth[3][0])
-        self.models_[0].layers_by_depth[2].trainable = False
-        for i, model in enumerate(self.models_):
-            this_X = X_list[i]
-            this_y_bin = y_bin_list[i]
-            model.fit(this_X, this_y_bin, n_epochs=30)
-
         if do_validation and self.early_stop:
             for early_stopping in early_stoppings:
                 early_stopping.on_train_end()
+        self.n_epochs_ = n_epochs
+        if fine_tune:
+            print('Fine tuning last layer')
+            self.models_[0].layers_by_depth[3][0].trainable = False
+            for i, model in enumerate(self.models_):
+                this_X = X_list[i]
+                this_y_bin = y_bin_list[i]
+                if do_validation:
+                    this_X_val = X_val_list[i]
+                    this_y_bin_val = y_bin_val_list[i]
+                    model.fit(this_X, this_y_bin, validation_data=(this_X_val,
+                                                                   this_y_bin_val),
+                              epochs=30)
+                else:
+                    model.fit(this_X, this_y_bin, epochs=30)
 
     def predict_proba(self, X, dataset=None):
         if dataset is None:

@@ -52,15 +52,17 @@ def config():
 
     max_iter = 10
     alpha = 0.0001
-    beta = 0.0001 # Factored only
+    beta = 0.0 # Factored only
     latent_dim = 100  # Factored only
     activation = 'linear'  # Factored only
-    dropout = 0.6 # Factored only
+    dropout = 0.6  # Factored only
 
     penalty = 'trace' # Non-factored only
     tol = 1e-7  # Non-factored only
 
     projection = True
+
+    fine_tune = True
 
     standardize = True
     scale_importance = 'sqrt'
@@ -210,6 +212,7 @@ def run(dictionary_penalty,
                                  dropout=dropout,
                                  n_jobs=n_jobs,
                                  penalty=penalty,
+                                 fine_tune=fine_tune,
                                  tol=tol,
                                  train_samples=train_samples,
                                  random_state=_seed,
@@ -259,9 +262,9 @@ def run(dictionary_penalty,
     match = prediction['true_label'] == prediction['predicted_label']
 
     if factored:
-        _run.info['n_epochs'] = estimator.n_epochs_
+        _run.info['n_epochs'] = estimator.named_steps['classifier'].n_epochs_
     else:
-        _run.info['n_iter'] = estimator.n_iter_
+        _run.info['n_iter'] = estimator.named_steps['classifier'].n_iter_
     if verbose:
         print('Compute score')
     for fold, sub_match in match.groupby(level='fold'):
