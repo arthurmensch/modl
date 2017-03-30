@@ -5,19 +5,20 @@ import numpy as np
 import pandas as pd
 import time
 from sacred import Experiment
-from sacred.observers import FileStorageObserver, \
-    MongoObserver  # , MongoObserver
+from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
 from sklearn.externals.joblib import load
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 
-from modl.classification import make_loadings_extractor, make_classifier
+from modl.classification import make_loadings_extractor, FactoredLogistic
 from modl.datasets import get_data_dirs
 from modl.input_data.fmri.unmask import build_design, retrieve_components
 from modl.model_selection import StratifiedGroupShuffleSplit
 from modl.utils.system import get_cache_dirs
+
+idx = pd.IndexSlice
 
 predict_contrast = Experiment('predict_contrast')
 collection = predict_contrast.path
@@ -27,6 +28,7 @@ global_artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
 
 observer = MongoObserver.create(db_name='amensch', collection=collection)
 predict_contrast.observers.append(observer)
+
 
 # observer = FileStorageObserver.create(basedir=global_artifact_dir)
 # predict_contrast.observers.append(observer)
@@ -40,34 +42,36 @@ def config():
     from_loadings = True
     loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
 
-    datasets = ['hcp', 'archi']
+    datasets = ['archi', 'hcp']
     n_subjects = 788
 
     test_size = dict(hcp=0.1, archi=0.5)
+    dataset_weight = dict(hcp=1, archi=10)
     train_size = None
 
     validation = True
 
-    factored = True
+    factored = False
 
-    max_iter = 10
+    max_samples = int(1e6)
     alpha = 0.0001
-    beta = 0.0 # Factored only
+    beta = 0.0  # Factored only
     latent_dim = 100  # Factored only
     activation = 'linear'  # Factored only
     dropout = 0.6  # Factored only
+    batch_size = 200
+    early_stop = False
 
-    penalty = 'trace' # Non-factored only
+    penalty = 'trace'  # Non-factored only
     tol = 1e-7  # Non-factored only
 
     projection = True
 
-    fine_tune = True
+    fine_tune = False
 
     standardize = True
     scale_importance = 'sqrt'
     multi_class = 'ovr'  # Non-factored only
-
 
     fit_intercept = True
     identity = False
@@ -94,18 +98,18 @@ def run(dictionary_penalty,
         beta,
         latent_dim,
         n_components_list,
-        max_iter, n_jobs,
+        dataset_weight,
+        batch_size,
+        max_samples, n_jobs,
         test_size,
         train_size,
-        tol,
         dropout,
+        early_stop,
         identity,
         fit_intercept,
-        multi_class,
         n_subjects,
         scale_importance,
         standardize,
-        penalty,
         datasets,
         datasets_dir,
         factored,
@@ -133,8 +137,6 @@ def run(dictionary_penalty,
                                                n_subjects)
         # Add a dataset column to the X matrix
         datasets = X.index.get_level_values('dataset').values
-        dataset_encoder = LabelEncoder()
-        datasets = dataset_encoder.fit_transform(datasets)
         datasets = pd.Series(index=X.index, data=datasets, name='dataset')
         X = pd.concat([X, datasets], axis=1)
 
@@ -146,16 +148,10 @@ def run(dictionary_penalty,
         loadings_dir = join(loadings_dir, str(projection))
         masker = load(join(loadings_dir, 'masker.pkl'))
         X = load(join(loadings_dir, 'Xt.pkl'))
-        idx = pd.IndexSlice
         X = X.loc[idx[datasets, :, :, :, :]]
         y = load(join(loadings_dir, 'y.pkl'))
         y = y.loc[idx[datasets, :, :, :, :]]
         label_encoder = load(join(loadings_dir, 'label_encoder.pkl'))
-        X.rename(columns={336: 'dataset'}, inplace=True)
-        datasets = X['dataset']
-        dataset_encoder = LabelEncoder()
-        datasets = dataset_encoder.fit_transform(datasets)
-        X['dataset'] = datasets
 
     if verbose:
         print('Split data')
@@ -168,9 +164,8 @@ def run(dictionary_penalty,
     train, test = next(cv.split(X))
 
     y_train = y.iloc[train]
-    train_samples = len(train)
 
-    if validation and factored:
+    if validation:
         cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
                                          group_name='subject',
                                          test_size=.1,
@@ -187,8 +182,6 @@ def run(dictionary_penalty,
         X_val = X.iloc[val]
         y_val = y.iloc[val]
         train = sub_train
-    else:
-        X_train = X.iloc[train]
 
     if verbose:
         print('Transform and fit data')
@@ -208,46 +201,40 @@ def run(dictionary_penalty,
                                                   n_jobs=n_jobs,
                                                   memory=memory)
         pipeline.append(('transformer', transformer))
-    classifier = make_classifier(alpha, beta,
-                                 latent_dim,
-                                 factored=factored,
-                                 fit_intercept=fit_intercept,
-                                 activation=activation,
-                                 max_iter=max_iter,
-                                 multi_class=multi_class,
-                                 dropout=dropout,
-                                 n_jobs=n_jobs,
-                                 penalty=penalty,
-                                 fine_tune=fine_tune,
-                                 tol=tol,
-                                 train_samples=train_samples,
-                                 random_state=_seed,
-                                 verbose=verbose)
+    classifier = FactoredLogistic(optimizer='adam',
+                                  max_samples=max_samples,
+                                  activation=activation,
+                                  fit_intercept=fit_intercept,
+                                  latent_dim=latent_dim if factored else None,
+                                  dropout=dropout,
+                                  alpha=alpha,
+                                  early_stop=early_stop,
+                                  fine_tune=fine_tune,
+                                  beta=beta,
+                                  batch_size=batch_size,
+                                  n_jobs=n_jobs,
+                                  verbose=verbose)
     pipeline.append(('classifier', classifier))
     estimator = Pipeline(pipeline, memory=memory)
 
-    if factored:
+    if from_loadings:
         if validation:
-            if not from_loadings:
-                Xt_val = transformer.fit_transform(X_val, y_val)
-            else:
-                Xt_val = X_val
-        t0 = time.time()
-        if validation:
-            estimator.fit(X_train, y_train,
-                          classifier__validation_data=(Xt_val, y_val)
-                          )
-        else:
-            estimator.fit(X_train, y_train)
-            print('Fit time: %.2f' % (time.time() - t0))
+            Xt_val = X_val.values
+        X_train = X_train.values
     else:
-        sample_weight = 1 / X_train[0].groupby(
-            level=['dataset', 'contrast']).transform('count')
-        sample_weight /= np.min(sample_weight)
-        estimator.fit(X_train, y_train,
-                      classifier__sample_weight=sample_weight)
+        Xt_val = transformer.fit_transform(X_val, y_val)
 
-    predicted_labels = estimator.predict(X)
+    t0 = time.time()
+    if validation:
+        estimator.fit(X_train, y_train,
+                      classifier__validation_data=(Xt_val, y_val),
+                      classifier__dataset_weight=dataset_weight
+                      )
+    else:
+        estimator.fit(X_train, y_train)
+        print('Fit time: %.2f' % (time.time() - t0))
+
+    predicted_labels = estimator.predict(X.values)
     predicted_labels = label_encoder.inverse_transform(predicted_labels)
     labels = label_encoder.inverse_transform(y)
 
@@ -255,7 +242,7 @@ def run(dictionary_penalty,
                                'predicted_label': predicted_labels},
                               index=X.index)
 
-    if validation and factored:
+    if validation:
         prediction = pd.concat([prediction.iloc[train],
                                 prediction.iloc[val],
                                 prediction.iloc[test]],
@@ -267,10 +254,7 @@ def run(dictionary_penalty,
     prediction.sort_index()
     match = prediction['true_label'] == prediction['predicted_label']
 
-    if factored:
-        _run.info['n_epochs'] = estimator.named_steps['classifier'].n_epochs_
-    else:
-        _run.info['n_iter'] = estimator.named_steps['classifier'].n_iter_
+    _run.info['n_epochs'] = estimator.named_steps['classifier'].n_epochs_
     if verbose:
         print('Compute score')
     for fold, sub_match in match.groupby(level='fold'):

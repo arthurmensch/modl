@@ -1,5 +1,7 @@
 import numbers
 
+import pandas as pd
+
 import mkl
 import numpy as np
 from lightning.impl.fista import FistaClassifier
@@ -115,7 +117,6 @@ def make_loadings_extractor(bases, scale_bases=True,
                            concatenated_projector)])
     transformer = FeatureUnion([('projector', projector),
                                 ('label_getter', LabelGetter())])
-
     return transformer
 
 
@@ -123,7 +124,7 @@ def make_classifier(alphas, beta,
                     latent_dim,
                     factored=True,
                     fit_intercept=True,
-                    max_iter=10,
+                    max_samples=10,
                     activation='linear',
                     fine_tune=True,
                     n_jobs=1,
@@ -139,7 +140,7 @@ def make_classifier(alphas, beta,
         alphas = [alphas]
     if factored:
         classifier = FactoredLogistic(optimizer='adam',
-                                      max_iter=max_iter,
+                                      max_samples=max_samples,
                                       activation=activation,
                                       fit_intercept=fit_intercept,
                                       latent_dim=latent_dim,
@@ -220,18 +221,18 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                  optimizer='adam',
                  fit_intercept=True,
                  fine_tune=True,
-                 max_iter=100, batch_size=256, n_jobs=1, alpha=0.01,
+                 max_samples=100, batch_size=256, n_jobs=1, alpha=0.01,
                  beta=0.01,
                  dropout=0,
                  random_state=None,
-                 early_stop=True,
+                 early_stop=False,
                  verbose=0
                  ):
         self.latent_dim = latent_dim
         self.activation = activation
         self.fine_tune = fine_tune
         self.optimizer = optimizer
-        self.max_iter = max_iter
+        self.max_samples = max_samples
         self.batch_size = batch_size
         self.shuffle = True
         self.alpha = alpha
@@ -243,7 +244,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self.beta = beta
         self.early_stop = early_stop
 
-    def fit(self, X, y, validation_data=None):
+    def fit(self, X, y, validation_data=None, dataset_weight=None):
         """Fit the model according to the given training data.
 
         Parameters
@@ -267,24 +268,23 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self : object
             Returns self.
         """
-        if not isinstance(self.max_iter, numbers.Number) or self.max_iter < 0:
+        if not isinstance(self.max_samples, numbers.Number) or self.max_samples < 0:
             raise ValueError("Maximum number of iteration must be positive;"
-                             " got (max_iter=%r)" % self.max_iter)
+                             " got (max_samples=%r)" % self.max_iter)
 
-        X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float32,
+        datasets = X[:, -1]
+        X, y = check_X_y(X[:, :-1], y, accept_sparse='csr',
+                         dtype=np.float32,
                          order="C")
-        datasets = X[:, -1].astype('int')
-        X = X[:, :-1]
 
         self.random_state = check_random_state(self.random_state)
 
         if validation_data is not None:
             X_val, y_val = validation_data
-            X_val, y_val = check_X_y(X_val, y_val,
+            datasets_val = X_val[:, -1]
+            X_val, y_val = check_X_y(X_val[:, :-1], y_val,
                                      accept_sparse='csr', dtype=np.float32,
                                      order="C")
-            datasets_val = X_val[:, -1].astype('int')
-            X_val = X_val[:, :-1]
             do_validation = True
         else:
             do_validation = False
@@ -292,168 +292,173 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         n_samples, n_features = X.shape
 
         self.datasets_ = np.unique(datasets)
-        print('datasets', self.datasets_)
         n_datasets = self.datasets_.shape[0]
 
-        X_list = []
-        y_bin_list = []
-        self.classes_list_ = []
+        X_dict = {}
+        y_bin_dict = {}
+        self.classes_dict_ = {}
 
         if do_validation:
-            X_val_list = []
-            y_bin_val_list = []
+            X_val_dict = {}
+            y_bin_val_dict = {}
 
-        for this_dataset in self.datasets_:
-            indices = datasets == this_dataset
+        for dataset in self.datasets_:
+            indices = datasets == dataset
             this_X = X[indices]
             this_y = y[indices]
             label_binarizer = LabelBinarizer()
             classes = np.unique(this_y)
-            self.classes_list_.append(classes)
+            self.classes_dict_[dataset] = classes
             this_y_bin = label_binarizer.fit_transform(this_y)
-            y_bin_list.append(this_y_bin)
-            X_list.append(this_X)
+            y_bin_dict[dataset] = this_y_bin
+            X_dict[dataset] = this_X
 
             if do_validation:
-                indices = datasets_val == this_dataset
+                indices = datasets_val == dataset
                 this_X_val = X_val[indices]
                 this_y_val = y_val[indices]
                 this_y_bin_val = label_binarizer.fit_transform(this_y_val)
-                y_bin_val_list.append(this_y_bin_val)
-                X_val_list.append(this_X_val)
-
-        self.classes_ = np.concatenate(self.classes_list_)
+                y_bin_val_dict[dataset] = this_y_bin_val
+                X_val_dict[dataset] = this_X_val
 
         # Model construction
         from keras.callbacks import EarlyStopping, History
         import keras.backend as K
         init_tensorflow(n_jobs=self.n_jobs)
 
-        if self.latent_dim is not None:
-            self.models_, self.stacked_model_ = \
-                make_factored_model(n_features,
-                                    classes_list=self.classes_list_,
-                                    beta=self.beta,
-                                    alpha=self.alpha,
-                                    latent_dim=self.latent_dim,
-                                    activation=self.activation,
-                                    dropout=self.dropout,
-                                    optimizer=self.optimizer,
-                                    fit_intercept=self.fit_intercept, )
-        else:
-            self.models_, self.stacked_model_ = \
-                make_simple_model(n_features,
-                                  classes_list=self.classes_list_,
-                                  beta=self.beta,
-                                  alpha=self.alpha,
-                                  dropout=self.dropout,
-                                  optimizer=self.optimizer,
-                                  fit_intercept=self.fit_intercept, )
-            self.fine_tune = False
-        self.n_samples_ = [len(this_X_list) for this_X_list in X_list]
+        self.models_, self.stacked_model_ = \
+            make_factored_model(n_features,
+                                datasets=self.datasets_,
+                                classes_dict=self.classes_dict_,
+                                beta=self.beta,
+                                alpha=self.alpha,
+                                latent_dim=self.latent_dim,
+                                activation=self.activation,
+                                dropout=self.dropout,
+                                optimizer=self.optimizer,
+                                fit_intercept=self.fit_intercept, )
+        self.n_samples_ = [len(this_X) for this_X in X_dict]
 
         if do_validation and self.early_stop:
-            early_stoppings = []
-            for model in self.models_:
+            early_stoppings = {}
+            for dataset in datasets:
+                model = self.models_[dataset]
                 early_stopping = EarlyStopping(
                     monitor='val_loss',
                     min_delta=1e-3,
-                    patience=3,
+                    patience=2,
                     verbose=1,
                     mode='auto')
                 early_stopping.set_model(model)
-                early_stoppings.append(early_stopping)
+                early_stoppings[dataset] = early_stopping
 
-        self.histories_ = []
-        for model in self.models_:
+        self.histories_ = {}
+        self.n_epochs_ = {dataset: 0 for dataset in self.datasets_}
+        batches_dict = {}
+        epoch_logs = {}
+
+        for dataset in self.datasets_:
+            model = self.models_[dataset]
             history = History()
             history.set_model(model)
-            self.histories_.append(history)
-        # Optimization loop
-        n_epochs = np.zeros(n_datasets)
-        batches_list = []
-        for i, (this_X, this_y_bin) in enumerate(zip(X_list, y_bin_list)):
-            permutation = self.random_state.permutation(len(this_X))
-            this_X[:] = this_X[permutation]
-            this_y_bin[:] = this_y_bin[permutation]
-            batches = gen_batches(len(this_X), self.batch_size)
-            batches_list.append(batches)
-        epoch_logs = {}
+            self.histories_[dataset] = history
+        for dataset in self.datasets_:
+            len_X = len(X_dict[dataset])
+            permutation = self.random_state.permutation(len_X)
+            X_dict[dataset] = X_dict[dataset][permutation]
+            y_bin_dict[dataset] = y_bin_dict[dataset][permutation]
+            batches = gen_batches(len_X, int(self.batch_size))
+            batches_dict[dataset] = batches
         stop_training = False
         if do_validation:
-            for history in self.histories_:
+            for history in self.histories_.values():
                 history.on_train_begin()
             if self.early_stop:
                 for early_stopping in early_stoppings:
                     early_stopping.on_train_begin()
-        while not stop_training and np.min(n_epochs) < self.max_iter:
+        # Optimization loop
+        self.n_seen_samples_ = 0
+        while not stop_training:
             if do_validation:
-                for model in self.models_:
+                for model in self.models_.values():
                     model.stop_training = stop_training
-            for i, model in enumerate(self.models_):
-                this_X = X_list[i]
-                this_y_bin = y_bin_list[i]
+            for dataset in self.datasets_:
+                model = self.models_[dataset]
+                this_X = X_dict[dataset]
+                this_y_bin = y_bin_dict[dataset]
                 if do_validation:
-                    this_X_val = X_val_list[i]
-                    this_y_bin_val = y_bin_val_list[i]
-                try:
-                    batch = next(batches_list[i])
-                except StopIteration:
-                    this_X = X_list[i]
-                    permutation = self.random_state.permutation(len(this_X))
-                    this_X[:] = this_X[permutation]
-                    this_y_bin[:] = this_y_bin[permutation]
-                    batches_list[i] = gen_batches(len(this_X), self.batch_size)
-                    n_epochs[i] += 1
-                    loss, acc = model.evaluate(this_X, this_y_bin, verbose=0)
-                    epoch_logs['loss'] = loss
-                    epoch_logs['acc'] = acc
-                    if do_validation:
-                        val_loss, val_acc = model.evaluate(this_X_val,
-                                                           this_y_bin_val,
-                                                           verbose=0)
-                        epoch_logs['val_loss'] = val_loss
-                        epoch_logs['val_acc'] = val_acc
-                        if self.early_stop:
-                            early_stoppings[i].on_epoch_end(n_epochs[i],
-                                                            epoch_logs)
-                        self.histories_[i].on_epoch_end(n_epochs[i],
-                                                        epoch_logs)
-                    else:
-                        val_acc = 0
-                        val_loss = 0
-                    if self.verbose:
-                        print('Epoch %i, dataset %i, loss: %.4f, acc: %.4f, '
-                              'val_acc: %.4f, val_loss: %.4f' %
-                              (n_epochs[i], self.datasets_[i],
-                               loss, acc, val_acc, val_loss))
-                    batch = next(batches_list[i])
-                model.train_on_batch(this_X[batch], this_y_bin[batch])
-                if do_validation and self.early_stop:
-                    stop_training = np.all(np.array([model.stop_training
-                                                     for model in
-                                                     self.models_]))
+                    this_X_val = X_val_dict[dataset]
+                    this_y_bin_val = y_bin_val_dict[dataset]
+                i = 0
+                while not stop_training and i < dataset_weight[dataset]:
+                    i += 1
+                    try:
+                        batch = next(batches_dict[dataset])
+                    except StopIteration:
+                        this_X = X_dict[dataset]
+                        permutation = self.random_state.permutation(
+                            len(this_X))
+                        this_X[:] = this_X[permutation]
+                        this_y_bin[:] = this_y_bin[permutation]
+                        batches_dict[dataset] = gen_batches(len(this_X),
+                                                            self.batch_size)
+                        self.n_epochs_[dataset] += 1
+                        loss, acc = model.evaluate(this_X, this_y_bin,
+                                                   verbose=0)
+                        epoch_logs['loss'] = loss
+                        epoch_logs['acc'] = acc
+                        if do_validation:
+                            val_loss, val_acc = model.evaluate(this_X_val,
+                                                               this_y_bin_val,
+                                                               verbose=0)
+                            epoch_logs['val_loss'] = val_loss
+                            epoch_logs['val_acc'] = val_acc
+                            if self.early_stop:
+                                early_stoppings[dataset].on_epoch_end(
+                                    self.n_epochs_[dataset], epoch_logs)
+                            self.histories_[dataset].on_epoch_end(
+                                self.n_epochs_[dataset], epoch_logs)
+                        else:
+                            val_acc = 0
+                            val_loss = 0
+                        if self.verbose:
+                            print(
+                                'Epoch %.5i, n_samples %i, dataset %s, loss: %.4f, acc: %.4f, '
+                                'val_acc: %.4f, val_loss: %.4f' %
+                                (self.n_epochs_[dataset],
+                                 self.n_seen_samples_,
+                                 dataset,
+                                 loss, acc, val_acc, val_loss))
+                        batch = next(batches_dict[dataset])
+                    model.train_on_batch(this_X[batch], this_y_bin[batch])
+                    self.n_seen_samples_ += batch.stop - batch.start
+                    if do_validation and self.early_stop:
+                        stop_training = np.all(np.array([model.stop_training
+                                                         for model in
+                                                         self.models_]))
+                    stop_training = (stop_training or
+                                     self.n_seen_samples_ >
+                                     self.max_samples)
         if do_validation and self.early_stop:
             for early_stopping in early_stoppings:
                 early_stopping.on_train_end()
-        self.n_epochs_ = n_epochs
         if self.fine_tune:
             print('Fine tuning last layer')
-            for i, model in enumerate(self.models_):
-                lr = K.get_value(self.models_[i].optimizer.lr) * 0.1
-                K.set_value(self.models_[i].optimizer.lr, lr)
-                self.models_[i].layers_by_depth[3][0].trainable = False
-                self.models_[i].layers_by_depth[2][0].rate = 0
-                this_X = X_list[i]
-                this_y_bin = y_bin_list[i]
+            for dataset in self.datasets_:
+                lr = K.get_value(self.models_[dataset].optimizer.lr) * 0.1
+                K.set_value(self.models_[dataset].optimizer.lr, lr)
+                self.models_[dataset].layers_by_depth[3][0].trainable = False
+                self.models_[dataset].layers_by_depth[2][0].rate = 0
+                this_X = X_dict[dataset]
+                this_y_bin = y_bin_dict[dataset]
                 if do_validation:
-                    this_X_val = X_val_list[i]
-                    this_y_bin_val = y_bin_val_list[i]
+                    this_X_val = X_val_dict[dataset]
+                    this_y_bin_val = y_bin_val_dict[dataset]
                     if self.early_stop:
                         callbacks = [EarlyStopping(
                             monitor='val_loss',
                             min_delta=1e-3,
-                            patience=3,
+                            patience=2,
                             verbose=1,
                             mode='auto')]
                     else:
@@ -461,7 +466,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                     model.fit(this_X, this_y_bin,
                               validation_data=(this_X_val, this_y_bin_val),
                               callbacks=callbacks,
-                              epochs=self.max_iter,
+                              epochs=10,
                               verbose=self.verbose)
                 else:
                     model.fit(this_X, this_y_bin, epochs=30)
@@ -470,13 +475,12 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         if dataset is None:
             return self.stacked_model_.predict(X)
         else:
-            idx = np.where(self.datasets_ == dataset)[0][0]
-            return self.models_[idx].predict(X)
+            return self.models_[dataset].predict(X)
 
     def predict(self, X):
-        X = check_array(X, accept_sparse='csr', order='C', dtype=np.float32)
-        datasets = X[:, -1].astype('int')
-        X = X[:, :-1]
+        datasets = X[:, -1]
+        X = check_array(X[:, :-1], accept_sparse='csr',
+                        order='C', dtype=np.float32)
         pred = np.zeros(X.shape[0], dtype='int')
         indices = np.logical_not(np.any(self.datasets_[:, np.newaxis]
                                         == datasets, axis=1))
@@ -488,7 +492,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             indices = datasets == this_dataset
             if np.sum(indices) > 0:
                 this_X = X[indices]
-                these_classes = self.classes_list_[this_dataset]
+                these_classes = self.classes_dict_[this_dataset]
                 pred[indices] = these_classes[np.argmax(self.predict_proba(
                     this_X, dataset=this_dataset), axis=1)]
         return pred
@@ -496,23 +500,24 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
     def score(self, X, y, **kwargs):
         X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float32,
                          order="C")
-        datasets = X[:, -1].astype('int')
+        datasets = X[:, -1]
         X = X[:, :-1]
-        accs = []
-        for i, this_dataset in enumerate(self.datasets_):
-            indices = datasets == this_dataset
+        accs = {}
+        for dataset in self.datasets_:
+            indices = datasets == dataset
             this_X = X[indices]
             this_y = y[indices]
-            label_binarizer = LabelBinarizer().fit(self.classes_list_[i])
-            model = self.models_[i]
+            label_binarizer = LabelBinarizer().fit(self.classes_dict_[dataset])
+            model = self.models_[dataset]
             this_y_bin = label_binarizer.fit_transform(this_y)
             loss, acc = model.evaluate(this_X, this_y_bin, verbose=0)
-            accs.append(acc)
+            accs[dataset] = acc
         return np.mean(np.array(accs))
 
 
 def make_factored_model(n_features,
-                        classes_list,
+                        datasets,
+                        classes_dict,
                         alpha=0.01, beta=0.01,
                         latent_dim=10, activation='linear', optimizer='adam',
                         fit_intercept=True,
@@ -521,81 +526,45 @@ def make_factored_model(n_features,
     from keras.layers import Dense, Activation, Concatenate, Dropout
     from keras.regularizers import l2, l1_l2
     from .fixes import OurModel
-
     input = Input(shape=(n_features,), name='input')
 
     kernel_regularizer_enc = l1_l2(l1=beta, l2=alpha)
     kernel_regularizer_sup = l2(alpha)
-    encoded = Dense(latent_dim, activation=activation,
-                    use_bias=False, kernel_regularizer=kernel_regularizer_enc,
-                    name='encoded')(input)
-    if dropout > 0:
-        encoded = Dropout(rate=dropout)(encoded)
-    models = []
-    supervised_list = []
-    for classes in classes_list:
-        n_classes = len(classes)
-        supervised = Dense(n_classes, activation='linear',
-                           use_bias=fit_intercept,
-                           kernel_regularizer=kernel_regularizer_sup)(encoded)
-        supervised_list.append(supervised)
-        softmax = Activation('softmax')(supervised)
-        model = OurModel(inputs=input, outputs=softmax)
-        model.compile(optimizer=optimizer,
-                      loss='categorical_crossentropy',
-                      metrics=['accuracy'])
-        models.append(model)
-    if len(supervised_list) > 1:
-        stacked = Concatenate(axis=1)(supervised_list)
-    else:
-        stacked = supervised_list[0]
-    softmax = Activation('softmax')(stacked)
-    stacked_model = OurModel(inputs=input, outputs=softmax)
-    stacked_model.compile(optimizer=optimizer,
-                          loss='categorical_crossentropy',
-                          metrics=['accuracy'])
-    return models, stacked_model
-
-
-def make_simple_model(n_features, classes_list, alpha=0.01, beta=0.01,
-                      optimizer='adam',
-                      fit_intercept=True,
-                      dropout=0, ):
-    from keras.engine import Input
-    from keras.layers import Dense, Activation, Concatenate, Dropout
-    from keras.regularizers import l1_l2
-    from .fixes import OurModel
-
-    input = Input(shape=(n_features,), name='input')
-
-    kernel_regularizer_sup = l1_l2(l1=beta, l2=alpha)
-    if dropout > 0:
-        encoded = Dropout(rate=dropout)(input)
+    if latent_dim is not None:
+        encoded = Dense(latent_dim, activation=activation,
+                        use_bias=False,
+                        kernel_regularizer=kernel_regularizer_enc,
+                        name='encoded')(input)
     else:
         encoded = input
-    models = []
-    supervised_list = []
-    for classes in classes_list:
+    if dropout > 0:
+        encoded = Dropout(rate=dropout)(encoded)
+    models = {}
+    supervised_dict = {}
+    for dataset in datasets:
+        classes = classes_dict[dataset]
         n_classes = len(classes)
         supervised = Dense(n_classes, activation='linear',
                            use_bias=fit_intercept,
                            kernel_regularizer=kernel_regularizer_sup)(encoded)
-        supervised_list.append(supervised)
+        supervised_dict[dataset] = supervised
         softmax = Activation('softmax')(supervised)
         model = OurModel(inputs=input, outputs=softmax)
         model.compile(optimizer=optimizer,
                       loss='categorical_crossentropy',
                       metrics=['accuracy'])
-        models.append(model)
-    if len(supervised_list) > 1:
-        stacked = Concatenate(axis=1)(supervised_list)
+        models[dataset] = model
+    if len(supervised_dict) > 1:
+        stacked = Concatenate(axis=1)([supervised_dict[dataset] for
+                                       dataset in datasets])
     else:
-        stacked = supervised_list[0]
+        stacked = supervised_dict[0]
     softmax = Activation('softmax')(stacked)
     stacked_model = OurModel(inputs=input, outputs=softmax)
     stacked_model.compile(optimizer=optimizer,
                           loss='categorical_crossentropy',
                           metrics=['accuracy'])
+
     return models, stacked_model
 
 

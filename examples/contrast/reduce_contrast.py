@@ -18,7 +18,8 @@ predict_contrast = Experiment('reduce_contrast')
 
 loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
 
-observer = MongoObserver.create(db_name='amensch', collection='runs')
+observer = MongoObserver.create(db_name='amensch',
+                                collection='reduce_contrast')
 predict_contrast.observers.append(observer)
 
 
@@ -90,14 +91,14 @@ def run(dictionary_penalty,
                                            memory=memory)
 
     datasets = X.index.get_level_values('dataset').values
-    dataset_encoder = LabelEncoder()
-    datasets = dataset_encoder.fit_transform(datasets)
     datasets = pd.Series(index=X.index, data=datasets, name='dataset')
     X = pd.concat([X, datasets], axis=1)
 
     if projection:
         Xt = pipeline.fit_transform(X, y)
-        Xt = pd.DataFrame(data=Xt, index=X.index)
+        Xt = pd.DataFrame(data=Xt, index=X.index,
+                          columns=list(range(Xt.shape[1] - 1)) + ['dataset']
+                          )
     else:
         Xt = X
     this_loadings_dir = join(loadings_dir, str(projection))

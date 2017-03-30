@@ -29,13 +29,16 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 30
-    dropout_list = [0, 0.6]
-    latent_dim_list = [100]
+    dropout_list = [0.8]
+    latent_dim_list = [200]
     alpha_list = [1e-4]
     beta_list = [0]
-    fine_tune_list = [True, False]
+    fine_tune_list = [False]
     activation_list = ['linear']
     n_seeds = 10
+    early_stop = False
+    max_samples = int(1e7)
+
 
 def single_run(config_updates, _id, master_id):
     observer = MongoObserver.create(db_name='amensch',
@@ -71,7 +74,11 @@ def run(dropout_list,
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid(
-        {'datasets': [['archi'], ['hcp'], ['archi', 'hcp']],
+        {'datasets': [['archi', 'hcp']],
+         'dataset_weight': [dict(hcp=i, archi=1)
+                            for i in [1, 2, 4]] +
+                           [dict(hcp=1, archi=i)
+                            for i in [1, 2, 4]],
          'dropout': dropout_list,
          'latent_dim': latent_dim_list,
          'alpha': alpha_list,
