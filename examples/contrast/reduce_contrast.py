@@ -2,7 +2,6 @@ import os
 from os.path import join
 
 import pandas as pd
-from sklearn.utils import check_X_y, check_array
 
 from modl.classification import make_loadings_extractor
 from modl.datasets import get_data_dirs

@@ -67,7 +67,7 @@ def config():
 
     projection = True
 
-    fine_tune = False
+    fine_tune = 0.2
 
     standardize = True
     scale_importance = 'sqrt'

@@ -1,4 +1,5 @@
 import numbers
+from copy import copy
 
 import pandas as pd
 
@@ -120,91 +121,6 @@ def make_loadings_extractor(bases, scale_bases=True,
     return transformer
 
 
-def make_classifier(alphas, beta,
-                    latent_dim,
-                    factored=True,
-                    fit_intercept=True,
-                    max_samples=10,
-                    activation='linear',
-                    fine_tune=True,
-                    n_jobs=1,
-                    penalty='l2',
-                    dropout=0,
-                    # Useful for non factored LR
-                    multi_class='multinomial',
-                    tol=1e-4,
-                    train_samples=1,
-                    random_state=None,
-                    verbose=0):
-    if not hasattr(alphas, '__iter__'):
-        alphas = [alphas]
-    if factored:
-        classifier = FactoredLogistic(optimizer='adam',
-                                      max_samples=max_samples,
-                                      activation=activation,
-                                      fit_intercept=fit_intercept,
-                                      latent_dim=latent_dim,
-                                      dropout=dropout,
-                                      alpha=alphas[0],
-                                      fine_tune=fine_tune,
-                                      beta=beta,
-                                      batch_size=200,
-                                      n_jobs=n_jobs,
-                                      verbose=verbose)
-        if len(alphas) > 1:
-            classifier.set_params(n_jobs=1)
-            classifier = GridSearchCV(classifier,
-                                      {'alpha': alphas},
-                                      cv=10,
-                                      refit=True,
-                                      verbose=verbose,
-                                      n_jobs=n_jobs)
-    else:
-        if penalty == 'trace':
-            multiclass = multi_class == 'multinomial'
-            classifier = FistaClassifier(
-                multiclass=multiclass == 'multinomial',
-                loss='log', penalty='trace',
-                max_iter=max_iter,
-                alpha=alphas[0],
-                verbose=verbose,
-                C=1. / train_samples)
-            if len(alphas) > 1:
-                classifier = GridSearchCV(classifier,
-                                          {'alpha': alphas},
-                                          cv=10,
-                                          refit=True,
-                                          verbose=verbose,
-                                          n_jobs=n_jobs)
-        else:
-            if len(alphas) > 1:
-                classifier = LogisticRegressionCV(solver='saga',
-                                                  multi_class=multi_class,
-                                                  fit_intercept=fit_intercept,
-                                                  random_state=random_state,
-                                                  refit=True,
-                                                  tol=tol,
-                                                  max_iter=max_iter,
-                                                  n_jobs=n_jobs,
-                                                  penalty=penalty,
-                                                  cv=10,
-                                                  verbose=verbose,
-                                                  Cs=1. / train_samples / alphas)
-            else:
-                classifier = LogisticRegression(solver='saga',
-                                                multi_class=multi_class,
-                                                fit_intercept=fit_intercept,
-                                                random_state=random_state,
-                                                tol=tol,
-                                                max_iter=max_iter,
-                                                n_jobs=n_jobs,
-                                                penalty=penalty,
-                                                verbose=verbose,
-                                                C=1. / train_samples / alphas[
-                                                    0])
-    return classifier
-
-
 class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
     """
     Parameters
@@ -292,7 +208,6 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         n_samples, n_features = X.shape
 
         self.datasets_ = np.unique(datasets)
-        n_datasets = self.datasets_.shape[0]
 
         X_dict = {}
         y_bin_dict = {}
@@ -323,7 +238,6 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
 
         # Model construction
         from keras.callbacks import EarlyStopping, History
-        import keras.backend as K
         init_tensorflow(n_jobs=self.n_jobs)
 
         self.models_, self.stacked_model_ = \
@@ -378,6 +292,17 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                     early_stopping.on_train_begin()
         # Optimization loop
         self.n_seen_samples_ = 0
+
+        dataset_weight = copy(dataset_weight)
+        min_weight = 1000
+        for weight in dataset_weight.values():
+            if weight != 0:
+                min_weight = min(min_weight, weight)
+        for dataset in self.datasets_:
+            dataset_weight[dataset] = int(dataset_weight[dataset] / min_weight)
+        print(dataset_weight)
+
+        fine_tune_n_samples = (1 - self.fine_tune) * self.max_samples
         while not stop_training:
             if do_validation:
                 for model in self.models_.values():
@@ -432,44 +357,20 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                         batch = next(batches_dict[dataset])
                     model.train_on_batch(this_X[batch], this_y_bin[batch])
                     self.n_seen_samples_ += batch.stop - batch.start
+                    if self.n_seen_samples_ > fine_tune_n_samples:
+                        print('Fine tuning')
+                        for dataset in self.datasets_:
+                            model.layers_by_depth[3][0].trainable = False
+                            dataset_weight[dataset] = 1
                     if do_validation and self.early_stop:
                         stop_training = np.all(np.array([model.stop_training
                                                          for model in
                                                          self.models_]))
                     stop_training = (stop_training or
-                                     self.n_seen_samples_ >
-                                     self.max_samples)
+                                     self.n_seen_samples_ > self.max_samples)
         if do_validation and self.early_stop:
             for early_stopping in early_stoppings:
                 early_stopping.on_train_end()
-        if self.fine_tune:
-            print('Fine tuning last layer')
-            for dataset in self.datasets_:
-                lr = K.get_value(self.models_[dataset].optimizer.lr) * 0.1
-                K.set_value(self.models_[dataset].optimizer.lr, lr)
-                self.models_[dataset].layers_by_depth[3][0].trainable = False
-                self.models_[dataset].layers_by_depth[2][0].rate = 0
-                this_X = X_dict[dataset]
-                this_y_bin = y_bin_dict[dataset]
-                if do_validation:
-                    this_X_val = X_val_dict[dataset]
-                    this_y_bin_val = y_bin_val_dict[dataset]
-                    if self.early_stop:
-                        callbacks = [EarlyStopping(
-                            monitor='val_loss',
-                            min_delta=1e-3,
-                            patience=2,
-                            verbose=1,
-                            mode='auto')]
-                    else:
-                        callbacks = None
-                    model.fit(this_X, this_y_bin,
-                              validation_data=(this_X_val, this_y_bin_val),
-                              callbacks=callbacks,
-                              epochs=10,
-                              verbose=self.verbose)
-                else:
-                    model.fit(this_X, this_y_bin, epochs=30)
 
     def predict_proba(self, X, dataset=None):
         if dataset is None:
@@ -502,7 +403,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                          order="C")
         datasets = X[:, -1]
         X = X[:, :-1]
-        accs = {}
+        accs = []
+        total_weight = 0
         for dataset in self.datasets_:
             indices = datasets == dataset
             this_X = X[indices]
@@ -511,8 +413,10 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             model = self.models_[dataset]
             this_y_bin = label_binarizer.fit_transform(this_y)
             loss, acc = model.evaluate(this_X, this_y_bin, verbose=0)
-            accs[dataset] = acc
-        return np.mean(np.array(accs))
+            weight = self.n_epochs_[dataset]
+            total_weight += weight
+            accs.append(acc * weight)
+        return np.sum(np.array(accs)) / total_weight
 
 
 def make_factored_model(n_features,

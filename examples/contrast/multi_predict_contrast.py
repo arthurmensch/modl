@@ -22,19 +22,21 @@ from examples.contrast.predict_contrast import predict_contrast
 multi_predict_task = Experiment('multi_predict_contrast',
                                 ingredients=[predict_contrast])
 collection = multi_predict_task.path
-observer = MongoObserver.create(db_name='amensch',
-                                collection=collection)
+observer = MongoObserver.create(db_name='amensch', collection=collection)
 multi_predict_task.observers.append(observer)
-
 
 
 @multi_predict_task.config
 def config():
     n_jobs = 30
-    penalty_list = ['trace', 'l2']
-    alpha_list = [1e-10] + np.logspace(-6, -1, 6).tolist()
-    multi_class_list = ['ovr', 'multinomial']  # To put in cross val
+    dropout_list = [0., 0.3, 0.6]
+    latent_dim_list = [None]
+    alpha_list = [1e-4]
+    beta_list = [0]
+    fine_tune_list = [0]
+    activation_list = ['linear']
     n_seeds = 10
+    early_stop = False
 
 
 def single_run(config_updates, _id, master_id):
@@ -46,12 +48,13 @@ def single_run(config_updates, _id, master_id):
     def config():
         n_jobs = 1
         from_loadings = True
-        projection = True
+        projected = True
         factored = False
+        n_subjects = 788
         loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                             'reduced')
-        verbose = 2
-        max_iter = 200
+        verbose = 0
+        max_samples = int(1e6)
 
     run = predict_contrast._create_run(config_updates=config_updates)
     run._id = _id
@@ -60,18 +63,28 @@ def single_run(config_updates, _id, master_id):
 
 
 @multi_predict_task.automain
-def run(penalty_list,
+def run(dropout_list,
         alpha_list,
-        multi_class_list,
+        beta_list,
+        activation_list,
+        latent_dim_list,
+        fine_tune_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
-    param_grid = ParameterGrid({'datasets': [['archi', 'hcp'], 'archi'],
-                                'penalty': penalty_list,
-                                'alpha': alpha_list,
-                                'multi_class': multi_class_list,
-                                'seed': seed_list})
-    # Robust labelling of experim   ents
+    param_grid = ParameterGrid(
+        {'datasets': [['archi', 'hcp']],
+         'dataset_weight': [dict(hcp=i, archi=1)
+                            for i in [0, 0.25, 0.5, 1, 2, 4]],
+         'dropout': dropout_list,
+         'latent_dim': latent_dim_list,
+         'alpha': alpha_list,
+         'beta': beta_list,
+         'activation': activation_list,
+         'fine_tune': fine_tune_list,
+         'seed': seed_list})
+
+    # Robust labelling of experiments
     client = pymongo.MongoClient()
     database = client['amensch']
     c = database[collection].find({}, {'_id': 1})
