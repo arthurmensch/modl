@@ -29,11 +29,6 @@ global_artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
 observer = MongoObserver.create(db_name='amensch', collection=collection)
 predict_contrast.observers.append(observer)
 
-
-observer = FileStorageObserver.create(basedir=global_artifact_dir)
-predict_contrast.observers.append(observer)
-
-
 @predict_contrast.config
 def config():
     dictionary_penalty = 1e-4
@@ -267,9 +262,4 @@ def run(dictionary_penalty,
                       name='prediction.csv')
 
     dump(label_encoder, join(artifact_dir, 'label_encoder.pkl'))
-    classifier = estimator.named_steps['classifier']
-    classifier.stacked_model_.save(join(artifact_dir, 'stacked_model.keras'))
-    for dataset in classifier.models_:
-        model = classifier.models_[dataset]
-        model.save(join(artifact_dir, 'model_%s.keras' % dataset))
     dump(estimator, join(artifact_dir, 'estimator.pkl'))

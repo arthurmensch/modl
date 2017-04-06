@@ -33,9 +33,10 @@ def config():
     latent_dim_list = [200]
     alpha_list = [1e-4]
     beta_list = [0]
-    fine_tune_list = [0]
+    fine_tune_list = [0.1]
     activation_list = ['linear']
     n_seeds = 10
+    max_samples = int(1e7)
     early_stop = False
 
 
