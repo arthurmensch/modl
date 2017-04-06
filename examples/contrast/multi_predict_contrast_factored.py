@@ -1,5 +1,4 @@
 import sys
-from itertools import chain
 from os import path
 
 from modl.datasets import get_data_dirs
@@ -28,16 +27,15 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 25
-    dropout_list = [0., 0.3, 0.6, 0.9]
+    n_jobs = 20
+    dropout_list = [0.0, 0.9]
     latent_dim_list = [200]
     alpha_list = [1e-4]
     beta_list = [0]
-    fine_tune_list = [0.1]
+    fine_tune_list = [0]
     activation_list = ['linear']
     n_seeds = 10
-    max_samples = int(1e7)
-    early_stop = False
+    verbose = 1
 
 
 def single_run(config_updates, _id, master_id):
@@ -55,6 +53,7 @@ def single_run(config_updates, _id, master_id):
         loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                             'reduced')
         verbose = 0
+        early_stop = False
         max_samples = int(1e7)
 
     run = predict_contrast._create_run(config_updates=config_updates)

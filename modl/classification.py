@@ -1,17 +1,12 @@
 import numbers
 from copy import copy
 
-import pandas as pd
-
 import mkl
 import numpy as np
-from lightning.impl.fista import FistaClassifier
 from scipy.linalg import lstsq
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.externals.joblib import Memory
-from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
 from sklearn.linear_model.base import LinearClassifierMixin
-from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.preprocessing import StandardScaler

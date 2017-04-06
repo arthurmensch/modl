@@ -44,7 +44,7 @@ def config():
     dataset_weight = dict(hcp=1, archi=1)
     train_size = None
 
-    validation = True
+    validation = False
     factored = True
 
     max_samples = int(1e5)
@@ -64,7 +64,7 @@ def config():
     projection = True
 
     standardize = True
-    scale_importance = 'sqrt'
+    scale_importance = None
     multi_class = 'ovr'  # Non-factored only
 
     fit_intercept = True
