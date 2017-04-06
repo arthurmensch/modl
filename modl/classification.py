@@ -460,11 +460,10 @@ def make_factored_model(n_features,
                       metrics=['accuracy'])
         models[dataset] = model
     if len(supervised_dict) > 1:
-        stacked = Concatenate(axis=1,
-                              name='concatenate')([supervised_dict[dataset] for
-                                       dataset in datasets])
+        stacked = Concatenate(axis=1, name='concatenate')(
+            [supervised_dict[dataset] for dataset in datasets])
     else:
-        stacked = supervised_dict[0]
+        stacked = supervised_dict.values()[0]
     softmax = Activation('softmax')(stacked)
     stacked_model = Model(inputs=input, outputs=softmax)
     stacked_model.compile(optimizer=optimizer,

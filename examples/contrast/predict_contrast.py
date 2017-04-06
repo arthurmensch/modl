@@ -37,17 +37,17 @@ def config():
     from_loadings = True
     loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
 
-    datasets = ['archi', 'hcp']
+    datasets = ['la5c']
     n_subjects = 788
 
-    test_size = dict(hcp=0.1, archi=0.5)
-    dataset_weight = dict(hcp=1, archi=1)
+    test_size = dict(hcp=0.1, archi=0.5, la5c=0.1)
+    dataset_weight = dict(hcp=1, archi=1, la5c=1)
     train_size = None
 
     validation = False
     factored = True
 
-    max_samples = int(1e5)
+    max_samples = int(1e6)
     alpha = 0.0001
     beta = 0.0  # Factored only
     latent_dim = 200  # Factored only
@@ -56,7 +56,7 @@ def config():
     batch_size = 100
     early_stop = False
 
-    fine_tune = 0.2
+    fine_tune = 0
 
     penalty = 'trace'  # Non-factored only
     tol = 1e-7  # Non-factored only
@@ -64,7 +64,7 @@ def config():
     projection = True
 
     standardize = True
-    scale_importance = None
+    scale_importance = 'sqrt'
     multi_class = 'ovr'  # Non-factored only
 
     fit_intercept = True
@@ -79,11 +79,15 @@ def config():
                                    'unmask', 'contrast', 'hcp', '23')
     archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
                                      'unmask', 'contrast', 'archi', '30')
+    la5c_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
+                                     'unmask', 'contrast', 'la5c', '20')
     datasets_dir = {'archi': archi_unmask_contrast_dir,
-                    'hcp': hcp_unmask_contrast_dir}
+                    'hcp': hcp_unmask_contrast_dir,
+                    'la5c': la5c_unmask_contrast_dir}
 
     del hcp_unmask_contrast_dir
     del archi_unmask_contrast_dir
+    del la5c_unmask_contrast_dir
 
 
 @predict_contrast.automain
@@ -176,6 +180,8 @@ def run(dictionary_penalty,
         X_val = X.iloc[val]
         y_val = y.iloc[val]
         train = sub_train
+    else:
+        X_train = X.iloc[train]
 
     if verbose:
         print('Transform and fit data')
@@ -225,7 +231,9 @@ def run(dictionary_penalty,
                       classifier__dataset_weight=dataset_weight
                       )
     else:
-        estimator.fit(X_train, y_train)
+        estimator.fit(X_train, y_train,
+                      classifier__dataset_weight=dataset_weight
+                      )
         print('Fit time: %.2f' % (time.time() - t0))
 
     predicted_labels = estimator.predict(X.values)

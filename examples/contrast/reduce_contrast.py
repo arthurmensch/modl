@@ -27,7 +27,7 @@ def config():
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
 
-    datasets = ['hcp', 'archi']
+    datasets = ['hcp', 'archi', 'la5c']
     n_subjects = 788
 
     standardize = True
@@ -45,11 +45,15 @@ def config():
                                    'unmask', 'contrast', 'hcp', '23')
     archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
                                      'unmask', 'contrast', 'archi', '30')
+    la5c_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
+                                     'unmask', 'contrast', 'la5c', '20')
     datasets_dir = {'archi': archi_unmask_contrast_dir,
-                    'hcp': hcp_unmask_contrast_dir}
+                    'hcp': hcp_unmask_contrast_dir,
+                    'la5c': la5c_unmask_contrast_dir}
 
     del hcp_unmask_contrast_dir
     del archi_unmask_contrast_dir
+    del la5c_unmask_contrast_dir
 
 
 @predict_contrast.automain

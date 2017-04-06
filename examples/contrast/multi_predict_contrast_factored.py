@@ -36,6 +36,7 @@ def config():
     activation_list = ['linear']
     n_seeds = 10
     verbose = 1
+    seed = 2
 
 
 def single_run(config_updates, _id, master_id):
