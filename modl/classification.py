@@ -435,10 +435,6 @@ def make_factored_model(n_features,
     from keras.regularizers import l2, l1_l2
     from .fixes import Model
 
-    if optimizer == 'adam':
-        from .fixes import Adam
-        optimizer = Adam()
-
     input = Input(shape=(n_features,), name='input')
 
     kernel_regularizer_enc = l1_l2(l1=beta, l2=alpha)
