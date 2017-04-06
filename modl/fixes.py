@@ -6,9 +6,11 @@ from functools import partial
 from inspect import signature
 from tempfile import NamedTemporaryFile
 
+import keras.backend as K
 import numpy as np
-from keras.engine import Model
-from keras.models import load_model
+
+from keras.models import load_model, model_from_json
+from keras.optimizers import Optimizer
 from sklearn.base import is_classifier, clone
 from sklearn.exceptions import FitFailedWarning
 from sklearn.externals.joblib import logger, Parallel, delayed
@@ -18,6 +20,99 @@ from sklearn.model_selection._validation import _score, _index_param_value
 from sklearn.utils.fixes import MaskedArray, rankdata
 from sklearn.utils.metaestimators import _safe_split
 from sklearn.utils.validation import _num_samples, indexable
+
+
+class Adam(Optimizer):
+    """Adam optimizer.
+
+    Default parameters follow those provided in the original paper.
+
+    # Arguments
+        lr: float >= 0. Learning rate.
+        beta_1: float, 0 < beta < 1. Generally close to 1.
+        beta_2: float, 0 < beta < 1. Generally close to 1.
+        epsilon: float >= 0. Fuzz factor.
+        decay: float >= 0. Learning rate decay over each update.
+
+    # References
+        - [Adam - A Method for Stochastic Optimization](http://arxiv.org/abs/1412.6980v8)
+    """
+
+    def __init__(self, lr=0.001, beta_1=0.9, beta_2=0.999,
+                 epsilon=1e-8, decay=0., **kwargs):
+        super(Adam, self).__init__(**kwargs)
+        #        self.iterations = K.variable(0)
+        # TS 20170208 bugfix : save_model + load_model not working after training
+        self.iterations = K.variable(0, name='adam_iter')
+        self.lr = K.variable(lr, name='lr')
+        self.beta_1 = K.variable(beta_1, name='beta_1')
+        self.beta_2 = K.variable(beta_2, name='beta_2')
+        self.epsilon = epsilon
+        self.decay = K.variable(decay, name='decay')
+        self.initial_decay = decay
+
+    def get_updates(self, params, constraints, loss):
+        grads = self.get_gradients(loss, params)
+        self.updates = [K.update_add(self.iterations, 1)]
+
+        lr = self.lr
+        if self.initial_decay > 0:
+            lr *= (1. / (1. + self.decay * self.iterations))
+
+        t = self.iterations + 1
+        lr_t = lr * (K.sqrt(1. - K.pow(self.beta_2, t)) /
+                     (1. - K.pow(self.beta_1, t)))
+
+        shapes = [K.get_variable_shape(p) for p in params]
+        # TS 20170208 bugfix : save_model + load_model not working after training
+        #        ms = [K.zeros(shape) for shape in shapes]
+        ms = [K.zeros(shape, name='adam_ms_%i' % i)
+                   for i, shape in enumerate(shapes)]
+        #        vs = [K.zeros(shape) for shape in shapes]
+        vs = [K.zeros(shape, name='adam_vs_%i' % i)
+                   for i, shape in enumerate(shapes)]
+        self.weights = [self.iterations] + ms + vs
+        for weight in self.weights:
+            print(weight)
+
+        for p, g, m, v in zip(params, grads, ms, vs):
+            m_t = (self.beta_1 * m) + (1. - self.beta_1) * g
+            v_t = (self.beta_2 * v) + (1. - self.beta_2) * K.square(g)
+            p_t = p - lr_t * m_t / (K.sqrt(v_t) + self.epsilon)
+
+            self.updates.append(K.update(m, m_t))
+            self.updates.append(K.update(v, v_t))
+
+            new_p = p_t
+            # apply constraints
+            if p in constraints:
+                c = constraints[p]
+                new_p = c(new_p)
+            self.updates.append(K.update(p, new_p))
+        return self.updates
+
+
+def our__setstate__(self, state):
+    weights = state.pop('weights')
+    json_string = state.pop('json_string')
+    new_self = model_from_json(json_string)
+    with NamedTemporaryFile(dir='/tmp') as f:
+        f.write(weights)
+        new_self.load_weights(f.name)
+    self.__dict__ = new_self.__dict__
+
+
+def our__getstate__(self):
+    json_string = self.to_json()
+    with NamedTemporaryFile(dir='/tmp') as f:
+        self.save_weights(f.name)
+        weights = f.read()
+    state = {'weights': weights, 'json_string': json_string}
+    return state
+
+from keras.engine import Model
+Model.__setstate__ = our__setstate__
+Model.__getstate__ = our__getstate__
 
 
 def _fit_and_score(estimator, X, y, scorer, train, test, verbose,
@@ -160,24 +255,6 @@ def _fit_and_score(estimator, X, y, scorer, train, test, verbose,
     if return_parameters:
         ret.append(parameters)
     return ret
-
-
-class OurModel(Model):
-    def __setstate__(self, state):
-        binary = state.pop('binary')
-        with NamedTemporaryFile(dir='/tmp') as f:
-            f.write(binary)
-            new_self = load_model(f.name)
-            self.__dict__ = new_self.__dict__
-
-    def __getstate__(self):
-        with NamedTemporaryFile(dir='/tmp') as f:
-            self.__class__ = Model
-            self.save(f.name)
-            self.__class__ = OurModel
-            data = f.read()
-        state = {'binary': data}
-        return state
 
 
 class OurGridSearchCV(GridSearchCV):

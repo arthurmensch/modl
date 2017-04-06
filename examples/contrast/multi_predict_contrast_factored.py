@@ -28,9 +28,9 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 30
-    dropout_list = [0., 0.3, 0.6]
-    latent_dim_list = [None]
+    n_jobs = 25
+    dropout_list = [0., 0.3, 0.6, 0.9]
+    latent_dim_list = [200]
     alpha_list = [1e-4]
     beta_list = [0]
     fine_tune_list = [0]
@@ -54,7 +54,7 @@ def single_run(config_updates, _id, master_id):
         loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                             'reduced')
         verbose = 0
-        max_samples = int(1e6)
+        max_samples = int(1e7)
 
     run = predict_contrast._create_run(config_updates=config_updates)
     run._id = _id

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import time
 from sacred import Experiment
-from sacred.observers import MongoObserver
+from sacred.observers import MongoObserver, FileStorageObserver
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import dump
 from sklearn.externals.joblib import load
@@ -30,8 +30,8 @@ observer = MongoObserver.create(db_name='amensch', collection=collection)
 predict_contrast.observers.append(observer)
 
 
-# observer = FileStorageObserver.create(basedir=global_artifact_dir)
-# predict_contrast.observers.append(observer)
+observer = FileStorageObserver.create(basedir=global_artifact_dir)
+predict_contrast.observers.append(observer)
 
 
 @predict_contrast.config
@@ -46,28 +46,27 @@ def config():
     n_subjects = 788
 
     test_size = dict(hcp=0.1, archi=0.5)
-    dataset_weight = dict(hcp=1, archi=10)
+    dataset_weight = dict(hcp=1, archi=1)
     train_size = None
 
     validation = True
+    factored = True
 
-    factored = False
-
-    max_samples = int(1e6)
+    max_samples = int(1e5)
     alpha = 0.0001
     beta = 0.0  # Factored only
-    latent_dim = 100  # Factored only
+    latent_dim = 200  # Factored only
     activation = 'linear'  # Factored only
-    dropout = 0.6  # Factored only
-    batch_size = 200
+    dropout = 0.9  # Factored only
+    batch_size = 100
     early_stop = False
+
+    fine_tune = 0.2
 
     penalty = 'trace'  # Non-factored only
     tol = 1e-7  # Non-factored only
 
     projection = True
-
-    fine_tune = 0.2
 
     standardize = True
     scale_importance = 'sqrt'
@@ -268,4 +267,9 @@ def run(dictionary_penalty,
                       name='prediction.csv')
 
     dump(label_encoder, join(artifact_dir, 'label_encoder.pkl'))
+    classifier = estimator.named_steps['classifier']
+    classifier.stacked_model_.save(join(artifact_dir, 'stacked_model.keras'))
+    for dataset in classifier.models_:
+        model = classifier.models_[dataset]
+        model.save(join(artifact_dir, 'model_%s.keras' % dataset))
     dump(estimator, join(artifact_dir, 'estimator.pkl'))

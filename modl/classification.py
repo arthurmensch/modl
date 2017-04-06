@@ -184,7 +184,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self : object
             Returns self.
         """
-        if not isinstance(self.max_samples, numbers.Number) or self.max_samples < 0:
+        if not isinstance(self.max_samples,
+                          numbers.Number) or self.max_samples < 0:
             raise ValueError("Maximum number of iteration must be positive;"
                              " got (max_samples=%r)" % self.max_iter)
 
@@ -303,6 +304,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         print(dataset_weight)
 
         fine_tune_n_samples = (1 - self.fine_tune) * self.max_samples
+        fine_tune = False
         while not stop_training:
             if do_validation:
                 for model in self.models_.values():
@@ -357,8 +359,10 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                         batch = next(batches_dict[dataset])
                     model.train_on_batch(this_X[batch], this_y_bin[batch])
                     self.n_seen_samples_ += batch.stop - batch.start
-                    if self.n_seen_samples_ > fine_tune_n_samples:
+                    if not fine_tune and (self.latent_dim is not None and
+                                    self.max_samples > self.n_seen_samples_ > fine_tune_n_samples):
                         print('Fine tuning')
+                        fine_tune = True
                         for dataset in self.datasets_:
                             model.layers_by_depth[3][0].trainable = False
                             dataset_weight[dataset] = 1
@@ -429,7 +433,12 @@ def make_factored_model(n_features,
     from keras.engine import Input
     from keras.layers import Dense, Activation, Concatenate, Dropout
     from keras.regularizers import l2, l1_l2
-    from .fixes import OurModel
+    from .fixes import Model
+
+    if optimizer == 'adam':
+        from .fixes import Adam
+        optimizer = Adam()
+
     input = Input(shape=(n_features,), name='input')
 
     kernel_regularizer_enc = l1_l2(l1=beta, l2=alpha)
@@ -438,11 +447,11 @@ def make_factored_model(n_features,
         encoded = Dense(latent_dim, activation=activation,
                         use_bias=False,
                         kernel_regularizer=kernel_regularizer_enc,
-                        name='encoded')(input)
+                        name='latent')(input)
     else:
         encoded = input
     if dropout > 0:
-        encoded = Dropout(rate=dropout)(encoded)
+        encoded = Dropout(rate=dropout, name='dropout')(encoded)
     models = {}
     supervised_dict = {}
     for dataset in datasets:
@@ -450,21 +459,23 @@ def make_factored_model(n_features,
         n_classes = len(classes)
         supervised = Dense(n_classes, activation='linear',
                            use_bias=fit_intercept,
-                           kernel_regularizer=kernel_regularizer_sup)(encoded)
+                           kernel_regularizer=kernel_regularizer_sup,
+                           name='supervised_%s' % dataset)(encoded)
         supervised_dict[dataset] = supervised
-        softmax = Activation('softmax')(supervised)
-        model = OurModel(inputs=input, outputs=softmax)
+        softmax = Activation('softmax', name='softmax_%s' % dataset)(supervised)
+        model = Model(inputs=input, outputs=softmax)
         model.compile(optimizer=optimizer,
                       loss='categorical_crossentropy',
                       metrics=['accuracy'])
         models[dataset] = model
     if len(supervised_dict) > 1:
-        stacked = Concatenate(axis=1)([supervised_dict[dataset] for
+        stacked = Concatenate(axis=1,
+                              name='concatenate')([supervised_dict[dataset] for
                                        dataset in datasets])
     else:
         stacked = supervised_dict[0]
     softmax = Activation('softmax')(stacked)
-    stacked_model = OurModel(inputs=input, outputs=softmax)
+    stacked_model = Model(inputs=input, outputs=softmax)
     stacked_model.compile(optimizer=optimizer,
                           loss='categorical_crossentropy',
                           metrics=['accuracy'])
