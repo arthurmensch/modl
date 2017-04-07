@@ -3,6 +3,8 @@ from copy import copy
 
 import mkl
 import numpy as np
+from keras.constraints import unit_norm
+from keras.optimizers import Adam, Nadam
 from scipy.linalg import lstsq
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.externals.joblib import Memory
@@ -134,7 +136,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                  fine_tune=True,
                  max_samples=100, batch_size=256, n_jobs=1, alpha=0.01,
                  beta=0.01,
-                 dropout=0,
+                 dropout_input=0,
+                 dropout_latent=0,
                  random_state=None,
                  early_stop=False,
                  verbose=0
@@ -148,7 +151,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self.shuffle = True
         self.alpha = alpha
         self.n_jobs = n_jobs
-        self.dropout = dropout
+        self.dropout_input = dropout_input
+        self.dropout_latent = dropout_latent
         self.random_state = random_state
         self.fit_intercept = fit_intercept
         self.verbose = verbose
@@ -221,6 +225,11 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             classes = np.unique(this_y)
             self.classes_dict_[dataset] = classes
             this_y_bin = label_binarizer.fit_transform(this_y)
+            if this_y_bin.shape[1] == 1:
+                new = np.zeros((this_y_bin.shape[0], 2))
+                new[:, 0] = this_y_bin[:, 0] == 0
+                new[:, 1] = this_y_bin[:, 0] == 1
+                this_y_bin = new
             y_bin_dict[dataset] = this_y_bin
             X_dict[dataset] = this_X
 
@@ -229,6 +238,11 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                 this_X_val = X_val[indices]
                 this_y_val = y_val[indices]
                 this_y_bin_val = label_binarizer.fit_transform(this_y_val)
+                if this_y_bin_val.shape[1] == 1:
+                    new = np.zeros((this_y_bin_val.shape[0], 2))
+                    new[:, 0] = this_y_bin_val[:, 0] == 0
+                    new[:, 1] = this_y_bin_val[:, 0] == 1
+                    this_y_bin_val = new
                 y_bin_val_dict[dataset] = this_y_bin_val
                 X_val_dict[dataset] = this_X_val
 
@@ -244,7 +258,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                                 alpha=self.alpha,
                                 latent_dim=self.latent_dim,
                                 activation=self.activation,
-                                dropout=self.dropout,
+                                dropout_latent=self.dropout_latent,
+                                dropout_input=self.dropout_input,
                                 optimizer=self.optimizer,
                                 fit_intercept=self.fit_intercept, )
         self.n_samples_ = [len(this_X) for this_X in X_dict]
@@ -280,14 +295,16 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             batches = gen_batches(len_X, int(self.batch_size))
             batches_dict[dataset] = batches
         stop_training = False
+        for history in self.histories_.values():
+            history.on_train_begin()
         if do_validation:
-            for history in self.histories_.values():
-                history.on_train_begin()
             if self.early_stop:
                 for early_stopping in early_stoppings:
                     early_stopping.on_train_begin()
         # Optimization loop
         self.n_seen_samples_ = 0
+
+        dataset_weight = {dataset: 1 for dataset in self.datasets_}
 
         dataset_weight = copy(dataset_weight)
         min_weight = 1000
@@ -296,7 +313,6 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                 min_weight = min(min_weight, weight)
         for dataset in self.datasets_:
             dataset_weight[dataset] = int(dataset_weight[dataset] / min_weight)
-        print(dataset_weight)
 
         fine_tune_n_samples = (1 - self.fine_tune) * self.max_samples
         fine_tune = False
@@ -304,6 +320,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             if do_validation:
                 for model in self.models_.values():
                     model.stop_training = stop_training
+            self.random_state.shuffle(self.datasets_)
             for dataset in self.datasets_:
                 model = self.models_[dataset]
                 this_X = X_dict[dataset]
@@ -338,28 +355,31 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                             if self.early_stop:
                                 early_stoppings[dataset].on_epoch_end(
                                     self.n_epochs_[dataset], epoch_logs)
-                            self.histories_[dataset].on_epoch_end(
-                                self.n_epochs_[dataset], epoch_logs)
                         else:
                             val_acc = 0
                             val_loss = 0
                         if self.verbose:
                             print(
-                                'Epoch %.5i, n_samples %i, dataset %s, loss: %.4f, acc: %.4f, '
+                                'Epoch %.5i, n_samples %i, dataset %s,'
+                                'loss: %.4f, acc: %.4f, '
                                 'val_acc: %.4f, val_loss: %.4f' %
                                 (self.n_epochs_[dataset],
                                  self.n_seen_samples_,
                                  dataset,
                                  loss, acc, val_acc, val_loss))
+                        self.histories_[dataset].on_epoch_end(
+                            self.n_epochs_[dataset], epoch_logs)
                         batch = next(batches_dict[dataset])
                     model.train_on_batch(this_X[batch], this_y_bin[batch])
                     self.n_seen_samples_ += batch.stop - batch.start
                     if not fine_tune and (self.latent_dim is not None and
-                                    self.max_samples > self.n_seen_samples_ > fine_tune_n_samples):
+                                    self.max_samples > self.n_seen_samples_ >
+                                                  fine_tune_n_samples):
                         print('Fine tuning')
                         fine_tune = True
                         for dataset in self.datasets_:
-                            model.layers_by_depth[3][0].trainable = False
+                            model.get_layer('latent').trainable = False
+                            model.get_layer('dropout_latent').rate = 0
                             dataset_weight[dataset] = 1
                     if do_validation and self.early_stop:
                         stop_training = np.all(np.array([model.stop_training
@@ -411,6 +431,11 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             label_binarizer = LabelBinarizer().fit(self.classes_dict_[dataset])
             model = self.models_[dataset]
             this_y_bin = label_binarizer.fit_transform(this_y)
+            if this_y_bin.shape[1] == 1:
+                new = np.zeros((this_y_bin.shape[0], 2))
+                new[:, 0] = this_y_bin[:, 0] == 0
+                new[:, 1] = this_y_bin[:, 0] == 1
+                this_y_bin = new
             loss, acc = model.evaluate(this_X, this_y_bin, verbose=0)
             weight = self.n_epochs_[dataset]
             total_weight += weight
@@ -424,25 +449,28 @@ def make_factored_model(n_features,
                         alpha=0.01, beta=0.01,
                         latent_dim=10, activation='linear', optimizer='adam',
                         fit_intercept=True,
-                        dropout=0, ):
+                        dropout_latent=0, dropout_input=0):
     from keras.engine import Input
     from keras.layers import Dense, Activation, Concatenate, Dropout
     from keras.regularizers import l2, l1_l2
     from .fixes import Model
 
     input = Input(shape=(n_features,), name='input')
-
+    if dropout_input > 0:
+        input_d = Dropout(rate=dropout_input, name='dropout_input')(input)
+    else:
+        input_d = input
     kernel_regularizer_enc = l1_l2(l1=beta, l2=alpha)
     kernel_regularizer_sup = l2(alpha)
     if latent_dim is not None:
         encoded = Dense(latent_dim, activation=activation,
                         use_bias=False,
                         kernel_regularizer=kernel_regularizer_enc,
-                        name='latent')(input)
+                        name='latent')(input_d)
     else:
-        encoded = input
-    if dropout > 0:
-        encoded = Dropout(rate=dropout, name='dropout')(encoded)
+        encoded = input_d
+    if dropout_latent > 0:
+        encoded = Dropout(rate=dropout_latent, name='dropout_latent')(encoded)
     models = {}
     supervised_dict = {}
     for dataset in datasets:
@@ -463,7 +491,7 @@ def make_factored_model(n_features,
         stacked = Concatenate(axis=1, name='concatenate')(
             [supervised_dict[dataset] for dataset in datasets])
     else:
-        stacked = supervised_dict.values()[0]
+        _, stacked = supervised_dict.popitem()
     softmax = Activation('softmax')(stacked)
     stacked_model = Model(inputs=input, outputs=softmax)
     stacked_model.compile(optimizer=optimizer,

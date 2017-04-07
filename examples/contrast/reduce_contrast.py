@@ -35,7 +35,7 @@ def config():
 
     identity = False
 
-    projection = True
+    projection = False
 
     n_jobs = 24
     verbose = 2
@@ -70,9 +70,7 @@ def run(dictionary_penalty,
         _run):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
     print('Fetch data')
-    X, masker = memory.cache(build_design)(datasets,
-                                           datasets_dir,
-                                           n_subjects)
+    X, masker = build_design(datasets, datasets_dir, n_subjects)
     X = X.astype('double')
     print('Retrieve components')
     components = memory.cache(retrieve_components)(dictionary_penalty, masker,

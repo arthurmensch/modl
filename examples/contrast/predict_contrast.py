@@ -29,6 +29,7 @@ global_artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
 observer = MongoObserver.create(db_name='amensch', collection=collection)
 predict_contrast.observers.append(observer)
 
+
 @predict_contrast.config
 def config():
     dictionary_penalty = 1e-4
@@ -37,24 +38,26 @@ def config():
     from_loadings = True
     loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
 
-    datasets = ['la5c']
+    datasets = ['archi', 'hcp', 'la5c']
     n_subjects = 788
 
-    test_size = dict(hcp=0.1, archi=0.5, la5c=0.1)
+    test_size = dict(hcp=0.1, archi=0.5, la5c=0.5)
     dataset_weight = dict(hcp=1, archi=1, la5c=1)
     train_size = None
 
-    validation = False
+    validation = True
     factored = True
 
-    max_samples = int(1e6)
+    max_samples = int(5e6)
     alpha = 0.0001
     beta = 0.0  # Factored only
     latent_dim = 200  # Factored only
     activation = 'linear'  # Factored only
-    dropout = 0.9  # Factored only
+    dropout_input = 0.0  # Factored only
+    dropout_latent = 0.8  # Factored only
     batch_size = 100
     early_stop = False
+    optimizer = 'adam'
 
     fine_tune = 0
 
@@ -80,7 +83,7 @@ def config():
     archi_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
                                      'unmask', 'contrast', 'archi', '30')
     la5c_unmask_contrast_dir = join(get_data_dirs()[0], 'pipeline',
-                                     'unmask', 'contrast', 'la5c', '20')
+                                    'unmask', 'contrast', 'la5c', '20')
     datasets_dir = {'archi': archi_unmask_contrast_dir,
                     'hcp': hcp_unmask_contrast_dir,
                     'la5c': la5c_unmask_contrast_dir}
@@ -101,11 +104,13 @@ def run(dictionary_penalty,
         max_samples, n_jobs,
         test_size,
         train_size,
-        dropout,
+        dropout_input,
+        dropout_latent,
         early_stop,
         identity,
         fit_intercept,
         n_subjects,
+        optimizer,
         scale_importance,
         standardize,
         datasets,
@@ -135,6 +140,9 @@ def run(dictionary_penalty,
                                                n_subjects)
         # Add a dataset column to the X matrix
         datasets = X.index.get_level_values('dataset').values
+        tasks = X.index.get_level_values('task').values
+        datasets = [str(dataset) + '_' + str(task) for task, dataset
+                   in zip(tasks, datasets)]
         datasets = pd.Series(index=X.index, data=datasets, name='dataset')
         X = pd.concat([X, datasets], axis=1)
 
@@ -145,11 +153,26 @@ def run(dictionary_penalty,
     else:
         loadings_dir = join(loadings_dir, str(projection))
         masker = load(join(loadings_dir, 'masker.pkl'))
-        X = load(join(loadings_dir, 'Xt.pkl'))
+        X = load(join(loadings_dir, 'Xt.pkl'), mmap_mode='r')
         X = X.loc[idx[datasets, :, :, :, :]]
         y = load(join(loadings_dir, 'y.pkl'))
         y = y.loc[idx[datasets, :, :, :, :]]
+
+        X = X.drop(['NOSWITCH_SHAPE', 'SWITCH_SHAPE', 'GO_LEFT', 'STOP_LEFT'],
+                   axis=0, level='contrast')
+        X.sort_index(inplace=True)
+
+        y = y.drop(['NOSWITCH_SHAPE', 'SWITCH_SHAPE', 'GO_LEFT', 'STOP_LEFT'],
+                   axis=0, level='contrast')
+        y.sort_index(inplace=True)
+
         label_encoder = load(join(loadings_dir, 'label_encoder.pkl'))
+
+        datasets = X.index.get_level_values('dataset').values
+        tasks = X.index.get_level_values('task').values
+        datasets = [str(dataset) + '_' + str(task) for task, dataset
+                   in zip(tasks, datasets)]
+        X['dataset'] = datasets
 
     if verbose:
         print('Split data')
@@ -201,12 +224,13 @@ def run(dictionary_penalty,
                                                   n_jobs=n_jobs,
                                                   memory=memory)
         pipeline.append(('transformer', transformer))
-    classifier = FactoredLogistic(optimizer='adam',
+    classifier = FactoredLogistic(optimizer=optimizer,
                                   max_samples=max_samples,
                                   activation=activation,
                                   fit_intercept=fit_intercept,
                                   latent_dim=latent_dim if factored else None,
-                                  dropout=dropout,
+                                  dropout_latent=dropout_latent,
+                                  dropout_input=dropout_input,
                                   alpha=alpha,
                                   early_stop=early_stop,
                                   fine_tune=fine_tune,

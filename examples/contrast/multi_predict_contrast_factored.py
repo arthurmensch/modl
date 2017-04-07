@@ -27,14 +27,15 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 20
-    dropout_list = [0.0, 0.9]
+    n_jobs = 30
+    dropout_list = [0.5, 0.9]
     latent_dim_list = [200]
     alpha_list = [1e-4]
     beta_list = [0]
     fine_tune_list = [0]
     activation_list = ['linear']
-    n_seeds = 10
+    optimizer_list = ['adam']
+    n_seeds = 5
     verbose = 1
     seed = 2
 
@@ -46,7 +47,7 @@ def single_run(config_updates, _id, master_id):
 
     @predict_contrast.config
     def config():
-        n_jobs = 1
+        n_jobs = 3
         from_loadings = True
         projected = True
         factored = True
@@ -55,7 +56,7 @@ def single_run(config_updates, _id, master_id):
                             'reduced')
         verbose = 0
         early_stop = False
-        max_samples = int(1e7)
+        max_samples = int(1e6)
 
     run = predict_contrast._create_run(config_updates=config_updates)
     run._id = _id
@@ -70,15 +71,17 @@ def run(dropout_list,
         activation_list,
         latent_dim_list,
         fine_tune_list,
+        optimizer_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid(
-        {'datasets': [['archi', 'hcp']],
-         'dataset_weight': [dict(hcp=i, archi=1)
-                            for i in [0, 0.25, 0.5, 1, 2, 4]],
-         'dropout': dropout_list,
+        {'datasets': [['la5c', 'hcp']],
+         'dataset_weight': [dict(hcp=i, la5c=1)
+                            for i in [0, 0.5, 1]],
+         'dropout_latent': dropout_list,
          'latent_dim': latent_dim_list,
+         'optimizer': optimizer_list,
          'alpha': alpha_list,
          'beta': beta_list,
          'activation': activation_list,
