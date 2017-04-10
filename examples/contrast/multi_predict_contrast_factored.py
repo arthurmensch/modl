@@ -1,17 +1,17 @@
 import sys
 from os import path
-
-from modl.datasets import get_data_dirs
 from os.path import join
+
+import numpy as np
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sacred.optional import pymongo
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
-
-import numpy as np
 from sklearn.model_selection import ParameterGrid
 from sklearn.utils import check_random_state
+
+from modl.datasets import get_data_dirs
 
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
@@ -27,15 +27,15 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 30
-    dropout_list = [0.5, 0.9]
+    n_jobs = 27
+    dropout_list = [0.9]
     latent_dim_list = [200]
     alpha_list = [1e-4]
     beta_list = [0]
     fine_tune_list = [0]
     activation_list = ['linear']
     optimizer_list = ['adam']
-    n_seeds = 5
+    n_seeds = 9
     verbose = 1
     seed = 2
 
@@ -47,7 +47,7 @@ def single_run(config_updates, _id, master_id):
 
     @predict_contrast.config
     def config():
-        n_jobs = 3
+        n_jobs = 1
         from_loadings = True
         projected = True
         factored = True
@@ -56,7 +56,7 @@ def single_run(config_updates, _id, master_id):
                             'reduced')
         verbose = 0
         early_stop = False
-        max_samples = int(1e6)
+        max_samples = int(1e7)
 
     run = predict_contrast._create_run(config_updates=config_updates)
     run._id = _id

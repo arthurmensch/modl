@@ -5,6 +5,8 @@ from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import Memory
 
+from modl.datasets.archi import fetch_archi
+from modl.datasets.brainomics import fetch_brainomics
 from modl.input_data.fmri.monkey import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
@@ -13,25 +15,41 @@ from modl.datasets import get_data_dirs, fetch_hcp
 from modl.datasets.la5c import fetch_la5c
 from modl.input_data.fmri.unmask import create_raw_contrast_data
 
-unmask_task = Experiment('unmask_contrast_la5c')
+unmask_contrast = Experiment('unmask_contrast')
 observer = MongoObserver.create(db_name='amensch', collection='runs')
-unmask_task.observers.append(observer)
+unmask_contrast.observers.append(observer)
+
+output_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
 
 
-@unmask_task.config
+
+@unmask_contrast.config
 def config():
     n_jobs = 10
     batch_size = 1200
+    dataset = 'brainomics'
 
 
-@unmask_task.automain
-def run(n_jobs, batch_size, _run):
-    imgs = fetch_la5c()
+@unmask_contrast.automain
+def run(n_jobs, batch_size, dataset,
+        _run):
+    if dataset == 'hcp':
+        fetch_data = fetch_hcp
+    elif dataset == 'archi':
+        fetch_data = fetch_archi
+    elif dataset == 'brainomics':
+        fetch_data = fetch_brainomics
+    elif dataset == 'la5c':
+        fetch_data = fetch_la5c
+    else:
+        raise ValueError
 
+    imgs = fetch_data()
+    if dataset == 'hcp':
+        imgs = imgs.contrasts
     mask = fetch_hcp(n_subjects=1).mask
 
-    artifact_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
-                        'contrast', 'la5c', '20')
+    artifact_dir = join(output_dir, dataset)
     _run.info['artifact_dir'] = artifact_dir
 
     memory = Memory(cachedir=None)

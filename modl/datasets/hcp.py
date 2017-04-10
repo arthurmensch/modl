@@ -5,6 +5,9 @@ from sklearn.datasets.base import Bunch
 
 from modl.datasets import get_data_dirs
 
+import pandas as pd
+idx = pd.IndexSlice
+
 INTERESTING_CONTRASTS_DICT = {'2BK': {'Cognitive Task': 'Two-Back Memory',
                                       'Instruction to participants': 'Indicate whether current stimulus is the same as two items earlier',
                                       'Stimulus material': 'Task Pictures'},
@@ -62,7 +65,7 @@ INTERESTING_CONTRASTS_DICT = {'2BK': {'Cognitive Task': 'Two-Back Memory',
 
 INTERESTING_CONTRASTS = list(INTERESTING_CONTRASTS_DICT.keys())
 
-INTERESTING_CONTRASTS_EXTENDED = ['FACES', 'SHAPES', 'PUNISH', 'REWARD',
+BASE_CONTRASTS = ['FACES', 'SHAPES', 'PUNISH', 'REWARD',
                                   'MATH', 'STORY', 'MATCH', 'REL',
                                   'RANDOM', 'TOM',
                                   'LF', 'RF', 'LH', 'RH', 'CUE',
@@ -81,6 +84,10 @@ def fetch_hcp(data_dir=None, n_subjects=None, subjects=None,
                               subjects=subjects, on_disk=True)
     rest = res.rest.assign(confounds=[None] * res.rest.shape[0])
     task = res.task.assign(confounds=[None] * res.task.shape[0])
+    task = task.loc[idx[:, :, BASE_CONTRASTS], :]
+    task.sort_index(inplace=True)
+    rest.sort_index(inplace=True)
+
     return Bunch(rest=rest,
                  contrasts=res.contrasts,
                  task=task,
