@@ -261,29 +261,20 @@ def create_raw_contrast_data(imgs, mask, raw_dir,
 
     batches = gen_batches(len(imgs), batch_size)
 
-    dump(imgs.index, join(raw_dir, 'index.pkl'))
-
-    data = np.lib.format.open_memmap(join(raw_dir,
-                                          'z_maps.npy'),
-                                     mode='w+',
-                                     shape=(len(imgs),
-                                            masker.mask_img_.get_data().sum()),
-                                     dtype=np.float32)
+    data = np.empty((len(imgs), masker.mask_img_.get_data().sum()),
+                    dtype=np.float32)
     for i, batch in enumerate(batches):
         print('Batch %i' % i)
-        this_data = masker.transform(imgs['z_map'].values[batch],
-                                     )
-        data[batch] = this_data
+        data[batch] = masker.transform(imgs['z_map'].values[batch])
+    imgs = pd.DataFrame(data=data, index=imgs.index)
+    dump(imgs, join(raw_dir, 'imgs.pkl'))
 
 
 def get_raw_contrast_data(raw_dir):
     mask_img = os.path.join(raw_dir, 'mask_img.nii.gz')
     masker = MultiRawMasker(smoothing_fwhm=0, mask_img=mask_img)
     masker.fit()
-    data = np.load(join(raw_dir, 'z_maps.npy'),
-                   mmap_mode='r')
-    index = load(join(raw_dir, 'index.pkl'))
-    imgs = pd.DataFrame(data=data, index=index)
+    imgs = load(join(raw_dir, 'imgs.pkl'))
     return masker, imgs
 
 

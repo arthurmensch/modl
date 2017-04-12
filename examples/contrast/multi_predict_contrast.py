@@ -27,15 +27,17 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 20
-    dropout_list = [0., 0.3, 0.6, 0.9]
-    latent_dim_list = [None]
+    n_jobs = 27
+    dropout_latent_list = [0., 0.3, 0.6, 0.9]
+    latent_dim_list = [None, 30, 100, 200]
     alpha_list = [1e-4]
     beta_list = [0]
-    fine_tune_list = [0]
+    fine_tune_list = [0, 0.1]
     activation_list = ['linear']
-    n_seeds = 10
-    early_stop = False
+    optimizer_list = ['adam']
+    n_seeds = 5
+    verbose = 0
+    seed = 2
 
 
 def single_run(config_updates, _id, master_id):
@@ -46,13 +48,13 @@ def single_run(config_updates, _id, master_id):
     @predict_contrast.config
     def config():
         n_jobs = 1
-        from_loadings = True
-        projected = True
-        factored = False
-        n_subjects = 788
+        factored = True
         loadings_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                             'reduced')
+        dropout_input = 0.25
+        model_indexing = 'dataset'
         verbose = 0
+        early_stop = False
         max_samples = int(1e7)
 
     run = predict_contrast._create_run(config_updates=config_updates)
@@ -62,21 +64,23 @@ def single_run(config_updates, _id, master_id):
 
 
 @multi_predict_task.automain
-def run(dropout_list,
+def run(dropout_latent_list,
         alpha_list,
         beta_list,
         activation_list,
         latent_dim_list,
         fine_tune_list,
+        optimizer_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid(
-        {'datasets': [['archi', 'hcp']],
-         'dataset_weight': [dict(hcp=i, archi=1)
-                            for i in [0]],
-         'dropout': dropout_list,
+        {'datasets': [['brainomics', 'hcp']],
+         'dataset_weight': [dict(hcp=i, archi=1, brainomics=1)
+                            for i in [0, 0.5, 1]],
+         'dropout_latent': dropout_latent_list,
          'latent_dim': latent_dim_list,
+         'optimizer': optimizer_list,
          'alpha': alpha_list,
          'beta': beta_list,
          'activation': activation_list,

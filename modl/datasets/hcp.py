@@ -6,6 +6,7 @@ from sklearn.datasets.base import Bunch
 from modl.datasets import get_data_dirs
 
 import pandas as pd
+
 idx = pd.IndexSlice
 
 INTERESTING_CONTRASTS_DICT = {'2BK': {'Cognitive Task': 'Two-Back Memory',
@@ -66,14 +67,14 @@ INTERESTING_CONTRASTS_DICT = {'2BK': {'Cognitive Task': 'Two-Back Memory',
 INTERESTING_CONTRASTS = list(INTERESTING_CONTRASTS_DICT.keys())
 
 BASE_CONTRASTS = ['FACES', 'SHAPES', 'PUNISH', 'REWARD',
-                                  'MATH', 'STORY', 'MATCH', 'REL',
-                                  'RANDOM', 'TOM',
-                                  'LF', 'RF', 'LH', 'RH', 'CUE',
-                                  '0BK_BODY', '0BK_FACE', '0BK_PLACE',
-                                  '0BK_TOOL',
-                                  '2BK_BODY', '2BK_FACE', '2BK_PLACE',
-                                  '2BK_TOOL',
-                                  ]
+                  'MATH', 'STORY', 'MATCH', 'REL',
+                  'RANDOM', 'TOM',
+                  'LF', 'RF', 'LH', 'RH', 'CUE',
+                  '0BK_BODY', '0BK_FACE', '0BK_PLACE',
+                  '0BK_TOOL',
+                  '2BK_BODY', '2BK_FACE', '2BK_PLACE',
+                  '2BK_TOOL',
+                  ]
 
 
 def fetch_hcp(data_dir=None, n_subjects=None, subjects=None,
@@ -84,12 +85,13 @@ def fetch_hcp(data_dir=None, n_subjects=None, subjects=None,
                               subjects=subjects, on_disk=True)
     rest = res.rest.assign(confounds=[None] * res.rest.shape[0])
     task = res.task.assign(confounds=[None] * res.task.shape[0])
-    task = task.loc[idx[:, :, BASE_CONTRASTS], :]
+    contrasts = res.contrasts.loc[idx[:, :, BASE_CONTRASTS, :], :].copy()
+    contrasts.sort_index(inplace=True)
     task.sort_index(inplace=True)
     rest.sort_index(inplace=True)
 
     return Bunch(rest=rest,
-                 contrasts=res.contrasts,
+                 contrasts=contrasts,
                  task=task,
                  behavioral=res.behavioral,
                  mask=res.mask,

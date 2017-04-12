@@ -33,7 +33,7 @@ def config():
     from_loadings = True
     reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
 
-    datasets = ['brainomics', 'archi']
+    datasets = ['archi']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None)
     dataset_weight = dict(hcp=1, archi=1, la5c=1, brainomics=1)
@@ -41,7 +41,7 @@ def config():
 
     validation = True
 
-    max_samples = int(1e7)
+    max_samples = int(1e6)
     alpha = 0.0001
     beta = 0.0
     latent_dim = 30
@@ -51,14 +51,14 @@ def config():
     batch_size = 100
     early_stop = False
     optimizer = 'adam'
-    fine_tune = 0
+    fine_tune = 0.1
 
     # projection = True
 
     fit_intercept = True
     identity = False
 
-    model_indexing = 'dataset_task'
+    model_indexing = 'dataset'
 
     n_jobs = 24
     verbose = 2
@@ -102,53 +102,65 @@ def run(alpha,
     for dataset in datasets:
         this_reduced_dir = join(reduced_dir, dataset)
         this_X = load(join(this_reduced_dir, 'Xt.pkl'), mmap_mode='r')
-        subjects = this_X.index.get_level_values(
-            'subject').unique().values.tolist()
+        subjects = this_X.index.get_level_values('subject'). \
+            unique().values.tolist()
         subjects = subjects[:n_subjects[dataset]]
         this_X = this_X.loc[idx[subjects]]
         X.append(this_X)
-    X = pd.concat(X, names=['dataset'], keys=datasets)
+    X = pd.concat(X, keys=datasets, names=['dataset'])
     X.sort_index(inplace=True)
 
-    labels = []
+    datasets = X.index.get_level_values('dataset').values
+    tasks = X.index.get_level_values('task')
+    contrasts = X.index.get_level_values('contrast')
 
-    if model_indexing == 'dataset_task':
-        dataset_tasks = []
-        model_weight = {}
-    elif model_indexing == 'dataset':
+    dataset_tasks = list(map(lambda x: '_'.join(x), zip(datasets, tasks)))
+    labels = list(map(lambda x: '_'.join(x), zip(datasets, tasks, contrasts)))
+
+    unique_datasets = np.unique(datasets)
+    if not isinstance(train_size, dict):
+        new_train_size = {}
+        for dataset in unique_datasets:
+            new_train_size[dataset] = train_size
+        train_size = new_train_size
+    if not isinstance(test_size, dict):
+        new_test_size = {}
+        for dataset in unique_datasets:
+            new_test_size[dataset] = test_size
+        test_size = new_test_size
+
+    if model_indexing == 'dataset':
+        model_indices = pd.Series(data=datasets, index=X.index)
+        stratify_levels = 'dataset'
         model_weight = dataset_weight
+    elif model_indexing == 'dataset_task':
+        model_indices = pd.Series(data=dataset_tasks, index=X.index)
+        model_weight = {}
+        new_test_size = {}
+        new_train_size = {}
+        for dataset, dataset_X in X.groupby(level='dataset'):
+            n_tasks = dataset_X.index.get_level_values('task').unique().shape[0]
+            for task, task_X in dataset_X.groupby(level='task'):
+                dataset_task = dataset + '_' + task
+                model_weight[dataset_task] = dataset_weight[dataset]
+                model_weight[dataset_task] *= task_X.shape[0] / dataset_X.shape[0]
+                # model_weight[dataset_task] /= n_tasks
+                new_test_size[dataset_task] = test_size[dataset]
+                new_train_size[dataset_task] = train_size[dataset]
+        test_size = new_test_size
+        train_size = new_train_size
+        stratify_levels = ['dataset', 'task']
     else:
         raise ValueError
 
-    for dataset, sub_X in X.groupby(level='dataset'):
-        tasks = sub_X.index.get_level_values('task')
-        contrasts = sub_X.index.get_level_values('contrast')
-        these_labels = ['_'.join((dataset, task, contrast)) for task, contrast
-                  in zip(tasks, contrasts)]
-        labels.extend(these_labels)
-
-        if model_indexing == 'dataset_task':
-            these_dataset_tasks = ['_'.join((dataset, task)) for task in tasks]
-            dataset_tasks.extend(these_dataset_tasks)
-            unique_dataset_tasks = np.unique(these_dataset_tasks)
-            n_dataset_tasks = len(unique_dataset_tasks)
-            for dataset_task in unique_dataset_tasks:
-                model_weight[dataset_task] = dataset_weight[dataset]
-                model_weight[dataset_task] /= n_dataset_tasks
-
+    print('Model weight: ', model_weight)
     le = LabelEncoder()
     y = le.fit_transform(labels)
     y = pd.Series(data=y, index=X.index)
 
-    if model_indexing == 'dataset':
-        model_indices = X.index.get_level_values('dataset').values
-    else:
-        model_indices = dataset_tasks
-    model_indices = pd.Series(data=model_indices, index=X.index)
-
     if verbose:
         print('Split data')
-    cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
+    cv = StratifiedGroupShuffleSplit(stratify_levels=stratify_levels,
                                      group_name='subject',
                                      test_size=test_size,
                                      train_size=train_size,
@@ -158,7 +170,7 @@ def run(alpha,
     y_train = y.iloc[train]
 
     if validation:
-        cv = StratifiedGroupShuffleSplit(stratify_name='dataset',
+        cv = StratifiedGroupShuffleSplit(stratify_levels=stratify_levels,
                                          group_name='subject',
                                          test_size=.1,
                                          train_size=None,
@@ -198,13 +210,43 @@ def run(alpha,
                                   verbose=verbose)
 
     t0 = time.time()
-    print(y_train)
     classifier.fit(X_train, y_train, model_weight=model_weight,
                    model_indices=model_indices_train,
                    **fit_kwargs)
+
     print('Fit time: %.2f' % (time.time() - t0))
 
-    predicted_labels = classifier.predict(X)
+    if model_indexing == 'dataset_task':
+        print('Refitting')
+        model_indices = pd.Series(data=datasets, index=X.index)
+        model_indices_train = model_indices.iloc[train]
+        model_indices_val = model_indices.iloc[val]
+        model_weight = dataset_weight
+        fit_kwargs = {'validation_data': (X_val, y_val, model_indices_val)}
+
+        dump(classifier, join(artifact_dir, 'classifier.pkl'))
+
+        new_classifier = FactoredLogistic(optimizer=optimizer,
+                                          max_samples=max_samples,
+                                          activation='linear',
+                                          fit_intercept=True,
+                                          latent_dim=latent_dim,
+                                          dropout_latent=dropout_latent,
+                                          dropout_input=dropout_input,
+                                          alpha=alpha,
+                                          beta=beta,
+                                          early_stop=False,
+                                          fine_tune=0,
+                                          batch_size=batch_size,
+                                          n_jobs=n_jobs,
+                                          verbose=verbose)
+        new_classifier.fit(X_train, y_train, model_weight=model_weight,
+                           latent_weights=classifier.encoder_.get_layer('latent').get_weights(),
+                           model_indices=model_indices_train,
+                           **fit_kwargs)
+        classifier = new_classifier
+
+    predicted_labels = classifier.predict(X, model_indices=model_indices)
     predicted_labels = le.inverse_transform(predicted_labels)
     labels = le.inverse_transform(y)
 
@@ -237,4 +279,5 @@ def run(alpha,
     _run.add_artifact(join(artifact_dir, 'prediction.csv'),
                       name='prediction.csv')
     dump(le, join(artifact_dir, 'label_encoder.pkl'))
-    dump(classifier, join(artifact_dir, 'classifier.pkl'))
+    if model_indexing == 'dataset_task':
+        dump(classifier, join(artifact_dir, 'new_classifier.pkl'))

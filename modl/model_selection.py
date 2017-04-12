@@ -6,19 +6,21 @@ import numpy as np
 
 class StratifiedGroupShuffleSplit(BaseShuffleSplit):
     def __init__(self, test_size=.1, train_size=None, random_state=None,
-                 stratify_name='dataset', group_name='subject', n_splits=3):
+                 stratify_levels='dataset', group_name='subject', n_splits=3):
         self.test_size = test_size
         self.train_size = train_size
         self.random_state = random_state
         self.n_splits = n_splits
-        self.stratify_name = stratify_name
+        self.stratify_levels = stratify_levels
         self.group_name = group_name
 
     def _iter_indices(self, X, y=None, groups=None):
         index_series = Series(index=X.index, data=np.arange(X.shape[0]))
         splitters = []
         indices = []
-        for idx, serie in index_series.groupby(level=self.stratify_name):
+        for idx, serie in index_series.groupby(level=self.stratify_levels):
+            if isinstance(idx, tuple):
+                idx = '_'.join(idx)
             if isinstance(self.test_size, dict):
                 test_size = self.test_size[idx]
             else:

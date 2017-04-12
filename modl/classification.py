@@ -75,7 +75,7 @@ def make_loadings_extractor(bases, scale_bases=True,
     feature_union = []
     for i, basis in enumerate(bases):
         projection_pipeline = Pipeline([('projector',
-                                         Projector(basis, n_jobs=n_jobs)),
+                                         Projector(basis, n_jobs=1)),
                                         ('standard_scaler',
                                          StandardScaler(
                                              with_std=standardize))],
@@ -108,7 +108,7 @@ def make_loadings_extractor(bases, scale_bases=True,
 
     concatenated_projector = FeatureUnion(feature_union,
                                           transformer_weights=
-                                          transformer_weights)
+                                          transformer_weights, n_jobs=n_jobs)
 
     if handle_indices:
         projector = Pipeline([('label_dropper', LabelDropper()),
@@ -163,7 +163,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         self.early_stop = early_stop
 
     def fit(self, X, y, validation_data=None, model_weight=None,
-            model_indices=None):
+            model_indices=None, latent_weights=None):
         """Fit the model according to the given training data.
 
         Parameters
@@ -205,7 +205,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                                      accept_sparse='csr', dtype=np.float32,
                                      order="C")
             model_indices_val = check_array(model_indices_val, dtype=None,
-                                        ensure_2d=False)
+                                            ensure_2d=False)
 
             do_validation = True
         else:
@@ -231,11 +231,6 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             classes = np.unique(this_y)
             self.classes_dict_[model_index] = classes
             this_y_bin = label_binarizer.fit_transform(this_y)
-            if this_y_bin.shape[1] == 1:
-                new = np.zeros((this_y_bin.shape[0], 2))
-                new[:, 0] = this_y_bin[:, 0] == 0
-                new[:, 1] = this_y_bin[:, 0] == 1
-                this_y_bin = new
             y_bin_dict[model_index] = this_y_bin
             X_dict[model_index] = this_X
 
@@ -244,11 +239,6 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                 this_X_val = X_val[these_indices]
                 this_y_val = y_val[these_indices]
                 this_y_bin_val = label_binarizer.fit_transform(this_y_val)
-                if this_y_bin_val.shape[1] == 1:
-                    new = np.zeros((this_y_bin_val.shape[0], 2))
-                    new[:, 0] = this_y_bin_val[:, 0] == 0
-                    new[:, 1] = this_y_bin_val[:, 0] == 1
-                    this_y_bin_val = new
                 y_bin_val_dict[model_index] = this_y_bin_val
                 X_val_dict[model_index] = this_X_val
 
@@ -256,9 +246,9 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
         from keras.callbacks import EarlyStopping, History
         init_tensorflow(n_jobs=self.n_jobs)
 
-        self.models_, self.stacked_model_ = \
+        self.models_, self.encoder_ = \
             make_factored_model(n_features,
-                                datasets=self.model_indices_,
+                                model_indices=self.model_indices_,
                                 classes_dict=self.classes_dict_,
                                 beta=self.beta,
                                 alpha=self.alpha,
@@ -268,6 +258,14 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                                 dropout_input=self.dropout_input,
                                 optimizer=self.optimizer,
                                 fit_intercept=self.fit_intercept, )
+        if latent_weights is not None:
+            self.encoder_.get_layer('latent').set_weights(latent_weights)
+            for model in self.models_.values():
+                model.get_layer('latent').set_weights(latent_weights)
+                model.get_layer('latent').trainable = False
+                model.compile(optimizer=model.optimizer,
+                              loss=model.loss,
+                              metrics=model.metrics)
         self.n_samples_ = [len(this_X) for this_X in X_dict]
 
         if do_validation and self.early_stop:
@@ -284,7 +282,8 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                 early_stoppings[model_index] = early_stopping
 
         self.histories_ = {}
-        self.n_epochs_ = {model_index: 0 for model_index in self.model_indices_}
+        self.n_epochs_ = {model_index: 0 for model_index in
+                          self.model_indices_}
         batches_dict = {}
         epoch_logs = {}
 
@@ -305,7 +304,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             history.on_train_begin()
         if do_validation:
             if self.early_stop:
-                for early_stopping in early_stoppings:
+                for early_stopping in early_stoppings.values():
                     early_stopping.on_train_begin()
         # Optimization loop
         self.n_seen_samples_ = 0
@@ -345,12 +344,16 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                         this_X[:] = this_X[permutation]
                         this_y_bin[:] = this_y_bin[permutation]
                         batches_dict[model_index] = gen_batches(len(this_X),
-                                                            self.batch_size)
+                                                                self.batch_size)
                         self.n_epochs_[model_index] += 1
                         loss, acc = model.evaluate(this_X, this_y_bin,
                                                    verbose=0)
                         epoch_logs['loss'] = loss
                         epoch_logs['acc'] = acc
+                        if self.encoder_ is not None:
+                            latent = self.encoder_.get_layer(
+                                'latent').get_weights()[0][:10]
+                            epoch_logs['latent'] = latent
                         if do_validation:
                             val_loss, val_acc = model.evaluate(this_X_val,
                                                                this_y_bin_val,
@@ -365,7 +368,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                             val_loss = 0
                         if self.verbose and self.n_epochs_[model_index] % 5 == 0:
                             print(
-                                'Epoch %.5i, n_samples %i, model_index %s,'
+                                'Epoch %.5i, n_samples %i, model_index %s, '
                                 'loss: %.4f, acc: %.4f, '
                                 'val_acc: %.4f, val_loss: %.4f' %
                                 (self.n_epochs_[model_index],
@@ -378,23 +381,34 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
                     model.train_on_batch(this_X[batch], this_y_bin[batch])
                     self.n_seen_samples_ += batch.stop - batch.start
                     if not fine_tune and (self.latent_dim is not None and
-                                    self.max_samples > self.n_seen_samples_ >
+                                                      self.max_samples > self.n_seen_samples_ >
                                                   fine_tune_n_samples):
                         print('Fine tuning')
                         fine_tune = True
-                        for model_index in self.model_indices_:
+                        for model_index, model in self.models_.items():
                             model.get_layer('latent').trainable = False
-                            model.get_layer('dropout_latent').rate = 0
+                            model.compile(optimizer=model.optimizer,
+                                          loss=model.loss,
+                                          metrics=model.metrics)
                             model_weight[model_index] = 1
                     if do_validation and self.early_stop:
                         stop_training = np.all(np.array([model.stop_training
                                                          for model in
-                                                         self.models_]))
+                                                         self.models_.values()]))
                     stop_training = (stop_training or
                                      self.n_seen_samples_ > self.max_samples)
         if do_validation and self.early_stop:
-            for early_stopping in early_stoppings:
+            for early_stopping in early_stoppings.values():
                 early_stopping.on_train_end()
+
+    def transform(self, X):
+        '''Project data onto latent space'''
+        if self.encoder_ is not None:
+            coefs = self.encoder_.get_layer('latent').get_weights()[0]
+            Xt = X.dot(coefs)
+            return Xt
+        else:
+            return X
 
     def predict_proba(self, X, model_index):
         return self.models_[model_index].predict(X)
@@ -402,14 +416,16 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
     def predict(self, X, model_indices=None):
         X = check_array(X, accept_sparse='csr',
                         order='C', dtype=np.float32)
+        model_indices = check_array(model_indices, dtype=None, ensure_2d=False)
         pred = np.zeros(X.shape[0], dtype='int')
         for model_index in self.model_indices_:
             these_indices = model_indices == model_index
             if np.sum(these_indices) > 0:
                 this_X = X[these_indices]
                 these_classes = self.classes_dict_[model_index]
-                pred[these_indices] = these_classes[np.argmax(self.predict_proba(
-                    this_X, model_index=model_index), axis=1)]
+                pred[these_indices] = these_classes[
+                    np.argmax(self.predict_proba(
+                        this_X, model_index=model_index), axis=1)]
         return pred
 
     def score(self, X, y, model_indices=None, **kwargs):
@@ -421,14 +437,10 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
             these_indices = model_indices == model_index
             this_X = X[these_indices]
             this_y = y[these_indices]
-            label_binarizer = LabelBinarizer().fit(self.classes_dict_[model_index])
+            label_binarizer = LabelBinarizer().fit(
+                self.classes_dict_[model_index])
             model = self.models_[model_index]
             this_y_bin = label_binarizer.fit_transform(this_y)
-            if this_y_bin.shape[1] == 1:
-                new = np.zeros((this_y_bin.shape[0], 2))
-                new[:, 0] = this_y_bin[:, 0] == 0
-                new[:, 1] = this_y_bin[:, 0] == 1
-                this_y_bin = new
             loss, acc = model.evaluate(this_X, this_y_bin, verbose=0)
             weight = self.n_epochs_[model_index]
             total_weight += weight
@@ -437,61 +449,60 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
 
 
 def make_factored_model(n_features,
-                        datasets,
+                        model_indices,
                         classes_dict,
                         alpha=0.01, beta=0.01,
                         latent_dim=10, activation='linear', optimizer='adam',
                         fit_intercept=True,
                         dropout_latent=0, dropout_input=0):
     from keras.engine import Input
-    from keras.layers import Dense, Activation, Concatenate, Dropout
+    from keras.layers import Dense, Dropout
     from keras.regularizers import l2, l1_l2
     from .fixes import Model
 
     input = Input(shape=(n_features,), name='input')
     if dropout_input > 0:
-        input_d = Dropout(rate=dropout_input, name='dropout_input')(input)
+        input_dropout = Dropout(rate=dropout_input, name='dropout_input')(
+            input)
     else:
-        input_d = input
+        input_dropout = input
     kernel_regularizer_enc = l1_l2(l1=beta, l2=alpha)
     kernel_regularizer_sup = l2(alpha)
     if latent_dim is not None:
         encoded = Dense(latent_dim, activation=activation,
                         use_bias=False,
                         kernel_regularizer=kernel_regularizer_enc,
-                        name='latent')(input_d)
+                        name='latent')(input_dropout)
     else:
-        encoded = input_d
+        encoded = input_dropout
     if dropout_latent > 0:
         encoded = Dropout(rate=dropout_latent, name='dropout_latent')(encoded)
     models = {}
-    supervised_dict = {}
-    for model_index in datasets:
+    for model_index in model_indices:
         classes = classes_dict[model_index]
         n_classes = len(classes)
-        supervised = Dense(n_classes, activation='linear',
+        if n_classes == 2:
+            n_classes = 1
+            activation = 'sigmoid'
+            loss = 'binary_crossentropy'
+        else:
+            activation = 'softmax'
+            loss = 'categorical_crossentropy'
+        supervised = Dense(n_classes, activation=activation,
                            use_bias=fit_intercept,
                            kernel_regularizer=kernel_regularizer_sup,
                            name='supervised_%s' % model_index)(encoded)
-        supervised_dict[model_index] = supervised
-        softmax = Activation('softmax', name='softmax_%s' % model_index)(supervised)
-        model = Model(inputs=input, outputs=softmax)
+        model = Model(inputs=input, outputs=supervised)
         model.compile(optimizer=optimizer,
-                      loss='categorical_crossentropy',
+                      loss=loss,
                       metrics=['accuracy'])
         models[model_index] = model
-    if len(supervised_dict) > 1:
-        stacked = Concatenate(axis=1, name='concatenate')(
-            [supervised_dict[model_index] for model_index in datasets])
-    else:
-        _, stacked = supervised_dict.popitem()
-    softmax = Activation('softmax')(stacked)
-    stacked_model = Model(inputs=input, outputs=softmax)
-    stacked_model.compile(optimizer=optimizer,
-                          loss='categorical_crossentropy',
-                          metrics=['accuracy'])
 
-    return models, stacked_model
+    if latent_dim is not None:
+        encoder = Model(inputs=input, outputs=encoded)
+    else:
+        encoder = None
+    return models, encoder
 
 
 def init_tensorflow(n_jobs=1):
