@@ -34,15 +34,10 @@ class PartialSoftmax(Layer):
 class HierachicalLabelMasking(Layer):
     def __init__(self,
                  adversaries,
-                 max_depth=None,
-                 min_depth=0,
                  **kwargs):
+        adversaries = check_array(adversaries, dtype=np.bool, allow_nd=True)
+        self.n_depths, self.n_labels, _ = adversaries.shape
         self.adversaries = tf.convert_to_tensor(adversaries, dtype=np.bool)
-        self.min_depth = min_depth
-        if max_depth is None:
-            max_depth = tf.shape(adversaries)[0]
-        self.max_depth = max_depth
-        self.n_labels = tf.shape(adversaries)[1]
         super(HierachicalLabelMasking, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -53,24 +48,21 @@ class HierachicalLabelMasking(Layer):
         label_leaf = labels[:, -1]
         n_samples = tf.shape(label_leaf)[0]
         masks = []
-        for i in range(self.min_depth, self.max_depth + 1):
+        for depth in range(self.n_depths):
             indices = tf.concat([(tf.ones((n_samples, 1),
-                                          dtype=np.int32) * i),
+                                          dtype=np.int32) * depth),
                                  label_leaf[:, np.newaxis]], axis=1)
             masks.append(tf.gather_nd(self.adversaries, indices=indices))
-        mask = tf.concat([mask[:, np.newaxis, :] for mask in masks],
-                         axis=1)
-        return mask
+        masks = tf.concat([mask[:, np.newaxis, :] for mask in masks], axis=1)
+        return masks
 
     def compute_output_shape(self, input_shape):
-        return input_shape[0], self.max_depth - self.min_depth, self.n_labels
+        return input_shape[0], self.n_depths, self.n_labels
 
 
 class Pool(Layer):
-    def __init__(self, depth_weight, output_shape,
-                 min_depth=0, **kwargs):
+    def __init__(self, depth_weight, output_shape, **kwargs):
         self.depth_weight = tf.convert_to_tensor(depth_weight, dtype=np.float32)
-        self.min_depth = min_depth
         # Keras can't infer output_shape
         self._output_shape = output_shape
 
@@ -81,12 +73,12 @@ class Pool(Layer):
 
     def call(self, inputs, training=None):
         prob, depths = inputs
-        depths -= self.min_depth
         n_samples = tf.shape(prob)[0]
 
         def train_pool_prob():
             res = tf.transpose(prob, perm=[0, 2, 1])
-            depth_weight = tf.tile(self.depth_weight[np.newaxis, :, np.newaxis],
+            depth_weight = tf.tile(self.depth_weight[np.newaxis,
+                                   :, np.newaxis],
                                    multiples=(n_samples, 1, 1))
             return tf.matmul(res, depth_weight)[:, :, 0]
 
@@ -115,20 +107,15 @@ def make_model(n_features, alpha,
                latent_dim, dropout_input,
                depth_weight,
                dropout_latent,
-               optimizer,
                activation,
                seed, label_pool,
                shared_supervised):
     depth_weight = check_array(depth_weight, dtype=np.float32, ensure_2d=False)
-    n_classes, num_depth = label_pool.shape
-    assert(num_depth == depth_weight.shape[0])
-
+    n_classes, n_depths = label_pool.shape
+    assert(n_depths == depth_weight.shape[0])
+    assert(np.all(depth_weight >= 0))
+    depth_weight /= np.sum(depth_weight)
     adversaries = make_aversaries(label_pool)
-
-    non_zero = np.nonzero(depth_weight != 0)[0]
-    min_depth, max_depth = non_zero[0], non_zero[-1]
-    depth_weight = depth_weight[min_depth:max_depth + 1]
-    n_depth = len(depth_weight)
 
     data = Input(shape=(n_features,), name='data')
     labels = Input((3,), name='labels', dtype=np.int32)
@@ -145,31 +132,28 @@ def make_model(n_features, alpha,
     else:
         latent_dropout = dropout_data
     mask = HierachicalLabelMasking(
-        adversaries, min_depth=min_depth, max_depth=max_depth,
+        adversaries,
         name='label_masking')(labels)
     if shared_supervised:
         logits = Dense(n_classes, activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
                        name='supervised')(latent_dropout)
-        logits = RepeatVector(n=n_depth, name='repeat')(logits)
+        logits = RepeatVector(n=n_depths, name='repeat')(logits)
     else:
-        logits = Dense(n_classes * n_depth,
+        logits = Dense(n_classes * n_depths,
                        activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
                        name='supervised')(latent_dropout)
-        logits = Reshape((n_depth,
+        logits = Reshape((n_depths,
                           n_classes), name='reshape')(logits)
     prob = PartialSoftmax(name='partial_softmax')([logits, mask])
 
     pooled_prob = Pool(depth_weight=depth_weight, name='pool',
-                       min_depth=min_depth,
                        output_shape=(None, n_classes))([prob, depths])
 
     model = Model(inputs=[data, labels, depths], outputs=pooled_prob)
-    model.compile(optimizer=optimizer, loss='categorical_crossentropy',
-                  metrics=['accuracy'])
     return model
 
 
