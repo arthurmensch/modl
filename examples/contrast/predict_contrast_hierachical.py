@@ -126,7 +126,7 @@ cv = StratifiedGroupShuffleSplit(stratify_levels='dataset',
                                  random_state=0)
 train, test = next(cv.split(X))
 
-init_tensorflow(n_jobs=n_jobs, debug=True)
+init_tensorflow(n_jobs=n_jobs, debug=False)
 
 model = make_model(n_features,
                    alpha=alpha,

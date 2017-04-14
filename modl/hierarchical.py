@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 from keras.backend import set_session
 from keras.engine import Layer, Model, Input
-from keras.layers import Dense, Dropout
+from keras.layers import Dense, Dropout, Lambda
 from keras.regularizers import l2
 from keras.utils import to_categorical
 from tensorflow.contrib.distributions import Categorical
@@ -19,11 +19,11 @@ class PartialSoftmax(Layer):
 
     def call(self, inputs, indices):
         logits = inputs
-        logits_max = tf.reduce_max(logits, axis=1)
-        logits -= logits_max[:, np.newaxis]
+        logits_max = tf.reduce_max(logits, axis=1, keep_dims=True)
+        logits -= logits_max
         exp_logits = tf.where(indices, tf.exp(logits),
                               tf.zeros(tf.shape(logits)))
-        sum_exp_logits = tf.reduce_sum(exp_logits)
+        sum_exp_logits = tf.reduce_sum(exp_logits, axis=1, keep_dims=True)
         return exp_logits / sum_exp_logits
 
     def compute_output_shape(self, input_shape):
@@ -46,49 +46,53 @@ def partial_sparse_categorical_crossentropy_with_logits(y_true,
 
 class HierachicalLabelMasking(Layer):
     def __init__(self, label_pool,
-                 depth_probs,
-                 random_at_training,
-                 seed,
+                 depth_probs=None,
+                 seed=None,
+                 shared=True,
                  **kwargs):
-        self.labels = label_pool
+        self.label_pool = label_pool
         self.depth_probs = depth_probs
-        self.random_at_training = random_at_training
+        self.shared = shared
         self.seed = seed
         super(HierachicalLabelMasking, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        n_labels, max_depth = self.labels.shape
-        adversaries = np.ones((max_depth, n_labels, n_labels))
-        for depth in range(1, max_depth):
-            adversaries[depth] = self.labels[:, [depth - 1]] == self.labels[:,
-                                                                depth - 1]
-        self.adversaries = tf.constant(adversaries, dtype=np.bool)
-        self.max_depth = adversaries.shape[0]
+        self.n_labels, self.max_depth = self.label_pool.shape
+        adversaries = np.ones((self.max_depth, self.n_labels, self.n_labels))
+        for depth in range(1, self.max_depth):
+            adversaries[depth] = (self.label_pool[:, [depth - 1]]
+                                  == self.label_pool[:, depth - 1])
+            self.adversaries = tf.constant(adversaries, dtype=np.bool)
         super(HierachicalLabelMasking, self).build(input_shape)
 
-    def call(self, y, depths, training=None):
+    def call(self, y, depths=None, training=None):
         # Depths is simply ignored during training time
-        y_leaf = y[:, -1][:, np.newaxis]
+        y_leaf = y[:, -1]
         n_samples = tf.shape(y_leaf)[0]
 
-        def random_depths():
-            dist = Categorical(probs=self.depth_probs, dtype=np.int32,
-                               name='random_depths')
-            return dist.sample(sample_shape=[n_samples, 1], seed=self.seed)
+        if self.shared:
+            def random_depths():
+                dist = Categorical(probs=self.depth_probs, dtype=np.int32,
+                                   name='random_depths')
+                return dist.sample(sample_shape=[n_samples, 1], seed=self.seed)
 
-        depths = K.in_train_phase(random_depths
-                                  if self.random_at_training
-                                  else depths, depths, training=training)
+            depths = K.in_train_phase(random_depths, depths, training=training)
 
-        # y_at_depth = tf.gather_nd(y, indices=tf.concat(
-        #     [tf.range(n_samples)[:, np.newaxis], depths], axis=1))
-
-        indices = tf.gather_nd(self.adversaries, indices=tf.concat(
-            [depths, y_leaf], axis=1))
+            indices = tf.gather_nd(self.adversaries, indices=tf.concat(
+                [depths, y_leaf[:, np.newaxis]], axis=1))
+        else:
+            indices = []
+            for i in range(self.max_depth):
+                indices.append(tf.gather_nd(self.adversaries,
+                                            indices=tf.concat(
+                                                [np.tile(i, n_samples),
+                                                 y_leaf[:, np.newaxis]],
+                                                axis=1)))
+            indices = tf.concat(indices[:, :, np.newaxis], axis=2)
         return indices
 
     def compute_output_shape(self, input_shape):
-        return input_shape[0], self.labels.shape[0]
+        return input_shape[0], self.label_pool.shape[0]
 
 
 def create_dataset():
@@ -119,7 +123,7 @@ def make_model(n_features, alpha,
                seed,
                depth_probs, label_pool,
                shared_supervised):
-    n_classes = label_pool.shape[0]
+    n_classes, max_depth = label_pool.shape
     data = Input(shape=(n_features,), name='data')
     labels = Input((3,), name='labels', dtype=np.int32)
     # Unused at test time
@@ -135,7 +139,7 @@ def make_model(n_features, alpha,
         indices = HierachicalLabelMasking(
             label_pool=label_pool,
             depth_probs=depth_probs,
-            random_at_training=True,
+            shared=True,
             seed=seed,
             name='label_masking')(
             labels, depths=depths)
@@ -145,19 +149,18 @@ def make_model(n_features, alpha,
                        name='supervised')(latent_dropout)
         prob = PartialSoftmax()(logits, indices=indices)
     else:
-        dist = Categorical(probs=depth_probs, dtype=np.int32,
-                           name='random_depths')
-        depth = dist.sample(sample_shape=[1], seed=seed)
-        logits = []
-        prob_list = []
-        for i in range(3):
-            logits[i] = Dense(n_classes, activation='linear',
-                              use_bias=True,
-                              kernel_regularizer=l2(alpha),
-                              name='supervised')(latent_dropout)
-            prob_list[i] = PartialSoftmax()(logits, indices=indices)
-        prob = tf.case({tf.equal(depth, i): lambda: prob_list[i]
-                        for i in range(3)})
+        indices = HierachicalLabelMasking(
+            label_pool=label_pool,
+            depth_probs=depth_probs,
+            shared=False,
+            seed=seed,
+            name='label_masking')(labels)
+        logits = Dense((n_classes, max_depth), activation='linear',
+                       use_bias=True, kernel_regularizer=l2(alpha),
+                       name='supervised')(latent_dropout)
+        prob_per_depth = PartialSoftmax()(logits, indices=indices)
+        prob = Lambda(lambda tensor: tf.matmul(tensor, depth_probs))(
+            prob_per_depth)
     model = Model(inputs=[data, labels, depths], outputs=prob)
     model.compile(optimizer=optimizer, loss='categorical_crossentropy',
                   metrics=['accuracy'])
