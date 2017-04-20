@@ -28,9 +28,9 @@ multi_predict_task.observers.append(observer)
 def config():
     n_jobs = 36
     dropout_latent_list = [0.5]
-    latent_dim_list = [25, 50, 100, 200]
+    latent_dim_list = [25]
     shared_supervised_list = [True, False]
-    task_prob_list = [0., 0.25, 0.5]
+    task_prob_list = [0., 0.25, 0.5, 0.75, 1.]
     alpha_list = [1e-4]
     n_seeds = 10
     verbose = 0
@@ -47,7 +47,6 @@ def single_run(config_updates, _id, master_id):
         n_jobs = 1
         epochs = 50
         # Force steps_per_epoch to be the same for ['hcp'] and ['archi', 'hcp']
-        steps_per_epoch = 174
         dropout_input = 0.25
 
     run = predict_contrast_hierarchical._create_run(config_updates=config_updates)
@@ -68,9 +67,9 @@ def run(dropout_latent_list,
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid(
-        {'datasets': [['archi', 'hcp']],
-         'dataset_weight': [dict(hcp=i, archi=1)
-                            for i in [0, 0.5, 1]],
+        {'datasets': [['archi', 'hcp', 'brainomics', 'la5c']],
+         # 'dataset_weight': [dict(hcp=i, archi=1)
+         #                    for i in [0, 0.5, 1]],
          'shared_supervised': shared_supervised_list,
          'task_prob': task_prob_list,
          'dropout_latent': dropout_latent_list,

@@ -29,7 +29,7 @@ def config():
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
 
-    dataset = 'brainomics'
+    dataset = 'human_voice'
 
     standardize = True
     scale_importance = 'sqrt'

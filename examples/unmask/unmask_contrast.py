@@ -1,5 +1,6 @@
 from os.path import join
 
+from modl.datasets.human_voice import fetch_human_voice
 from nilearn.datasets import load_mni152_brain_mask
 from sacred import Experiment
 from sacred.observers import MongoObserver
@@ -27,7 +28,7 @@ output_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
 def config():
     n_jobs = 10
     batch_size = 1200
-    dataset = 'brainomics'
+    dataset = 'human_voice'
 
 
 @unmask_contrast.automain
@@ -41,6 +42,8 @@ def run(n_jobs, batch_size, dataset,
         fetch_data = fetch_brainomics
     elif dataset == 'la5c':
         fetch_data = fetch_la5c
+    elif dataset == 'human_voice':
+        fetch_data = fetch_human_voice
     else:
         raise ValueError
 

@@ -56,6 +56,37 @@ class LabelGetter(TransformerMixin, BaseEstimator):
         return X[['model_indices']]
 
 
+class Reconstructer(TransformerMixin, BaseEstimator):
+    def __init__(self, bases, scale_importance):
+        self.bases = bases
+        self.scale_importance = scale_importance
+
+    def fit(self, X=None, y=None):
+        return self
+
+    def transform(self, X):
+        n_features = self.bases[0].shape[1]
+        n_samples = X.shape[0]
+        res = np.zeros((n_samples, n_features))
+        start = 0
+        for basis in self.bases:
+            size = basis.shape[0]
+            stop = start + size
+            if self.scale_importance is None:
+                scale = 1
+            elif self.scale_importance == 'sqrt':
+                scale = np.sqrt(size)
+            elif self.scale_importance == 'linear':
+                scale = size
+            else:
+                raise ValueError
+            basis_inv = np.linalg.pinv(basis)
+            res += X[:, start:stop].dot(basis_inv.T) / scale
+            start = stop
+        return res
+
+
+
 def make_loadings_extractor(bases, scale_bases=True,
                             identity=False,
                             standardize=True,
@@ -87,24 +118,23 @@ def make_loadings_extractor(bases, scale_bases=True,
 
     # Weighting
     transformer_weights = {}
-    sizes = np.array([basis.shape[0] for basis in bases])
+    sizes = [basis.shape[0] for basis in bases]
+    if identity:
+        n_features = bases[0].shape[1]
+        sizes += n_features
+    sizes = np.array(sizes)
     if scale_importance is None:
-        scales = np.ones(len(bases))
+        scales = np.ones(len(sizes))
     elif scale_importance == 'sqrt':
         scales = np.sqrt(sizes)
     elif scale_importance == 'linear':
         scales = sizes
     else:
         raise ValueError
-    if identity:
-        n_features = bases[0].shape[1]
-        scales = np.concatenate([scales, np.array(1. / n_features)])
     for i in range(len(bases)):
-        transformer_weights[
-            'scaled_projector_%i' % i] = 1. / scales[i] / np.sum(1. / scales)
+        transformer_weights['scaled_projector_%i' % i] = 1. / scales[i]
     if identity:
-        transformer_weights[
-            'scaled_identity'] = 1. / scales[-1] / np.sum(1. / scales)
+        transformer_weights['scaled_identity'] = 1. / scales[-1]
 
     concatenated_projector = FeatureUnion(feature_union,
                                           transformer_weights=
