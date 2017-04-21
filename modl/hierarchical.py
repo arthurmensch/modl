@@ -141,6 +141,13 @@ def make_model(n_features, alpha,
                            name='supervised_depth_%i' % i)(latent_dropout)
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)
+    dataset_prob = Dense(n_datasets,
+                   activation='softmax',
+                   use_bias=True,
+                   kernel_regularizer=l2(alpha),
+                   kernel_constraint=non_neg(),
+                   bias_constraint=non_neg(),
+                   name='supervised_depth_%i' % i)(latent_dropout)
     model = Model(inputs=[data, labels], outputs=outputs)
     return model
 

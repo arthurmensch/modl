@@ -1,7 +1,6 @@
 import numbers
 from copy import copy
 
-import mkl
 import numpy as np
 from scipy.linalg import lstsq
 from sklearn.base import TransformerMixin, BaseEstimator
@@ -27,10 +26,7 @@ class Projector(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X):
-        current_n_threads = mkl.get_max_threads()
-        mkl.set_num_threads(self.n_jobs)
         loadings, _, _, _ = lstsq(self.basis.T, X.T)
-        mkl.set_num_threads(current_n_threads)
         loadings = loadings.T
         return loadings
 

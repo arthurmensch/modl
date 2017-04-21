@@ -53,7 +53,7 @@ def config():
     dropout_latent = 0.25
     batch_size = 100
     optimizer = 'adam'
-    epochs = 50
+    epochs = 100
     task_prob = 0.5
     n_jobs = 3
     verbose = 2
@@ -272,5 +272,6 @@ def train_model(alpha,
     dump(chance_level_dataset, join(artifact_dir, 'chance_level_depth_1.pkl'))
     dump(chance_level_task, join(artifact_dir, 'chance_level_depth_2.pkl'))
     dump(X, join(artifact_dir, 'X.pkl'))
+    dump(y_pred_oh, join(artifact_dir, 'y_pred.pkl'))
     model.save(join(artifact_dir, 'model.keras'))
     # _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')
