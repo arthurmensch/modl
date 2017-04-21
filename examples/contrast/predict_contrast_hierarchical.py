@@ -53,7 +53,7 @@ def config():
     dropout_latent = 0.25
     batch_size = 100
     optimizer = 'adam'
-    epochs = 100
+    epochs = 20
     task_prob = 0.5
     n_jobs = 3
     verbose = 2
@@ -161,42 +161,65 @@ def train_model(alpha,
         y_oh = np.concatenate([y_oh, y_oh == 0], axis=1)
     y_oh = pd.DataFrame(index=X.index, data=y_oh)
 
+    lbin_dataset = LabelBinarizer()
+    dataset_oh = lbin_dataset.fit_transform(y['dataset'])
+    dataset_oh = pd.DataFrame(index=X.index, data=dataset_oh)
+
+
     x_test = X.iloc[test].values
     y_test = y.iloc[test].values
     y_oh_test = y_oh.iloc[test].values
+    dataset_oh_test = dataset_oh.iloc[test].values
 
     X_train = X.iloc[train]
     y_train = y.iloc[train]
     y_oh_train = y_oh.iloc[train]
+    dataset_oh_train = dataset_oh.iloc[train]
+
+    n_datasets = len(datasets)
 
     def train_generator():
+        x_batch = np.zeros((batch_size, X_train.shape[1]))
+        y_batch = np.zeros((batch_size, y_train.shape[1]))
+        y_oh_batch = np.zeros((batch_size, y_oh_train.shape[1]))
+        dataset_oh_batch = np.zeros((batch_size, dataset_oh.shape[1]))
+        sample_weight_batch = np.zeros(batch_size)
         batches_generator = {}
         indices = {}
         random_state = check_random_state(_seed)
-        for dataset, sub_X in X_train.groupby(level='dataset'):
+        groups = X_train.groupby(level='dataset')
+        for dataset, sub_X in groups:
             len_dataset = sub_X.shape[0]
             indices[dataset] = random_state.permutation(len_dataset)
-            batches_generator[dataset] = gen_batches(len_dataset, batch_size)
+            batches_generator[dataset] = gen_batches(len_dataset,
+                                                     batch_size // n_datasets)
         while True:
-            for dataset, sub_X in X_train.groupby(level='dataset'):
+            start = 0
+            for dataset, sub_X in groups:
                 len_dataset = sub_X.shape[0]
                 sub_y = y_train.loc[dataset]
                 sub_y_oh = y_oh_train.loc[dataset]
+                sub_dataset_oh = dataset_oh_train.loc[dataset]
                 try:
                     batch = next(batches_generator[dataset])
                     batch = indices[dataset][batch]
                 except StopIteration:
                     batches_generator[dataset] = gen_batches(len_dataset,
-                                                             batch_size)
+                                                             batch_size
+                                                             // n_datasets)
                     random_state.shuffle(indices[dataset])
                     batch = next(batches_generator[dataset])
                     batch = indices[dataset][batch]
-                x_batch = sub_X.iloc[batch].values
-                y_batch = sub_y.iloc[batch].values
-                y_oh_batch = sub_y_oh.iloc[batch].values
-                sample_weight_batch = np.ones(x_batch.shape[0]) * dataset_weight[dataset]
-                yield ([x_batch, y_batch], [y_oh_batch for _ in range(3)],
-                       [sample_weight_batch for _ in range(3)])
+                stop = start + batch.shape[0]
+                x_batch[start:stop] = sub_X.iloc[batch].values
+                y_batch[start:stop] = sub_y.iloc[batch].values
+                y_oh_batch[start:stop] = sub_y_oh.iloc[batch].values
+                dataset_oh_batch[start:stop] = sub_dataset_oh.iloc[batch].values
+                sample_weight_batch[start:stop] = dataset_weight[dataset]
+                start = stop
+            yield ([x_batch[:stop], y_batch[:stop]],
+                   [y_oh_batch[:stop] for _ in range(3)] + [dataset_oh_batch[:stop]],
+                   [sample_weight_batch[:stop] for _ in range(4)])
 
     if steps_per_epoch is None:
         steps_per_epoch = X_train.shape[0] // batch_size
@@ -217,8 +240,8 @@ def train_model(alpha,
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
     model.compile(optimizer=optimizer,
-                  loss=['categorical_crossentropy'] * 3,
-                  loss_weights=depth_weight,
+                  loss=['categorical_crossentropy'] * 4,
+                  loss_weights=[0, 0, 0, 1],
                   metrics=['accuracy'])
     callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
                              histogram_freq=0,
@@ -226,7 +249,7 @@ def train_model(alpha,
                              write_images=True)]
     model.fit_generator(train_generator(), callbacks=callbacks,
                         validation_data=([x_test, y_test],
-                                         [y_oh_test] * 3),
+                                         [y_oh_test] * 3 + [dataset_oh_test]),
                         steps_per_epoch=steps_per_epoch,
                         epochs=epochs)
 
@@ -255,6 +278,13 @@ def train_model(alpha,
         print('Prediction at depth %s' % depth_name[depth], res)
         _run.add_artifact(join(artifact_dir,
         'prediction_depth_%i.csv'), 'prediction')
+
+    # Dataset
+    dataset_pred_oh = y_pred_oh[-1]
+    dataset_pred = lbin_dataset.inverse_transform(dataset_pred_oh)
+    true_dataset = lbin_dataset.inverse_transform(dataset_oh.values)
+    print(np.mean(dataset_pred == true_dataset))
+
     labels = le.inverse_transform(lbin.inverse_transform(
         np.eye(len(lbin.classes_))))
     dump(labels, join(artifact_dir, 'labels.pkl'))

@@ -97,6 +97,8 @@ def make_model(n_features, alpha,
                seed, label_pool,
                shared_supervised):
     n_labels, n_depths = label_pool.shape
+    datasets = np.unique(label_pool[:, 0])
+    n_datasets = len(datasets)
     adversaries = make_aversaries(label_pool)
 
     data = Input(shape=(n_features,), name='data', dtype='float32')
@@ -141,15 +143,51 @@ def make_model(n_features, alpha,
                            name='supervised_depth_%i' % i)(latent_dropout)
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)
+    # reversed_latent_dropout = GradientReversal(name='gradient_reversal')(latent_dropout)
     dataset_prob = Dense(n_datasets,
-                   activation='softmax',
-                   use_bias=True,
-                   kernel_regularizer=l2(alpha),
-                   kernel_constraint=non_neg(),
-                   bias_constraint=non_neg(),
-                   name='supervised_depth_%i' % i)(latent_dropout)
+                         activation='softmax',
+                         use_bias=True,
+                         kernel_regularizer=l2(alpha),
+                         name='supervised_dataset')(latent_dropout)
+    outputs.append(dataset_prob)
     model = Model(inputs=[data, labels], outputs=outputs)
     return model
+
+
+def reverse_gradient(X):
+    '''Flips the sign of the incoming gradient during training.'''
+    try:
+        reverse_gradient.num_calls += 1
+    except AttributeError:
+        reverse_gradient.num_calls = 1
+
+    grad_name = "GradientReversal%d" % reverse_gradient.num_calls
+
+    @tf.RegisterGradient(grad_name)
+    def _flip_gradients(op, grad):
+        return tf.negative(grad)
+
+    g = K.get_session().graph
+    with g.gradient_override_map({'Identity': grad_name}):
+        y = tf.identity(X)
+
+    return y
+
+
+class GradientReversal(Layer):
+    '''Flip the sign of gradient during training.'''
+    def __init__(self, **kwargs):
+        super(GradientReversal, self).__init__(**kwargs)
+        self.supports_masking = False
+
+    def build(self, input_shape):
+        super(GradientReversal, self).build(input_shape)
+
+    def call(self, inputs, mask=None):
+        return reverse_gradient(inputs)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 
 def init_tensorflow(n_jobs=1, debug=False):
