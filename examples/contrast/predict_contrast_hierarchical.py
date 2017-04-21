@@ -6,7 +6,7 @@ import pandas as pd
 from keras.callbacks import TensorBoard, Callback
 from sacred import Experiment
 from sacred.observers import MongoObserver
-from sklearn.externals.joblib import load
+from sklearn.externals.joblib import load, dump
 from sklearn.preprocessing import LabelEncoder, LabelBinarizer
 from sklearn.utils import gen_batches, check_random_state
 
@@ -49,8 +49,8 @@ def config():
     alpha = 0.0001
     latent_dim = 25
     activation = 'linear'
-    dropout_input = 0.25
-    dropout_latent = 0.5
+    dropout_input = 0.0
+    dropout_latent = 0.25
     batch_size = 100
     optimizer = 'adam'
     epochs = 50
@@ -58,7 +58,7 @@ def config():
     n_jobs = 3
     verbose = 2
     seed = 10
-    shared_supervised = True
+    shared_supervised = False
     steps_per_epoch = None
 
 @predict_contrast_hierarchical.command
@@ -99,7 +99,7 @@ def train_model(alpha,
                 n_jobs,
                 _run,
                 _seed):
-    artifact_dir = join(artifact_dir, str(_run._id))
+    artifact_dir = join(artifact_dir, 'good')
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
@@ -158,8 +158,7 @@ def train_model(alpha,
     lbin = LabelBinarizer()
     y_oh = lbin.fit_transform(y['contrast'])
     if y_oh.shape[1] == 1:
-        y_oh = np.concatenate([y_oh,
-                               y_oh == 0], axis=1)
+        y_oh = np.concatenate([y_oh, y_oh == 0], axis=1)
     y_oh = pd.DataFrame(index=X.index, data=y_oh)
 
     x_test = X.iloc[test].values
@@ -254,7 +253,24 @@ def train_model(alpha,
         res = test_model(prediction)
         _run.info['score'][depth_name[depth]] = res
         print('Prediction at depth %s' % depth_name[depth], res)
-        # _run.add_artifact(join(artifact_dir,
-        # 'prediction_depth_%i.csv'), 'prediction')
+        _run.add_artifact(join(artifact_dir,
+        'prediction_depth_%i.csv'), 'prediction')
+    labels = le.inverse_transform(lbin.inverse_transform(
+        np.eye(len(lbin.classes_))))
+    dump(labels, join(artifact_dir, 'labels.pkl'))
+
+    # Chance level
+    count_dataset = X[0].groupby(level='dataset').aggregate('count')
+    count_task = X[0].groupby(level=['dataset', 'task']).aggregate('count')
+    chance_level_dataset = []
+    chance_level_task = []
+    for label in labels:
+        dataset, task = label.split('_')[:2]
+        task = '_'.join([dataset, task])
+        chance_level_dataset.append(count_dataset.loc[dataset] / X.shape[0])
+        chance_level_task.append(count_task.loc[dataset, task] / X.shape[0])
+    dump(chance_level_dataset, join(artifact_dir, 'chance_level_depth_1.pkl'))
+    dump(chance_level_task, join(artifact_dir, 'chance_level_depth_2.pkl'))
+    dump(X, join(artifact_dir, 'X.pkl'))
     model.save(join(artifact_dir, 'model.keras'))
     # _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')

@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from keras.backend import set_session
-from keras.constraints import non_neg
+from keras.constraints import non_neg, unit_norm
 from keras.engine import Layer, Model, Input
 from keras.layers import Dense, Dropout, Lambda
 from keras.regularizers import l2
@@ -108,7 +108,6 @@ def make_model(n_features, alpha,
     if latent_dim is not None:
         latent = Dense(latent_dim, activation=activation,
                        use_bias=False, name='latent',
-                       # kernel_constraint=non_neg(),
                        kernel_regularizer=l2(alpha))(dropout_data)
         if dropout_latent > 0:
             latent_dropout = Dropout(rate=dropout_latent, name='dropout',
@@ -125,6 +124,8 @@ def make_model(n_features, alpha,
         logits = Dense(n_labels, activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
+                       kernel_constraint=non_neg(),
+                       bias_constraint=non_neg(),
                        name='supervised')(latent_dropout)
         for i, mask in enumerate(masks):
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
@@ -135,6 +136,8 @@ def make_model(n_features, alpha,
                            activation='linear',
                            use_bias=True,
                            kernel_regularizer=l2(alpha),
+                           kernel_constraint=non_neg(),
+                           bias_constraint=non_neg(),
                            name='supervised_depth_%i' % i)(latent_dropout)
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)

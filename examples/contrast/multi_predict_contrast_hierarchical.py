@@ -47,7 +47,7 @@ def single_run(config_updates, _id, master_id):
         n_jobs = 1
         epochs = 50
         # Force steps_per_epoch to be the same for ['hcp'] and ['archi', 'hcp']
-        steps_per_epoch = 174
+        steps_per_epoch = 210
         dropout_input = 0.25
 
     run = predict_contrast_hierarchical._create_run(config_updates=config_updates)
@@ -68,9 +68,9 @@ def run(dropout_latent_list,
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid(
-        {'datasets': [['archi', 'hcp']],
-         'dataset_weight': [dict(hcp=i, archi=1)
-                            for i in [0, 0.5, 1]],
+        {'datasets': [['la5c', 'hcp']],
+         'dataset_weight': [dict(hcp=i, la5c=1 - i)
+                            for i in [0, 0.25, 0.5, 0.75]],
          'shared_supervised': shared_supervised_list,
          'task_prob': task_prob_list,
          'dropout_latent': dropout_latent_list,
