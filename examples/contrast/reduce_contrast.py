@@ -16,8 +16,7 @@ from sklearn.preprocessing import LabelEncoder
 
 reduce_contrast = Experiment('reduce_contrast')
 
-output_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
-dataset_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
+
 
 observer = MongoObserver.create(db_name='amensch',
                                 collection='reduce_contrast')
@@ -31,12 +30,15 @@ def config():
 
     dataset = 'human_voice'
 
-    standardize = True
-    scale_importance = 'sqrt'
+    standardize = False
+    scale_importance = None
     identity = False
 
     n_jobs = 24
     verbose = 2
+
+    output_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
+    dataset_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
 
 
 @reduce_contrast.automain
@@ -45,6 +47,8 @@ def run(dictionary_penalty,
         n_jobs,
         identity,
         scale_importance,
+        output_dir,
+        dataset_dir,
         standardize,
         dataset):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)

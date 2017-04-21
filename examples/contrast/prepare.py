@@ -1,5 +1,10 @@
 import sys
 from os import path
+from os.path import join
+
+from sklearn.externals.joblib import Parallel, delayed
+
+from modl.datasets import get_data_dirs
 
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
@@ -7,8 +12,19 @@ sys.path.append(path.dirname(path.dirname
 from examples.contrast.reduce_contrast import reduce_contrast
 from examples.unmask.unmask_contrast import unmask_contrast
 
-for dataset in ['la5c', 'brainomics', 'archi', 'hcp']:
-    run = unmask_contrast._create_run(config_updates=dict(dataset=dataset))
-    run()
-    run = reduce_contrast._create_run(config_updates=dict(dataset=dataset))
-    run()
+
+def launch_dataset(dataset):
+    if dataset == 'brainomics':
+        run = unmask_contrast._create_run(config_updates=dict(dataset=dataset))
+        run()
+        run = reduce_contrast._create_run(
+            config_updates=dict(dataset=dataset,
+                                n_jobs=3,
+                                output_dir=join(get_data_dirs()[0], 'pipeline',
+                                                'contrast',
+                                                'reduced',
+                                                'non_standardized')))
+        run()
+
+Parallel(n_jobs=1)(delayed(launch_dataset)(dataset) for dataset in
+                   ['hcp', 'la5c', 'archi', 'brainomics'])
