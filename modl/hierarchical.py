@@ -108,7 +108,8 @@ def make_model(n_features, alpha,
     if latent_dim is not None:
         latent = Dense(latent_dim, activation=activation,
                        use_bias=False, name='latent',
-                       kernel_regularizer=l2(alpha))(dropout_data)
+                       kernel_regularizer=l2(alpha)
+                       )(dropout_data)
         if dropout_latent > 0:
             latent_dropout = Dropout(rate=dropout_latent, name='dropout',
                                      seed=seed)(latent)
@@ -124,8 +125,8 @@ def make_model(n_features, alpha,
         logits = Dense(n_labels, activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
-                       kernel_constraint=non_neg(),
-                       bias_constraint=non_neg(),
+                       # kernel_constraint=non_neg(),
+                       # bias_constraint=non_neg(),
                        name='supervised')(latent_dropout)
         for i, mask in enumerate(masks):
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
@@ -136,18 +137,11 @@ def make_model(n_features, alpha,
                            activation='linear',
                            use_bias=True,
                            kernel_regularizer=l2(alpha),
-                           kernel_constraint=non_neg(),
-                           bias_constraint=non_neg(),
+                           # kernel_constraint=non_neg(),
+                           # bias_constraint=non_neg(),
                            name='supervised_depth_%i' % i)(latent_dropout)
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)
-    dataset_prob = Dense(n_datasets,
-                   activation='softmax',
-                   use_bias=True,
-                   kernel_regularizer=l2(alpha),
-                   kernel_constraint=non_neg(),
-                   bias_constraint=non_neg(),
-                   name='supervised_depth_%i' % i)(latent_dropout)
     model = Model(inputs=[data, labels], outputs=outputs)
     return model
 

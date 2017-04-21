@@ -30,7 +30,7 @@ from seaborn.apionly import husl_palette
 
 
 def get_imgs(artifact_dir, scale_importance, dictionary_penalty,
-              n_components_list):
+             n_components_list):
     model = load_model(join(artifact_dir, 'model.keras'),
                        custom_objects={'HierarchicalLabelMasking':
                                            HierarchicalLabelMasking,
@@ -50,6 +50,8 @@ def get_imgs(artifact_dir, scale_importance, dictionary_penalty,
     reconstructer = Reconstructer(bases=bases,
                                   scale_importance=scale_importance)
     weights = model.get_layer('latent').get_weights()[0].T
+    standard_scaler = load(join(artifact_dir, 'standard_scaler.pkl'))
+    weights = standard_scaler.inverse_transform(weights)
     imgs = reconstructer.fit_transform(weights)
     return imgs
 
@@ -57,7 +59,7 @@ def get_imgs(artifact_dir, scale_importance, dictionary_penalty,
 def run():
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
-    scale_importance = 'sqrt'
+    scale_importance = None
 
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical', 'good')
@@ -70,10 +72,9 @@ def run():
     if not os.path.exists(analysis_dir):
         os.makedirs(analysis_dir)
 
-    # imgs = get_imgs(artifact_dir, scale_importance,
-    #                                 dictionary_penalty, n_components_list)
-    # np.save(join(analysis_dir, 'imgs'), imgs)
-    imgs = np.load(join(analysis_dir, 'imgs.npy'))
+    imgs = get_imgs(artifact_dir, scale_importance,
+                    dictionary_penalty, n_components_list)
+    np.save(join(analysis_dir, 'imgs'), imgs)
     model = load_model(join(artifact_dir, 'model.keras'),
                        custom_objects={'HierarchicalLabelMasking':
                                            HierarchicalLabelMasking,
@@ -85,16 +86,13 @@ def run():
     X = load(join(artifact_dir, 'X.pkl'))
     y_pred = load(join(artifact_dir, 'y_pred.pkl'))
     y_pred = y_pred[1]
-    # argmax = np.argmax(y_pred, axis=1)
-    # for i, row_argmax in enumerate(argmax):
-    #     y_pred[i] = 0
-    #     y_pred[i, row_argmax] = 1
     labels = load(join(artifact_dir, 'labels.pkl'))
     y_pred = pd.DataFrame(y_pred, index=X.index)
     data = pd.concat([X, y_pred], names=['kind'], keys=['input', 'output'],
                      axis=1)
     data_sub = []
-    min_samples = data.iloc[:, 0].groupby(level='dataset').aggregate('count').min()
+    min_samples = data.iloc[:, 0].groupby(level='dataset').aggregate(
+        'count').min()
     random_state = check_random_state(0)
     for dataset, data_dataset in data.groupby(level='dataset'):
         indices = random_state.permutation(data_dataset.shape[0])[:min_samples]
@@ -109,14 +107,18 @@ def run():
     # CCA
     n_components = 10
     pca = PCA(n_components=n_components)
+    cca = CCA(n_components=n_components)
+
     pca.fit(X_proj)
+    cca.fit(X_proj, y_pred)
 
     principal_imgs = pca.components_
-    # principal_imgs = cca.x_loadings_.T
+    principal_imgs = cca.x_loadings_.T
 
 
-    weights_supervised, bias = model.get_layer('supervised_depth_1').get_weights()
-    freqs = principal_imgs.dot(weights_supervised) # + bias[np.newaxis, :]
+    weights_supervised, bias = model.get_layer(
+        'supervised_depth_1').get_weights()
+    freqs = principal_imgs.dot(weights_supervised)  # + bias[np.newaxis, :]
     freqs = np.exp(freqs)
     freqs /= np.sum(freqs, axis=1, keepdims=True)
 
@@ -136,26 +138,25 @@ def run():
         wc.generate_from_frequencies(these_freqs)
         ax[1].imshow(wc)
         ax[1].set_axis_off()
-        plot_stat_map(component, figure=fig, axes=ax[0], threshold=0,
+        plot_stat_map(component, figure=fig, axes=ax[0], threshold=1e-5,
                       colorbar=True, vmax=vmax)
-    plt.savefig('figure.pdf')
+    plt.savefig('principal.pdf')
 
-    # weights, bias = model.get_layer('supervised_depth_1').get_weights()
-    # vectors = weights.T.dot(imgs)
-    # components_imgs = masker.inverse_transform(vectors)
-    # components_imgs.to_filename(join(analysis_dir, 'vectors.'
-    #                                                'nii.gz'))
-    # data = components_imgs.get_data()
-    # vmax = np.max(np.abs(data))
-    # labels = ['_'.join(label.split('_')[1:]) for label in labels]
-    # for i, label in enumerate(labels):
-    #     print(label)
-    #     fig, ax = plt.subplots(1, 1)
-    #     plot_stat_map(index_img(components_imgs, i),
-    #                   axes=ax, figure=fig, colorbar=True, vmax=vmax,
-    #                   title=label,
-    #                   threshold=0.002, cut_coords=(-41, 2, 18))
-    #     plt.savefig('vector_%s.pdf' % label)
+    weights, bias = model.get_layer('supervised_depth_1').get_weights()
+    vectors = weights.T.dot(imgs)
+    components_imgs = masker.inverse_transform(vectors)
+    components_imgs.to_filename(join(analysis_dir, 'vectors.'
+                                                   'nii.gz'))
+    data = components_imgs.get_data()
+    vmax = np.max(np.abs(data))
+    labels = ['_'.join(label.split('_')[1:]) for label in labels]
+    fig, ax = plt.subplots(len(labels), 1)
+    for i, label in enumerate(labels):
+        print(label)
+        plot_stat_map(index_img(components_imgs, i),
+                      axes=ax[i], figure=fig, colorbar=True, vmax=vmax,
+                      title=label)
+    plt.savefig('vectors.pdf')
 
     # T-SNE
     X_proj = pd.DataFrame(data=X_proj, index=X.index)

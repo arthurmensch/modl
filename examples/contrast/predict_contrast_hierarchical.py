@@ -4,10 +4,11 @@ from os.path import join
 import numpy as np
 import pandas as pd
 from keras.callbacks import TensorBoard, Callback
+from keras.optimizers import Adam
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import load, dump
-from sklearn.preprocessing import LabelEncoder, LabelBinarizer
+from sklearn.preprocessing import LabelEncoder, LabelBinarizer, StandardScaler
 from sklearn.utils import gen_batches, check_random_state
 
 from modl.datasets import get_data_dirs
@@ -34,7 +35,8 @@ class MyCallback(Callback):
 
 @predict_contrast_hierarchical.config
 def config():
-    reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
+    reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced',
+                       'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
     datasets = ['brainomics', 'la5c', 'hcp', 'archi']
@@ -53,9 +55,9 @@ def config():
     dropout_latent = 0.25
     batch_size = 100
     optimizer = 'adam'
-    epochs = 100
+    epochs = 10
     task_prob = 0.5
-    n_jobs = 3
+    n_jobs = 4
     verbose = 2
     seed = 10
     shared_supervised = False
@@ -161,6 +163,13 @@ def train_model(alpha,
         y_oh = np.concatenate([y_oh, y_oh == 0], axis=1)
     y_oh = pd.DataFrame(index=X.index, data=y_oh)
 
+    X_train = X.iloc[train]
+
+    standard_scaler = StandardScaler()
+    standard_scaler.fit(X_train)
+    X_new = standard_scaler.transform(X)
+    X = pd.DataFrame(X_new, index=X.index)
+
     x_test = X.iloc[test].values
     y_test = y.iloc[test].values
     y_oh_test = y_oh.iloc[test].values
@@ -173,12 +182,13 @@ def train_model(alpha,
         batches_generator = {}
         indices = {}
         random_state = check_random_state(_seed)
-        for dataset, sub_X in X_train.groupby(level='dataset'):
+        groups = X_train.groupby(level='dataset')
+        for dataset, sub_X in groups:
             len_dataset = sub_X.shape[0]
             indices[dataset] = random_state.permutation(len_dataset)
             batches_generator[dataset] = gen_batches(len_dataset, batch_size)
         while True:
-            for dataset, sub_X in X_train.groupby(level='dataset'):
+            for dataset, sub_X in groups:
                 len_dataset = sub_X.shape[0]
                 sub_y = y_train.loc[dataset]
                 sub_y_oh = y_oh_train.loc[dataset]
@@ -216,7 +226,7 @@ def train_model(alpha,
         for i, this_depth_weight in enumerate(depth_weight):
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
-    model.compile(optimizer=optimizer,
+    model.compile(optimizer=Adam(clipvalue=1),
                   loss=['categorical_crossentropy'] * 3,
                   loss_weights=depth_weight,
                   metrics=['accuracy'])
@@ -260,17 +270,18 @@ def train_model(alpha,
     dump(labels, join(artifact_dir, 'labels.pkl'))
 
     # Chance level
-    count_dataset = X[0].groupby(level='dataset').aggregate('count')
-    count_task = X[0].groupby(level=['dataset', 'task']).aggregate('count')
-    chance_level_dataset = []
-    chance_level_task = []
-    for label in labels:
-        dataset, task = label.split('_')[:2]
-        task = '_'.join([dataset, task])
-        chance_level_dataset.append(count_dataset.loc[dataset] / X.shape[0])
-        chance_level_task.append(count_task.loc[dataset, task] / X.shape[0])
-    dump(chance_level_dataset, join(artifact_dir, 'chance_level_depth_1.pkl'))
-    dump(chance_level_task, join(artifact_dir, 'chance_level_depth_2.pkl'))
+    # count_dataset = X[0].groupby(level='dataset').aggregate('count')
+    # count_task = X[0].groupby(level=['dataset', 'task']).aggregate('count')
+    # chance_level_dataset = []
+    # chance_level_task = []
+    # for label in labels:
+    #     dataset, task = label.split('_')[:2]
+    #     task = '_'.join([dataset, task])
+    #     chance_level_dataset.append(count_dataset.loc[dataset] / X.shape[0])
+    #     chance_level_task.append(count_task.loc[dataset, task] / X.shape[0])
+    # dump(chance_level_dataset, join(artifact_dir, 'chance_level_depth_1.pkl'))
+    # dump(chance_level_task, join(artifact_dir, 'chance_level_depth_2.pkl'))
+    dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
     dump(X, join(artifact_dir, 'X.pkl'))
     dump(y_pred_oh, join(artifact_dir, 'y_pred.pkl'))
     model.save(join(artifact_dir, 'model.keras'))
