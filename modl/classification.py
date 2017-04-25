@@ -52,37 +52,6 @@ class LabelGetter(TransformerMixin, BaseEstimator):
         return X[['model_indices']]
 
 
-class Reconstructer(TransformerMixin, BaseEstimator):
-    def __init__(self, bases, scale_importance):
-        self.bases = bases
-        self.scale_importance = scale_importance
-
-    def fit(self, X=None, y=None):
-        return self
-
-    def transform(self, X):
-        n_features = self.bases[0].shape[1]
-        n_samples = X.shape[0]
-        res = np.zeros((n_samples, n_features))
-        start = 0
-        for basis in self.bases:
-            size = basis.shape[0]
-            stop = start + size
-            if self.scale_importance is None:
-                scale = 1
-            elif self.scale_importance == 'sqrt':
-                scale = np.sqrt(size)
-            elif self.scale_importance == 'linear':
-                scale = size
-            else:
-                raise ValueError
-            basis_inv = np.linalg.pinv(basis)
-            res += X[:, start:stop].dot(basis_inv.T) / scale
-            start = stop
-        return res
-
-
-
 def make_loadings_extractor(bases, scale_bases=True,
                             identity=False,
                             standardize=True,

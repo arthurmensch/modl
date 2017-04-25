@@ -8,6 +8,8 @@ from keras.regularizers import l2
 import keras.backend as K
 from sklearn.utils import check_array
 from tensorflow.python import debug as tf_debug
+from keras.initializers import Orthogonal
+MIN_FLOAT32 = np.finfo(np.float32).min
 
 
 class PartialSoftmax(Layer):
@@ -19,14 +21,15 @@ class PartialSoftmax(Layer):
 
     def call(self, inputs, **kwargs):
         logits, mask = inputs
-        logits_max = tf.reduce_max(logits, axis=1, keep_dims=True)
+        # logits_min = K.min(logits)
+        # Faster ! !
+        logits_min = tf.ones_like(logits) * MIN_FLOAT32
+        logits = tf.where(mask, logits, logits_min)
+        logits_max = K.max(logits, axis=1, keepdims=True)
         logits -= logits_max
-        if mask is not None:
-            exp_logits = tf.where(mask, tf.exp(logits),
-                                  tf.zeros(tf.shape(logits)))
-        else:
-            exp_logits = tf.exp(logits)
-        sum_exp_logits = tf.reduce_sum(exp_logits, axis=1, keep_dims=True)
+        exp_logits = tf.exp(logits)
+        # exp_logits = tf.where(mask, tf.exp(logits), tf.zeros(tf.shape(logits)))
+        sum_exp_logits = K.sum(exp_logits, axis=1, keepdims=True)
         return exp_logits / sum_exp_logits
 
     def compute_output_shape(self, input_shape):
@@ -125,6 +128,7 @@ def make_model(n_features, alpha,
         logits = Dense(n_labels, activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
+                       kernel_initializer=Orthogonal(seed=seed),
                        # kernel_constraint=non_neg(),
                        # bias_constraint=non_neg(),
                        name='supervised')(latent_dropout)
@@ -156,4 +160,5 @@ def init_tensorflow(n_jobs=1, debug=False):
     )
     if debug:
         sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+        sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
     set_session(sess)

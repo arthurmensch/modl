@@ -266,7 +266,7 @@ def create_raw_contrast_data(imgs, mask, raw_dir,
     for i, batch in enumerate(batches):
         print('Batch %i' % i)
         data[batch] = masker.transform(imgs['z_map'].values[batch])
-    imgs = pd.DataFrame(data=data, index=imgs.index)
+    imgs = pd.DataFrame(data=data, index=imgs.index, dtype=np.float32)
     dump(imgs, join(raw_dir, 'imgs.pkl'))
 
 

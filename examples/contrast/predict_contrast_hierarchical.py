@@ -1,4 +1,5 @@
 import os
+from math import sqrt
 from os.path import join
 
 import numpy as np
@@ -39,7 +40,7 @@ def config():
                        'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['brainomics', 'la5c', 'hcp', 'archi']
+    datasets = ['hcp', 'archi', 'brainomics', 'la5c']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
@@ -48,22 +49,22 @@ def config():
                           human_voice=1)
     train_size = None
     validation = True
-    alpha = 0.0001
-    latent_dim = 25
+    alpha = 0.00001
+    latent_dim = 50
     activation = 'linear'
-    dropout_input = 0.0
-    dropout_latent = 0.25
+    dropout_input = 0.25
+    dropout_latent = 0.5
     batch_size = 100
-    optimizer = 'adam'
-    epochs = 10
+    epochs = 50
     task_prob = 0.5
     n_jobs = 4
     verbose = 2
     seed = 10
     shared_supervised = False
     steps_per_epoch = None
+    _seed = 0
 
-@predict_contrast_hierarchical.command
+
 def test_model(prediction):
     match = prediction['true_label'] == prediction['predicted_label']
     prediction = prediction.assign(match=match)
@@ -92,7 +93,6 @@ def train_model(alpha,
                 steps_per_epoch,
                 task_prob,
                 reduced_dir,
-                optimizer,
                 batch_size,
                 artifact_dir,
                 epochs,
@@ -121,7 +121,6 @@ def train_model(alpha,
             X.append(this_X)
             keys.append(dataset)
     X = pd.concat(X, keys=keys, names=['dataset'])
-    X.sort_index(inplace=True)
 
     # Cross validation folds
     cv = StratifiedGroupShuffleSplit(stratify_levels='dataset',
@@ -134,8 +133,6 @@ def train_model(alpha,
 
     _run.info['train_fold'] = train.tolist()
     _run.info['test_fold'] = test.tolist()
-
-    print(train, test)
 
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
@@ -153,6 +150,8 @@ def train_model(alpha,
         le_dict[label] = le
 
     X = X.set_index(['dataset', 'subject', 'task', 'contrast'])
+    dump(X, join(artifact_dir, 'X.pkl'))
+
     y = pd.DataFrame(data=y, columns=['dataset', 'task', 'contrast'],
                      index=X.index)
 
@@ -178,33 +177,39 @@ def train_model(alpha,
     y_train = y.iloc[train]
     y_oh_train = y_oh.iloc[train]
 
+    train_data = pd.concat([X_train, y_train, y_oh_train],
+                           keys=['X_train', 'y_train', 'y_oh_train'],
+                           names=['type'], axis=1)
+    train_data.sort_index(inplace=True)
+
     def train_generator():
         batches_generator = {}
         indices = {}
         random_state = check_random_state(_seed)
-        groups = X_train.groupby(level='dataset')
-        for dataset, sub_X in groups:
-            len_dataset = sub_X.shape[0]
-            indices[dataset] = random_state.permutation(len_dataset)
+        grouped_data = train_data.groupby(level='dataset')
+        grouped_data = {dataset: sub_data for dataset, sub_data in
+                        grouped_data}
+        for dataset, sub_data in grouped_data.items():
+            len_dataset = sub_data.shape[0]
             batches_generator[dataset] = gen_batches(len_dataset, batch_size)
         while True:
-            for dataset, sub_X in groups:
-                len_dataset = sub_X.shape[0]
-                sub_y = y_train.loc[dataset]
-                sub_y_oh = y_oh_train.loc[dataset]
+            for dataset, sub_data in grouped_data.items():
+                len_dataset = sub_data.shape[0]
                 try:
                     batch = next(batches_generator[dataset])
-                    batch = indices[dataset][batch]
                 except StopIteration:
                     batches_generator[dataset] = gen_batches(len_dataset,
                                                              batch_size)
-                    random_state.shuffle(indices[dataset])
+                    permutation = random_state.permutation(len_dataset)
+                    sub_data = sub_data.iloc[permutation]
+                    grouped_data[dataset] = sub_data
                     batch = next(batches_generator[dataset])
-                    batch = indices[dataset][batch]
-                x_batch = sub_X.iloc[batch].values
-                y_batch = sub_y.iloc[batch].values
-                y_oh_batch = sub_y_oh.iloc[batch].values
-                sample_weight_batch = np.ones(x_batch.shape[0]) * dataset_weight[dataset]
+                batch_data = sub_data.iloc[batch]
+                x_batch = batch_data['X_train'].values
+                y_batch = batch_data['y_train'].values
+                y_oh_batch = batch_data['y_oh_train'].values
+                sample_weight_batch = np.ones(x_batch.shape[0]) * \
+                                      dataset_weight[dataset]
                 yield ([x_batch, y_batch], [y_oh_batch for _ in range(3)],
                        [sample_weight_batch for _ in range(3)])
 
@@ -226,8 +231,8 @@ def train_model(alpha,
         for i, this_depth_weight in enumerate(depth_weight):
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
-    model.compile(optimizer=Adam(clipvalue=1),
-                  loss=['categorical_crossentropy'] * 3,
+    model.compile(loss=['categorical_crossentropy'] * 3,
+                  optimizer=Adam(),
                   loss_weights=depth_weight,
                   metrics=['accuracy'])
     callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
@@ -246,6 +251,10 @@ def train_model(alpha,
     depth_name = ['full', 'dataset', 'task']
     for depth in [1, 2]:
         this_y_pred_oh = y_pred_oh[depth]
+        this_y_pred_oh_df = pd.DataFrame(index=X.index,
+                                         data=this_y_pred_oh)
+        dump(this_y_pred_oh_df, join(artifact_dir,
+                                     'y_pred_depth_%i.pkl' % depth))
         if this_y_pred_oh.shape[1] == 2:
             this_y_pred_oh = this_y_pred_oh[:, 0]
         contrasts = y['contrast'].values
@@ -264,25 +273,11 @@ def train_model(alpha,
         _run.info['score'][depth_name[depth]] = res
         print('Prediction at depth %s' % depth_name[depth], res)
         _run.add_artifact(join(artifact_dir,
-        'prediction_depth_%i.csv'), 'prediction')
+                               'prediction_depth_%i.csv'), 'prediction')
     labels = le.inverse_transform(lbin.inverse_transform(
         np.eye(len(lbin.classes_))))
     dump(labels, join(artifact_dir, 'labels.pkl'))
 
-    # Chance level
-    # count_dataset = X[0].groupby(level='dataset').aggregate('count')
-    # count_task = X[0].groupby(level=['dataset', 'task']).aggregate('count')
-    # chance_level_dataset = []
-    # chance_level_task = []
-    # for label in labels:
-    #     dataset, task = label.split('_')[:2]
-    #     task = '_'.join([dataset, task])
-    #     chance_level_dataset.append(count_dataset.loc[dataset] / X.shape[0])
-    #     chance_level_task.append(count_task.loc[dataset, task] / X.shape[0])
-    # dump(chance_level_dataset, join(artifact_dir, 'chance_level_depth_1.pkl'))
-    # dump(chance_level_task, join(artifact_dir, 'chance_level_depth_2.pkl'))
     dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
-    dump(X, join(artifact_dir, 'X.pkl'))
-    dump(y_pred_oh, join(artifact_dir, 'y_pred.pkl'))
     model.save(join(artifact_dir, 'model.keras'))
-    # _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')
+    _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')
