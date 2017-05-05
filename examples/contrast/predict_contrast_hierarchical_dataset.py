@@ -17,7 +17,7 @@ sys.path.append(path.dirname(path.dirname
 from examples.contrast.predict_contrast_hierarchical\
     import predict_contrast_hierarchical
 
-multi_predict_task = Experiment('multi_predict_contrast_hierarchical',
+multi_predict_task = Experiment('predict_contrast_hierarchical_dataset',
                                 ingredients=[predict_contrast_hierarchical])
 collection = multi_predict_task.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
@@ -47,6 +47,7 @@ def single_run(config_updates, _id, master_id):
         n_jobs = 1
         epochs = 50
         dropout_input = 0.25
+        verbose = 0
 
     run = predict_contrast_hierarchical._create_run(config_updates=config_updates)
     run._id = _id
@@ -65,8 +66,18 @@ def run(dropout_latent_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
+    datasets = ['archi', 'hcp', 'brainomics', 'la5c']
+    singletons = [[dataset] for dataset in datasets]
+    pairs = []
+    for i in range(4):
+        for j in range(i + 1, 4):
+            pair = [datasets[i], datasets[j]]
+            pairs.append(pair)
+    all = datasets
+    datasets = singletons + pairs + [all]
+    datasets = [all]
     param_grid = ParameterGrid(
-        {'datasets': [['archi', 'hcp', 'brainomics', 'la5c']],
+        {'datasets': datasets,
          'shared_supervised': shared_supervised_list,
          'task_prob': task_prob_list,
          'dropout_latent': dropout_latent_list,

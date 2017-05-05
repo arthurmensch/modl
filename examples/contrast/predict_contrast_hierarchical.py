@@ -5,12 +5,14 @@ from os.path import join
 import numpy as np
 import pandas as pd
 from keras.callbacks import TensorBoard, Callback
-from keras.optimizers import Adam
+import keras.backend.tensorflow_backend as K
+from keras.optimizers import Adam, SGD
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import load, dump
 from sklearn.preprocessing import LabelEncoder, LabelBinarizer, StandardScaler
 from sklearn.utils import gen_batches, check_random_state
+from tensorflow.contrib.opt import ScipyOptimizerInterface
 
 from modl.datasets import get_data_dirs
 from modl.hierarchical import make_model, init_tensorflow
@@ -55,10 +57,10 @@ def config():
     dropout_input = 0.0
     dropout_latent = 0.5
     batch_size = 100
-    epochs = 50
+    epochs = 1
     task_prob = .5
     n_jobs = 4
-    verbose = 2
+    verbose = 1
     seed = 10
     shared_supervised = True
     steps_per_epoch = None
@@ -179,43 +181,75 @@ def train_model(alpha,
     train_data = pd.concat([X_train, y_train, y_oh_train],
                            keys=['X_train', 'y_train', 'y_oh_train'],
                            names=['type'], axis=1)
+
+    x_train = X.iloc[train].values
+    y_train = y.iloc[train].values
+    y_oh_train = y_oh.iloc[train].values
+    sample_weights_train = [dataset_weight[dataset] for
+                           dataset in X.index.get_level_values('dataset')]
+    sample_weights_train = np.array(sample_weights_train)
+
     train_data.sort_index(inplace=True)
+
+    mix_batch = False
 
     def train_generator():
         batches_generator = {}
-        indices = {}
         random_state = check_random_state(_seed)
         grouped_data = train_data.groupby(level='dataset')
         grouped_data = {dataset: sub_data for dataset, sub_data in
                         grouped_data}
+        n_dataset = len(grouped_data)
+        x_batch = np.empty((batch_size, train_data['X_train'].shape[1]))
+        y_batch = np.empty((batch_size, train_data['y_train'].shape[1]))
+        y_oh_batch = np.empty((batch_size, train_data['y_oh_train'].shape[1]))
+        sample_weight_batch = np.empty(batch_size)
         for dataset, sub_data in grouped_data.items():
             len_dataset = sub_data.shape[0]
-            batches_generator[dataset] = gen_batches(len_dataset, batch_size)
+            if mix_batch:
+                batches_generator[dataset] = gen_batches(len_dataset, batch_size // n_dataset)
+            else:
+                batches_generator[dataset] = gen_batches(len_dataset, batch_size)
         while True:
+            start = 0
             for dataset, sub_data in grouped_data.items():
+                if not mix_batch:
+                    start = 0
                 len_dataset = sub_data.shape[0]
                 try:
                     batch = next(batches_generator[dataset])
                 except StopIteration:
-                    batches_generator[dataset] = gen_batches(len_dataset,
-                                                             batch_size)
+                    if mix_batch:
+                        batches_generator[dataset] = gen_batches(len_dataset,
+                                                                 batch_size // n_dataset)
+                    else:
+                        batches_generator[dataset] = gen_batches(len_dataset,
+                                                                 batch_size)
                     permutation = random_state.permutation(len_dataset)
                     sub_data = sub_data.iloc[permutation]
                     grouped_data[dataset] = sub_data
                     batch = next(batches_generator[dataset])
+                len_batch = batch.stop - batch.start
+                stop = start + len_batch
                 batch_data = sub_data.iloc[batch]
-                x_batch = batch_data['X_train'].values
-                y_batch = batch_data['y_train'].values
-                y_oh_batch = batch_data['y_oh_train'].values
-                sample_weight_batch = np.ones(x_batch.shape[0]) * \
-                                      dataset_weight[dataset]
-                yield ([x_batch, y_batch], [y_oh_batch for _ in range(3)],
-                       [sample_weight_batch for _ in range(3)])
+                x_batch[start:stop] = batch_data['X_train'].values
+                y_batch[start:stop] = batch_data['y_train'].values
+                y_oh_batch[start:stop] = batch_data['y_oh_train'].values
+                sample_weight_batch[start:stop] = dataset_weight[dataset]
+                start = stop
+                if not mix_batch:
+                    yield ([x_batch[:stop], y_batch[:stop]],
+                           [y_oh_batch[:stop] for _ in range(3)],
+                           [sample_weight_batch[:stop] for _ in range(3)])
+            if mix_batch:
+                yield ([x_batch[:stop], y_batch[:stop]],
+                       [y_oh_batch[:stop] for _ in range(3)],
+                       [sample_weight_batch[:stop] for _ in range(3)])
 
     if steps_per_epoch is None:
         steps_per_epoch = X_train.shape[0] // batch_size
 
-    init_tensorflow(n_jobs=n_jobs, debug=False)
+    sess = init_tensorflow(n_jobs=n_jobs, debug=False)
 
     model = make_model(X.shape[1],
                        alpha=alpha,
@@ -230,20 +264,45 @@ def train_model(alpha,
         for i, this_depth_weight in enumerate(depth_weight):
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
+
+
     model.compile(loss=['categorical_crossentropy'] * 3,
-                  optimizer=Adam(),
+                  optimizer='sgd',
                   loss_weights=depth_weight,
                   metrics=['accuracy'])
     callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
                              histogram_freq=0,
                              write_graph=True,
                              write_images=True)]
+
     model.fit_generator(train_generator(), callbacks=callbacks,
                         validation_data=([x_test, y_test],
                                          [y_oh_test] * 3),
                         steps_per_epoch=steps_per_epoch,
                         verbose=verbose,
                         epochs=epochs)
+    total_loss = 0
+    for loss in model.losses:
+        total_loss += loss
+    gradient = K.gradients(total_loss, model.weights)
+    feed_dict = {}
+    outputs = [y_oh_train] * 3
+    inputs = [x_train, y_train]
+    sample_weights = [sample_weights_train] * 3
+    for tensor, input in zip(model.inputs, inputs):
+        feed_dict[tensor] = input
+    for tensor, output in zip(model.outputs, outputs):
+        feed_dict[tensor] = output
+    for tensor, sample_weight in zip(model.sample_weights, sample_weights):
+        feed_dict[tensor] = sample_weight
+
+    def loss():
+        return sess.run(total_loss, feed_dict=feed_dict)
+
+    def grad():
+        return sess.run(gradient, feed_dict=feed_dict)
+
+
 
     y_pred_oh = model.predict(x=[X.values, y.values])
     # Depth selection

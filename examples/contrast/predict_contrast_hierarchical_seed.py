@@ -27,11 +27,11 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 36
-    dropout_latent_list = [0., 0.5]
-    dropout_input_list = [0., 0.25]
-    latent_dim_list = [25, 50, 100, 200]
+    dropout_latent_list = [0.75, 0.9]
+    dropout_input_list = [0.0]
+    latent_dim_list = [200]
     shared_supervised_list = [False, True]
-    task_prob_list = [0., 0.5, 1]
+    task_prob_list = [0.22]
     alpha_list = [1e-4]
     n_seeds = 10
     verbose = 0
