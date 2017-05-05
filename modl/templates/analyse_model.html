@@ -9,6 +9,8 @@
 <body>
 
 <h1>Classification</h1>
+
+<h1>Left : Conditions vs all condition in dataset. Right: condition vs condition in task.</h1>
 <ul>
     {% for vector in classification_array %}
         <li>{{ vector.label }}<br />
@@ -23,14 +25,15 @@
 
 {% for gram in gram_array %}
     <img src="assets/{{ gram.src }}" title="{{ gram.label }}"/>
-    <img src="assets/{{ gram.src }}" title="{{ gram.label }}"/>
 {% endfor %}
 
 <h1>Latent directions</h1>
+<h1>Principal components (positive followed by negative)</h1>
 <ul>
     {% for latent in latent_array %}
         <li>{{ latent.title }} :<br />
-            <img src="assets/{{ latent.src }}" title="{{ latent.title }}"/>
+            <img src="assets/{{ latent[0].src }}" title="{{ latent[0].title }}"/>
+            <img src="assets/{{ latent[1].src }}" title="{{ latent[1].title }}"/>
         </li>
     {% endfor %}
 </ul>

@@ -4,11 +4,8 @@ from copy import copy
 import numpy as np
 from scipy.linalg import lstsq
 from sklearn.base import TransformerMixin, BaseEstimator
-from sklearn.externals.joblib import Memory
 from sklearn.linear_model.base import LinearClassifierMixin
-from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import LabelBinarizer
-from sklearn.preprocessing import StandardScaler
 from sklearn.utils import check_array, gen_batches, \
     check_random_state, check_X_y
 
@@ -50,70 +47,6 @@ class LabelGetter(TransformerMixin, BaseEstimator):
 
     def transform(self, X, y=None):
         return X[['model_indices']]
-
-
-def make_loadings_extractor(bases, scale_bases=True,
-                            identity=False,
-                            standardize=True,
-                            scale_importance=True,
-                            memory=Memory(cachedir=None),
-                            handle_indices=False,
-                            n_jobs=1, ):
-    if not isinstance(bases, list):
-        bases = [bases]
-    if scale_bases:
-        for i, basis in enumerate(bases):
-            S = np.std(basis, axis=1)
-            S[S == 0] = 0
-            basis = basis / S[:, np.newaxis]
-            bases[i] = basis
-
-    feature_union = []
-    for i, basis in enumerate(bases):
-        projection_pipeline = Pipeline([('projector',
-                                         Projector(basis, n_jobs=1)),
-                                        ('standard_scaler',
-                                         StandardScaler(
-                                             with_std=standardize))],
-                                       memory=memory)
-        feature_union.append(('scaled_projector_%i' % i, projection_pipeline))
-    if identity:
-        feature_union.append(('scaled_identity',
-                              StandardScaler(with_std=standardize)))
-
-    # Weighting
-    transformer_weights = {}
-    sizes = [basis.shape[0] for basis in bases]
-    if identity:
-        n_features = bases[0].shape[1]
-        sizes += n_features
-    sizes = np.array(sizes)
-    if scale_importance is None:
-        scales = np.ones(len(sizes))
-    elif scale_importance == 'sqrt':
-        scales = np.sqrt(sizes)
-    elif scale_importance == 'linear':
-        scales = sizes
-    else:
-        raise ValueError
-    for i in range(len(bases)):
-        transformer_weights['scaled_projector_%i' % i] = 1. / scales[i]
-    if identity:
-        transformer_weights['scaled_identity'] = 1. / scales[-1]
-
-    concatenated_projector = FeatureUnion(feature_union,
-                                          transformer_weights=
-                                          transformer_weights, n_jobs=n_jobs)
-
-    if handle_indices:
-        projector = Pipeline([('label_dropper', LabelDropper()),
-                              ('concatenated_projector',
-                               concatenated_projector)])
-        transformer = FeatureUnion([('projector', projector),
-                                    ('label_getter', LabelGetter())])
-    else:
-        return concatenated_projector
-    return transformer
 
 
 class FactoredLogistic(BaseEstimator, LinearClassifierMixin):

@@ -15,7 +15,7 @@ from examples.contrast.reduce_contrast import reduce_contrast
 
 def launch_dataset(dataset):
     # run = unmask_contrast._create_run(config_updates=dict(dataset=dataset))
-    run()
+    # run()
     run = reduce_contrast._create_run(
         config_updates=dict(dataset=dataset,
                             n_jobs=3,
@@ -26,4 +26,4 @@ def launch_dataset(dataset):
     run()
 
 Parallel(n_jobs=4)(delayed(launch_dataset)(dataset) for dataset in
-                   ['la5c', 'archi', 'brainomics'])
+                   ['hcp', 'la5c', 'archi', 'brainomics'])

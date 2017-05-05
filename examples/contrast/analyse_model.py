@@ -8,20 +8,21 @@ from jinja2 import select_autoescape, PackageLoader, Environment
 from nilearn.image import index_img
 from nilearn.input_data import MultiNiftiMasker
 from nilearn.plotting import plot_stat_map
-from numpy.linalg import lstsq, pinv
+from numpy.linalg import lstsq, svd
 from sklearn.externals.joblib import Memory, load, Parallel, delayed
 from wordcloud import WordCloud
 
 from modl.datasets import get_data_dirs
-from modl.hierarchical import HierarchicalLabelMasking, PartialSoftmax
+from modl.hierarchical import HierarchicalLabelMasking, PartialSoftmax, \
+    make_projection_matrix
 from modl.input_data.fmri.unmask import retrieve_components
 from modl.utils.system import get_cache_dirs
 
 
-def plot_classification_vector(classification_vectors_nii, labels_clean,
+def plot_classification_vector(classification_vectors_nii, label_index,
                                assets_dir, depth, i, overwrite=False):
     src = 'classification_depth_%i_%i.png' % (depth, i)
-    label = labels_clean[i]
+    label = 'd: %s - t: %s - c: %s' % label_index.values[i]
     target = join(assets_dir, src)
     if overwrite or not os.path.exists(target):
         img = index_img(classification_vectors_nii, i)
@@ -36,12 +37,28 @@ def plot_classification_vector(classification_vectors_nii, labels_clean,
     return {'src': src, 'label': label}
 
 
-def plot_latent_vector(latent_imgs_nii, labels_clean, freqs, assets_dir, i,
+def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
+                       negative=False,
                        overwrite=False):
     img = index_img(latent_imgs_nii, i)
+    freqs = freqs[i]
+    freqs = freqs.sort_values(ascending=False)
+    lim = np.where(freqs < 1e-2)[0]
+    if len(lim) == 0:
+        lim = - 1
+    else:
+        lim = lim[0]
+    lim = 10
+    freqs = freqs.iloc[:lim]
+    print(i, freqs.iloc[0])
     vmax = np.max(img.get_data())
-    freq_dict = {label: freq for label, freq in zip(labels_clean, freqs[i])}
-    src = 'latent_%i.png' % i
+    label_index = freqs.index
+    tasks = label_index.get_level_values('task')
+    conditions = label_index.get_level_values('condition')
+    labels = ['-'.join([task, condition])
+              for task, condition in zip(tasks, conditions)]
+    freq_dict = {label: freq for label, freq in zip(labels, freqs.values)}
+    src = 'latent_%i_%s.png' % (i, negative)
     title = 'Latent component %i' % i
     target = join(assets_dir, src)
     if overwrite or not os.path.exists(target):
@@ -54,7 +71,7 @@ def plot_latent_vector(latent_imgs_nii, labels_clean, freqs, assets_dir, i,
         height *= fig.dpi
         width = int(width)
         height = int(height)
-        wc = WordCloud(width=width, height=height, relative_scaling=1,
+        wc = WordCloud(width=width, height=height, relative_scaling=.5,
                        background_color='white')
         wc.generate_from_frequencies(freq_dict)
         axes[1].imshow(wc)
@@ -84,8 +101,8 @@ def run(overwrite=False):
     if not os.path.exists(assets_dir):
         os.makedirs(assets_dir)
 
-    n_components = 10
-    n_vectors = 3
+    n_components = 50
+    n_vectors = 97
 
     # HTML output
     env = Environment(loader=PackageLoader('modl', 'templates'),
@@ -117,85 +134,124 @@ def run(overwrite=False):
     # Shape (336, 50)
 
     weight_supervised = {}
+    bias_supervised = {}
     for depth in [1, 2]:
-        weight_supervised[depth], _ = model.get_layer(
+        weight_supervised[depth], bias_supervised[depth] = model.get_layer(
             'supervised_depth_%i' % depth).get_weights()  # W_s
     # Shape (50, 97)
 
     # Latent factors
-    bases = memory.cache(retrieve_components)(dictionary_penalty, masker,
-                                              n_components_list)  # W_g
-    for i, basis in enumerate(bases):
-        S = np.std(basis, axis=1)
-        S[S == 0] = 0
-        basis = basis / S[:, np.newaxis]
-        bases[i] = basis
-    bases = np.concatenate(bases, axis=0).T
+    components = memory.cache(retrieve_components)(dictionary_penalty, masker,
+                                                   n_components_list)  # W_g
 
-    labels_clean = ['_'.join(label.split('_')[1:]) for label in labels]
+    # bases = np.load(join(analysis_dir, 'bases.npy'))
+    label_index = []
+    for label in labels:
+        split = label.split('_')
+        label_index.append((split[0], split[1], '_'.join(split[2:])))
+    label_index = pd.MultiIndex.from_tuples(
+        label_index, names=('dataset', 'task', 'condition'))
     # Shape (200000, 336)
 
     print('Forward analysis')
-    # Forward
-    # for depth in [1, 2]:
-    #     classification_vectors = bases.dot(
-    #         standard_scaler.inverse_transform(
-    #             weight_latent.dot(weight_supervised[depth]).T).T).T
-    #     np.save(join(analysis_dir, 'classification'),
-    #             classification_vectors)
-    #     np.save(join(analysis_dir, 'weight_supervised_depth_%i' % depth),
-    #             weight_supervised[depth])
-    #     classification_vectors_nii = masker.inverse_transform(
-    #         classification_vectors)
-    #     classification_vectors_nii.to_filename(
-    #         join(analysis_dir,
-    #              'classification_vectors_depth_%i.nii.gz' % depth))
-    #     # Display
-    #     print('Plotting')
-    #     this_classification_array = \
-    #         Parallel(n_jobs=2, verbose=10)(
-    #             delayed(plot_classification_vector)(
-    #                 classification_vectors_nii, labels_clean, assets_dir,
-    #                 depth, i, overwrite=overwrite)
-    #             for i in range(n_vectors))
-    #     classification_array.append(this_classification_array)
-    #
-    #     gram = classification_vectors.dot(classification_vectors.T)
-    #     np.save(join(analysis_dir, 'gram'), gram)
-    #     fig, ax = plt.subplots(1, 1)
-    #     cax = ax.imshow(gram)
-    #     fig.colorbar(cax)
-    #     gram_src = 'gram_depth_%i.png' % depth
-    #     gram = {'src': gram_src, 'title': 'Gram at depth %i' % depth}
-    #     gram_array.append(gram)
-    #     fig.savefig(join(assets_dir, gram_src))
-    #     plt.close(fig)
-    # classification_array = list(zip(*classification_array))
+    proj = memory.cache(make_projection_matrix)(components,
+                                                scale_bases=True,
+                                                inverse=True)
+    scaled_proj = proj / standard_scaler.scale_[np.newaxis, :]
+    latent_proj = scaled_proj.dot(weight_latent)
+    for depth in [1, 2]:
+        classification_vectors = latent_proj.dot(weight_supervised[depth]).T
+        classification_vectors = pd.DataFrame(data=classification_vectors,
+                                              index=label_index)
+        if depth == 1:
+            mean = classification_vectors.groupby(level='dataset').\
+                transform('mean')
+        else:
+            mean = classification_vectors.groupby(
+                level=['dataset', 'task']).transform('mean')
+        # We can translate classification vectors
+        classification_vectors -= mean
+        np.save(join(analysis_dir, 'classification'),
+                classification_vectors)
+        np.save(join(analysis_dir, 'weight_supervised_depth_%i' % depth),
+                weight_supervised[depth])
+        classification_vectors_nii = masker.inverse_transform(
+            classification_vectors)
+        classification_vectors_nii.to_filename(
+            join(analysis_dir,
+                 'classification_vectors_depth_%i.nii.gz' % depth))
+        # Display
+        print('Plotting')
+        this_classification_array = \
+            Parallel(n_jobs=2, verbose=10)(
+                delayed(plot_classification_vector)(
+                    classification_vectors_nii, label_index, assets_dir,
+                    depth, i, overwrite=overwrite)
+                for i in range(n_vectors))
+        classification_array.append(this_classification_array)
+
+        gram = classification_vectors.dot(classification_vectors.T)
+        np.save(join(analysis_dir, 'gram'), gram)
+        fig, ax = plt.subplots(1, 1)
+        cax = ax.imshow(gram)
+        fig.colorbar(cax)
+        gram_src = 'gram_depth_%i.png' % depth
+        gram = {'src': gram_src, 'title': 'Gram at depth %i' % depth}
+        gram_array.append(gram)
+        fig.savefig(join(assets_dir, gram_src))
+        plt.close(fig)
+    classification_array = list(zip(*classification_array))
 
     print('Backward analysis')
     # Backward
-    weight_latent, r = np.linalg.qr(weight_latent)
     weight_supervised = weight_supervised[1]
+    weight_latent, r = np.linalg.qr(weight_latent)
     weight_supervised = r.dot(weight_supervised)
 
-    latent_loadings = pinv(weight_latent.T)
-    latent_loadings = standard_scaler.transform(latent_loadings.T).T
-    latent_imgs = lstsq(bases.T, latent_loadings)[0].T
+    sample_weight = X.iloc[:, 0].groupby(level='dataset').transform('count')
+    sample_weight = 1 / sample_weight
+    sample_weight /= sample_weight.min()
+    sample_weight = sample_weight.values
+    X = X.values
 
-    freqs = weight_supervised
-    freqs = np.exp(freqs)
-    freqs /= np.sum(freqs, axis=1, keepdims=True)
+    X = standard_scaler.transform(X)
+    X = X.dot(weight_latent)
 
-    # Save
-    latent_imgs_nii = masker.inverse_transform(latent_imgs)
-    latent_imgs_nii.to_filename(join(analysis_dir, 'latent_imgs.nii.gz'))
+    mean = np.sum(X * sample_weight[:, np.newaxis], axis=0) / np.sum(sample_weight)
+    X -= mean[np.newaxis, :]
+    G = (X.T * sample_weight).dot(X) / (np.sum(sample_weight))
+    _, S, V = svd(G)
+    # V = S[:, np.newaxis] * V
+    # V_trans = V + mean[np.newaxis, :]
 
-    print('Plotting')
-    latent_array = Parallel(n_jobs=2, verbose=10)(
-        delayed(plot_latent_vector)(
-            latent_imgs_nii, labels_clean, freqs, assets_dir, i,
-            overwrite=overwrite)
-        for i in range(n_components))
+    latent_loadings = lstsq(weight_latent.T, V.T)[0].T
+    latent_loadings *= standard_scaler.scale_
+    bases = memory.cache(make_projection_matrix)(components, scale_bases=True,
+                                                 inverse=False)
+    latent_imgs = latent_loadings.dot(bases)
+    latent_array = {}
+    for negative in [False, True]:
+        if negative:
+            latent_imgs *= -1
+            V *= -1
+        freqs = V.dot(weight_supervised)
+        freqs -= np.max(freqs, axis=1, keepdims=True)
+        freqs = np.exp(freqs)
+        freqs /= np.sum(freqs, axis=1, keepdims=True)
+        freqs = pd.DataFrame(data=freqs.T, index=label_index)
+        # Save
+        latent_imgs_nii = masker.inverse_transform(latent_imgs)
+        latent_imgs_nii.to_filename(join(analysis_dir, 'latent_imgs_%s.nii.gz'
+                                         % negative))
+
+        print('Plotting')
+        latent_array[negative] = Parallel(n_jobs=2, verbose=10)(
+            delayed(plot_latent_vector)(
+                latent_imgs_nii, freqs, assets_dir, i,
+                negative=negative,
+                overwrite=overwrite)
+            for i in range(n_components))
+    latent_array = list(zip(*[latent_array[True], latent_array[False]]))
 
     html_file = template.render(classification_array=classification_array,
                                 gram_array=gram_array,
@@ -205,4 +261,4 @@ def run(overwrite=False):
 
 
 if __name__ == '__main__':
-    run(overwrite=False)
+    run(overwrite=True)

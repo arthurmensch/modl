@@ -1,12 +1,11 @@
 import numpy as np
 import tensorflow as tf
 from keras.backend import set_session
-from keras.constraints import non_neg, unit_norm
 from keras.engine import Layer, Model, Input
-from keras.layers import Dense, Dropout, Lambda
+from keras.layers import Dense, Dropout
 from keras.regularizers import l2
 import keras.backend as K
-from sklearn.utils import check_array
+from scipy.linalg import pinv
 from tensorflow.python import debug as tf_debug
 from keras.initializers import Orthogonal
 MIN_FLOAT32 = np.finfo(np.float32).min
@@ -21,14 +20,12 @@ class PartialSoftmax(Layer):
 
     def call(self, inputs, **kwargs):
         logits, mask = inputs
-        # logits_min = K.min(logits)
-        # Faster ! !
+        # Put logits to -inf for constraining probability to some support
         logits_min = tf.ones_like(logits) * MIN_FLOAT32
         logits = tf.where(mask, logits, logits_min)
         logits_max = K.max(logits, axis=1, keepdims=True)
         logits -= logits_max
         exp_logits = tf.exp(logits)
-        # exp_logits = tf.where(mask, tf.exp(logits), tf.zeros(tf.shape(logits)))
         sum_exp_logits = K.sum(exp_logits, axis=1, keepdims=True)
         return exp_logits / sum_exp_logits
 
@@ -162,3 +159,24 @@ def init_tensorflow(n_jobs=1, debug=False):
         sess = tf_debug.LocalCLIDebugWrapperSession(sess)
         sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
     set_session(sess)
+
+
+def make_projection_matrix(bases, scale_bases=True, inverse=True):
+    if not isinstance(bases, list):
+        bases = [bases]
+    res = []
+    for i, basis in enumerate(bases):
+        if scale_bases:
+            S = np.std(basis, axis=1)
+            S[S == 0] = 1
+            basis = basis / S[:, np.newaxis]
+            if inverse:
+                res.append(pinv(basis))
+            else:
+                res.append(basis)
+    if inverse:
+        res = np.concatenate(res, axis=1)
+    else:
+        res = np.concatenate(res, axis=0)
+
+    return res

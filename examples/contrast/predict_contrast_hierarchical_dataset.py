@@ -27,15 +27,14 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 36
-    dropout_latent_list = [0., 0.5]
-    dropout_input_list = [0., 0.25]
-    latent_dim_list = [25, 50, 100, 200]
-    shared_supervised_list = [False, True]
-    task_prob_list = [0., 0.5, 1]
+    dropout_latent_list = [0.5]
+    latent_dim_list = [50]
+    shared_supervised_list = [False]
+    task_prob_list = [0.5]
     alpha_list = [1e-4]
     n_seeds = 10
     verbose = 0
-    seed = 10
+    seed = 2
 
 
 def single_run(config_updates, _id, master_id):
@@ -47,7 +46,7 @@ def single_run(config_updates, _id, master_id):
     def config():
         n_jobs = 1
         epochs = 50
-        verbose = 0
+        dropout_input = 0.25
 
     run = predict_contrast_hierarchical._create_run(config_updates=config_updates)
     run._id = _id
@@ -60,7 +59,6 @@ def single_run(config_updates, _id, master_id):
 
 @multi_predict_task.automain
 def run(dropout_latent_list,
-        dropout_input_list,
         latent_dim_list,
         shared_supervised_list,
         task_prob_list,
@@ -72,8 +70,7 @@ def run(dropout_latent_list,
          'shared_supervised': shared_supervised_list,
          'task_prob': task_prob_list,
          'dropout_latent': dropout_latent_list,
-         'dropout_input': dropout_input_list,
-        'latent_dim': latent_dim_list,
+         'latent_dim': latent_dim_list,
          # Hack to iterate over seed first'
          'aseed': seed_list})
 

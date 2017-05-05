@@ -52,15 +52,15 @@ def config():
     alpha = 0.00001
     latent_dim = 50
     activation = 'linear'
-    dropout_input = 0.25
+    dropout_input = 0.0
     dropout_latent = 0.5
     batch_size = 100
     epochs = 50
-    task_prob = 0.5
+    task_prob = .5
     n_jobs = 4
     verbose = 2
     seed = 10
-    shared_supervised = False
+    shared_supervised = True
     steps_per_epoch = None
     _seed = 0
 
@@ -101,7 +101,7 @@ def train_model(alpha,
                 n_jobs,
                 _run,
                 _seed):
-    artifact_dir = join(artifact_dir, 'good')
+    artifact_dir = join(artifact_dir, str(_run._id))
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
@@ -113,7 +113,9 @@ def train_model(alpha,
     for dataset in datasets:
         if dataset_weight[dataset] != 0:
             this_reduced_dir = join(reduced_dir, dataset)
-            this_X = load(join(this_reduced_dir, 'Xt.pkl'), mmap_mode='r')
+            this_X = load(join(this_reduced_dir, 'Xt.pkl'))
+            if dataset == 'archi':
+                this_X = this_X.drop('effects_of_interest', level='contrast',)
             subjects = this_X.index.get_level_values('subject'). \
                 unique().values.tolist()
             subjects = subjects[:n_subjects[dataset]]
@@ -130,9 +132,6 @@ def train_model(alpha,
                                      n_splits=1,
                                      random_state=0)
     train, test = next(cv.split(X))
-
-    _run.info['train_fold'] = train.tolist()
-    _run.info['test_fold'] = test.tolist()
 
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
@@ -243,6 +242,7 @@ def train_model(alpha,
                         validation_data=([x_test, y_test],
                                          [y_oh_test] * 3),
                         steps_per_epoch=steps_per_epoch,
+                        verbose=verbose,
                         epochs=epochs)
 
     y_pred_oh = model.predict(x=[X.values, y.values])
@@ -273,7 +273,8 @@ def train_model(alpha,
         _run.info['score'][depth_name[depth]] = res
         print('Prediction at depth %s' % depth_name[depth], res)
         _run.add_artifact(join(artifact_dir,
-                               'prediction_depth_%i.csv'), 'prediction')
+                               'prediction_depth_%i.csv' % depth),
+                          'prediction')
     labels = le.inverse_transform(lbin.inverse_transform(
         np.eye(len(lbin.classes_))))
     dump(labels, join(artifact_dir, 'labels.pkl'))

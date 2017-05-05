@@ -1,6 +1,7 @@
 import json
 import os
 import traceback
+from itertools import repeat
 from os.path import join
 
 import numpy as np
@@ -53,8 +54,8 @@ class MultiRawMasker(MultiNiftiMasker):
                 data = np.load(imgs, mmap_mode=mmap_mode)
             else:
                 return MultiNiftiMasker.transform_single_imgs(self, imgs,
-                                                       confounds=confounds,
-                                                       copy=copy)
+                                                              confounds=confounds,
+                                                              copy=copy)
         elif isinstance(imgs, np.ndarray):
             data = imgs
         else:
@@ -116,7 +117,7 @@ class MultiRawMasker(MultiNiftiMasker):
             return MultiNiftiMasker.transform_imgs(self, imgs_list,
                                                    confounds=confounds,
                                                    copy=copy,
-                                                   n_jobs=n_jobs,)
+                                                   n_jobs=n_jobs, )
 
     def transform(self, imgs, confounds=None, mmap_mode=None):
         """ Apply mask, spatial and temporal preprocessing
@@ -178,6 +179,12 @@ def create_raw_rest_data(imgs_list,
     else:
         masker.fit()
 
+    if 'confounds' in imgs_list.columns:
+        confounds = imgs_list['confounds']
+        imgs_list.rename(columns={'confounds': 'orig_confounds'})
+    else:
+        confounds = repeat(None)
+
     if not os.path.exists(raw_dir):
         os.makedirs(raw_dir)
     filenames = Parallel(n_jobs=n_jobs)(delayed(_unmask_single_img)(
@@ -185,9 +192,8 @@ def create_raw_rest_data(imgs_list,
         overwrite=overwrite)
                                         for imgs, confounds in
                                         zip(imgs_list['filename'],
-                                            imgs_list['confounds']))
-    imgs_list = imgs_list.rename(columns={'filename': 'orig_filename',
-                              'confounds': 'orig_confounds'})
+                                            confounds))
+    imgs_list = imgs_list.rename(columns={'filename': 'orig_filename'})
     imgs_list = imgs_list.assign(filename=filenames)
     imgs_list = imgs_list.assign(confounds=None)
     if not mock:

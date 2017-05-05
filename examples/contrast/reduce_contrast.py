@@ -4,6 +4,7 @@ from os.path import join
 import pandas as pd
 
 from modl.classification import make_loadings_extractor
+from modl.hierarchical import make_projection_matrix
 from modl.datasets import get_data_dirs
 from modl.input_data.fmri.unmask import build_design, retrieve_components, \
     get_raw_contrast_data
@@ -18,9 +19,9 @@ reduce_contrast = Experiment('reduce_contrast')
 
 
 
-observer = MongoObserver.create(db_name='amensch',
-                                collection='reduce_contrast')
-reduce_contrast.observers.append(observer)
+# observer = MongoObserver.create(db_name='amensch',
+#                                collection='reduce_contrast')
+# reduce_contrast.observers.append(observer)
 
 
 @reduce_contrast.config
@@ -29,10 +30,6 @@ def config():
     n_components_list = [16, 64, 256]
 
     dataset = 'human_voice'
-
-    standardize = False
-    scale_importance = None
-    identity = False
 
     n_jobs = 24
     verbose = 2
@@ -44,12 +41,8 @@ def config():
 @reduce_contrast.automain
 def run(dictionary_penalty,
         n_components_list,
-        n_jobs,
-        identity,
-        scale_importance,
         output_dir,
         dataset_dir,
-        standardize,
         dataset):
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
     print('Fetch data')
@@ -60,14 +53,8 @@ def run(dictionary_penalty,
                                                    n_components_list)
 
     print('Transform and fit data')
-    pipeline = make_loadings_extractor(components,
-                                       standardize=standardize,
-                                       scale_importance=scale_importance,
-                                       identity=identity,
-                                       scale_bases=True,
-                                       n_jobs=n_jobs,
-                                       memory=memory)
-    Xt = pipeline.fit_transform(X)
+    proj = memory.cache(make_projection_matrix)(components, scale_bases=True)
+    Xt = X.dot(proj)
     Xt = pd.DataFrame(data=Xt, index=X.index)
     this_output_dir = join(output_dir, dataset)
     if not os.path.exists(this_output_dir):

@@ -62,7 +62,7 @@ def _test(source):
 def run(source, smoothing_fwhm, n_jobs,
         _run):
     if source == 'hcp':
-        dataset = fetch_hcp()
+        dataset = fetch_hcp(n_subject=20)
     elif source == 'adhd':
         dataset = fetch_adhd()
     else:
