@@ -40,7 +40,7 @@ def config():
                        'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['hcp', 'archi']
+    datasets = ['la5c', 'hcp']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
@@ -50,17 +50,17 @@ def config():
     train_size = None
     validation = True
     alpha = 0.00001
-    latent_dim = 50
+    latent_dim = 25
     activation = 'linear'
     dropout_input = 0.25
     dropout_latent = 0.5
     batch_size = 100
-    epochs = 15
-    task_prob = 0
+    epochs = 50
+    task_prob = 0.5
     n_jobs = 4
     verbose = 2
     seed = 10
-    shared_supervised = True
+    shared_supervised = False
     steps_per_epoch = None
     _seed = 0
 
@@ -107,7 +107,7 @@ def train_model(alpha,
 
     if verbose:
         print('Fetch data')
-    depth_weight = [1., 0., 0.]
+    depth_weight = [0., 1. - task_prob, task_prob]
     X = []
     keys = []
     for dataset in datasets:
@@ -172,7 +172,7 @@ def train_model(alpha,
                            names=['type'], axis=1)
     train_data.sort_index(inplace=True)
 
-    mix_batch = False
+    mix_batch = True
 
 
     def train_generator():
@@ -236,15 +236,21 @@ def train_model(alpha,
     init_tensorflow(n_jobs=n_jobs, debug=False)
 
     adversaries = make_adversaries(label_pool)
+
+    # n_labels = label_pool.shape[0]
+    # permutation = check_random_state(0).permutation(n_labels)
+    # adversaries[2] = adversaries[1][permutation][:, permutation]
+
     np.save(join(artifact_dir, 'adversaries'), adversaries)
     np.save(join(artifact_dir, 'classes'), lbin.classes_)
+
     model = make_model(X.shape[1],
                        alpha=alpha,
                        latent_dim=latent_dim,
                        activation=activation,
                        dropout_input=dropout_input,
                        dropout_latent=dropout_latent,
-                       label_pool=label_pool,
+                       adversaries=adversaries,
                        seed=_seed,
                        shared_supervised=shared_supervised)
     if not shared_supervised:

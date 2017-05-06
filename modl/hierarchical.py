@@ -94,10 +94,9 @@ def make_model(n_features, alpha,
                latent_dim, dropout_input,
                dropout_latent,
                activation,
-               seed, label_pool,
+               seed, adversaries,
                shared_supervised):
-    n_labels, n_depths = label_pool.shape
-    adversaries = make_adversaries(label_pool)
+    n_depths, n_labels, _ = adversaries.shape
 
     data = Input(shape=(n_features,), name='data', dtype='float32')
     labels = Input((1,), name='labels', dtype='int32')
