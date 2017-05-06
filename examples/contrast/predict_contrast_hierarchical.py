@@ -13,7 +13,7 @@ from sklearn.preprocessing import LabelEncoder, LabelBinarizer, StandardScaler
 from sklearn.utils import gen_batches, check_random_state
 
 from modl.datasets import get_data_dirs
-from modl.hierarchical import make_model, init_tensorflow
+from modl.hierarchical import make_model, init_tensorflow, make_aversaries
 from modl.model_selection import StratifiedGroupShuffleSplit
 
 idx = pd.IndexSlice
@@ -217,6 +217,10 @@ def train_model(alpha,
 
     init_tensorflow(n_jobs=n_jobs, debug=False)
 
+    adversaries = make_aversaries(label_pool)
+    np.save(join(artifact_dir, 'adversaries_'), adversaries)
+    classes = le.inverse_transform(lbin.classes_)
+    np.save(join(artifact_dir, 'classes_'), classes)
     model = make_model(X.shape[1],
                        alpha=alpha,
                        latent_dim=latent_dim,
