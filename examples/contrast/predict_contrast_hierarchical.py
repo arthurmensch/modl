@@ -40,7 +40,7 @@ def config():
                        'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['hcp', 'archi', 'brainomics', 'la5c']
+    datasets = ['archi', 'brainomics', 'hcp', 'la5c']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
@@ -52,15 +52,15 @@ def config():
     alpha = 0.00001
     latent_dim = 50
     activation = 'linear'
-    dropout_input = 0.0
+    dropout_input = 0.25
     dropout_latent = 0.5
     batch_size = 100
     epochs = 50
-    task_prob = .5
+    task_prob = 0
     n_jobs = 4
-    verbose = 2
+    verbose = 1
     seed = 10
-    shared_supervised = True
+    shared_supervised = False
     steps_per_epoch = None
     _seed = 0
 
@@ -114,8 +114,8 @@ def train_model(alpha,
         if dataset_weight[dataset] != 0:
             this_reduced_dir = join(reduced_dir, dataset)
             this_X = load(join(this_reduced_dir, 'Xt.pkl'))
-            if dataset == 'archi':
-                this_X = this_X.drop('effects_of_interest', level='contrast',)
+            if dataset in ['archi', 'brainomics']:
+                this_X = this_X.drop(['effects_of_interest'], level='contrast',)
             subjects = this_X.index.get_level_values('subject'). \
                 unique().values.tolist()
             subjects = subjects[:n_subjects[dataset]]
@@ -135,31 +135,27 @@ def train_model(alpha,
 
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
-    X = X.reset_index(drop=False)
-    # Unique labels
-    X['task'] = X.apply(lambda row: '_'.join([row['dataset'],
-                                              row['task']]), axis=1)
-    X['contrast'] = X.apply(lambda row: '_'.join([row['task'],
-                                                  row['contrast']]), axis=1)
-    y = np.empty((X.shape[0], 3), dtype=np.uint8)
-    le_dict = {}
-    for i, label in enumerate(['dataset', 'task', 'contrast']):
-        le = LabelEncoder()
-        y[:, i] = le.fit_transform(X[label].values)
-        le_dict[label] = le
+    y = X.index
+    y = np.concatenate([y.get_level_values(level)[:, np.newaxis]
+                        for level in ['dataset', 'task', 'contrast']],
+                       axis=1)
 
-    X = X.set_index(['dataset', 'subject', 'task', 'contrast'])
-    dump(X, join(artifact_dir, 'X.pkl'))
-
+    # le = LabelEncoder()
+    # y = le.fit_transform(y.flat).reshape(y.shape)
     y = pd.DataFrame(data=y, columns=['dataset', 'task', 'contrast'],
                      index=X.index)
 
-    label_pool = np.vstack({tuple(row) for index, row in y.iterrows()})
+    dump(X, join(artifact_dir, 'X.pkl'))
+
+    y_tuple = ['__'.join(row) for index, row in y.iterrows()]
     lbin = LabelBinarizer()
-    y_oh = lbin.fit_transform(y['contrast'])
-    if y_oh.shape[1] == 1:
-        y_oh = np.concatenate([y_oh, y_oh == 0], axis=1)
+    y_oh = lbin.fit_transform(y_tuple)
+    label_pool = lbin.classes_
+    label_pool = [np.array(e.split('__')) for e in label_pool]
+    label_pool = np.vstack(label_pool)
+    y = np.argmax(y_oh, axis=1)
     y_oh = pd.DataFrame(index=X.index, data=y_oh)
+    y = pd.DataFrame(index=X.index, data=y)
 
     X_train = X.iloc[train]
 
@@ -181,36 +177,63 @@ def train_model(alpha,
                            names=['type'], axis=1)
     train_data.sort_index(inplace=True)
 
+    mix_batch = False
+
+
     def train_generator():
         batches_generator = {}
-        indices = {}
         random_state = check_random_state(_seed)
         grouped_data = train_data.groupby(level='dataset')
         grouped_data = {dataset: sub_data for dataset, sub_data in
                         grouped_data}
+        n_dataset = len(grouped_data)
+        x_batch = np.empty((batch_size, train_data['X_train'].shape[1]))
+        y_batch = np.empty((batch_size, train_data['y_train'].shape[1]))
+        y_oh_batch = np.empty((batch_size, train_data['y_oh_train'].shape[1]))
+        sample_weight_batch = np.empty(batch_size)
         for dataset, sub_data in grouped_data.items():
             len_dataset = sub_data.shape[0]
-            batches_generator[dataset] = gen_batches(len_dataset, batch_size)
+            if mix_batch:
+                batches_generator[dataset] = gen_batches(len_dataset,
+                                                         batch_size // n_dataset)
+            else:
+                batches_generator[dataset] = gen_batches(len_dataset,
+                                                         batch_size)
         while True:
+            start = 0
             for dataset, sub_data in grouped_data.items():
+                if not mix_batch:
+                    start = 0
                 len_dataset = sub_data.shape[0]
                 try:
                     batch = next(batches_generator[dataset])
                 except StopIteration:
-                    batches_generator[dataset] = gen_batches(len_dataset,
-                                                             batch_size)
+                    if mix_batch:
+                        batches_generator[dataset] = gen_batches(len_dataset,
+                                                                 batch_size // n_dataset)
+                    else:
+                        batches_generator[dataset] = gen_batches(len_dataset,
+                                                                 batch_size)
                     permutation = random_state.permutation(len_dataset)
                     sub_data = sub_data.iloc[permutation]
                     grouped_data[dataset] = sub_data
                     batch = next(batches_generator[dataset])
+                len_batch = batch.stop - batch.start
+                stop = start + len_batch
                 batch_data = sub_data.iloc[batch]
-                x_batch = batch_data['X_train'].values
-                y_batch = batch_data['y_train'].values
-                y_oh_batch = batch_data['y_oh_train'].values
-                sample_weight_batch = np.ones(x_batch.shape[0]) * \
-                                      dataset_weight[dataset]
-                yield ([x_batch, y_batch], [y_oh_batch for _ in range(3)],
-                       [sample_weight_batch for _ in range(3)])
+                x_batch[start:stop] = batch_data['X_train'].values
+                y_batch[start:stop] = batch_data['y_train'].values
+                y_oh_batch[start:stop] = batch_data['y_oh_train'].values
+                sample_weight_batch[start:stop] = dataset_weight[dataset]
+                start = stop
+                if not mix_batch:
+                    yield ([x_batch[:stop], y_batch[:stop]],
+                           [y_oh_batch[:stop] for _ in range(3)],
+                           [sample_weight_batch[:stop] for _ in range(3)])
+            if mix_batch:
+                yield ([x_batch[:stop], y_batch[:stop]],
+                       [y_oh_batch[:stop] for _ in range(3)],
+                       [sample_weight_batch[:stop] for _ in range(3)])
 
     if steps_per_epoch is None:
         steps_per_epoch = X_train.shape[0] // batch_size
@@ -255,14 +278,9 @@ def train_model(alpha,
                                          data=this_y_pred_oh)
         dump(this_y_pred_oh_df, join(artifact_dir,
                                      'y_pred_depth_%i.pkl' % depth))
-        if this_y_pred_oh.shape[1] == 2:
-            this_y_pred_oh = this_y_pred_oh[:, 0]
-        contrasts = y['contrast'].values
-        y_pred = lbin.inverse_transform(this_y_pred_oh)
-        true_contrast = le.inverse_transform(contrasts)
-        predicted_contrast = le.inverse_transform(y_pred)
-        prediction = pd.DataFrame({'true_label': true_contrast,
-                                   'predicted_label': predicted_contrast},
+        y_pred = lbin.inverse_transform(this_y_pred_oh)  # "0_0_0"
+        prediction = pd.DataFrame({'true_label': y_tuple,
+                                   'predicted_label': y_pred},
                                   index=X.index)
         prediction = pd.concat([prediction.iloc[train],
                                 prediction.iloc[test]],
@@ -275,9 +293,6 @@ def train_model(alpha,
         _run.add_artifact(join(artifact_dir,
                                'prediction_depth_%i.csv' % depth),
                           'prediction')
-    labels = le.inverse_transform(lbin.inverse_transform(
-        np.eye(len(lbin.classes_))))
-    dump(labels, join(artifact_dir, 'labels.pkl'))
 
     dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
     model.save(join(artifact_dir, 'model.keras'))

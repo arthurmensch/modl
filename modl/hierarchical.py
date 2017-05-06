@@ -40,12 +40,13 @@ class PartialSoftmax(Layer):
 class HierarchicalLabelMasking(Layer):
     def __init__(self,
                  n_labels,
+                 n_depths,
                  **kwargs):
         self.n_labels = n_labels
+        self.n_depths = n_depths
         super(HierarchicalLabelMasking, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        _, self.n_depths = input_shape
         self.adversaries = tf.Variable(
             tf.constant_initializer(True, dtype=tf.bool)((self.n_depths,
                                                           self.n_labels,
@@ -57,13 +58,12 @@ class HierarchicalLabelMasking(Layer):
 
     def call(self, labels, **kwargs):
         # Depths is simply ignored during training time
-        label_leaf = labels[:, -1]
-        n_samples = tf.shape(label_leaf)[0]
+        n_samples = tf.shape(labels)[0]
         masks = []
         for depth in range(self.n_depths):
             indices = tf.concat([(tf.ones((n_samples, 1),
                                           dtype=tf.int32) * depth),
-                                 label_leaf[:, np.newaxis]], axis=1)
+                                 labels], axis=1)
             masks.append(tf.gather_nd(self.adversaries, indices=indices))
         return masks
 
@@ -81,12 +81,12 @@ class HierarchicalLabelMasking(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-def make_aversaries(label_pool):
+def make_adversaries(label_pool):
     n_labels, max_depth = label_pool.shape
     adversaries = np.ones((max_depth, n_labels, n_labels), dtype=np.bool)
     for depth in range(1, max_depth):
-        adversaries[depth] = (label_pool[:, [depth - 1]]
-                              == label_pool[:, depth - 1])
+        for i in range(0, depth):
+            adversaries *= label_pool[:, [i]] == label_pool[:, i]
     return adversaries
 
 
@@ -97,10 +97,10 @@ def make_model(n_features, alpha,
                seed, label_pool,
                shared_supervised):
     n_labels, n_depths = label_pool.shape
-    adversaries = make_aversaries(label_pool)
+    adversaries = make_adversaries(label_pool)
 
     data = Input(shape=(n_features,), name='data', dtype='float32')
-    labels = Input((3,), name='labels', dtype='int32')
+    labels = Input((1,), name='labels', dtype='int32')
     if dropout_input > 0:
         dropout_data = Dropout(rate=dropout_input, seed=seed)(data)
     else:
@@ -108,7 +108,8 @@ def make_model(n_features, alpha,
     if latent_dim is not None:
         latent = Dense(latent_dim, activation=activation,
                        use_bias=False, name='latent',
-                       kernel_regularizer=l2(alpha)
+                       kernel_regularizer=l2(alpha),
+                       kernel_initializer=Orthogonal(seed=seed)
                        )(dropout_data)
         if dropout_latent > 0:
             latent_dropout = Dropout(rate=dropout_latent, name='dropout',
@@ -117,7 +118,7 @@ def make_model(n_features, alpha,
             latent_dropout = latent
     else:
         latent_dropout = dropout_data
-    masks = HierarchicalLabelMasking(n_labels,
+    masks = HierarchicalLabelMasking(n_labels, n_depths,
                                      weights=[adversaries],
                                      name='label_masking')(labels)
     outputs = []
@@ -125,9 +126,6 @@ def make_model(n_features, alpha,
         logits = Dense(n_labels, activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
-                       kernel_initializer=Orthogonal(seed=seed),
-                       # kernel_constraint=non_neg(),
-                       # bias_constraint=non_neg(),
                        name='supervised')(latent_dropout)
         for i, mask in enumerate(masks):
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
