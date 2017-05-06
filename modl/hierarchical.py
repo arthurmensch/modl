@@ -86,7 +86,7 @@ def make_adversaries(label_pool):
     adversaries = np.ones((max_depth, n_labels, n_labels), dtype=np.bool)
     for depth in range(1, max_depth):
         for i in range(0, depth):
-            adversaries *= label_pool[:, [i]] == label_pool[:, i]
+            adversaries[depth] *= label_pool[:, [i]] == label_pool[:, i]
     return adversaries
 
 

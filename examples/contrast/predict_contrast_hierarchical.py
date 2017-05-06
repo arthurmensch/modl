@@ -13,7 +13,7 @@ from sklearn.preprocessing import LabelEncoder, LabelBinarizer, StandardScaler
 from sklearn.utils import gen_batches, check_random_state
 
 from modl.datasets import get_data_dirs
-from modl.hierarchical import make_model, init_tensorflow
+from modl.hierarchical import make_model, init_tensorflow, make_adversaries
 from modl.model_selection import StratifiedGroupShuffleSplit
 
 idx = pd.IndexSlice
@@ -40,7 +40,7 @@ def config():
                        'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['archi', 'brainomics', 'hcp', 'la5c']
+    datasets = ['hcp', 'archi']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
@@ -55,12 +55,12 @@ def config():
     dropout_input = 0.25
     dropout_latent = 0.5
     batch_size = 100
-    epochs = 50
+    epochs = 15
     task_prob = 0
     n_jobs = 4
     verbose = 2
     seed = 10
-    shared_supervised = False
+    shared_supervised = True
     steps_per_epoch = None
     _seed = 0
 
@@ -107,7 +107,7 @@ def train_model(alpha,
 
     if verbose:
         print('Fetch data')
-    depth_weight = [0., 1 - task_prob, task_prob]
+    depth_weight = [1., 0., 0.]
     X = []
     keys = []
     for dataset in datasets:
@@ -135,17 +135,14 @@ def train_model(alpha,
 
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
-    y = X.index
-    y = np.concatenate([y.get_level_values(level)[:, np.newaxis]
+    dump(X, join(artifact_dir, 'X.pkl'))
+
+    y = np.concatenate([X.index.get_level_values(level)[:, np.newaxis]
                         for level in ['dataset', 'task', 'contrast']],
                        axis=1)
 
-    y = pd.DataFrame(data=y, columns=['dataset', 'task', 'contrast'],
-                     index=X.index)
 
-    dump(X, join(artifact_dir, 'X.pkl'))
-
-    y_tuple = ['__'.join(row) for index, row in y.iterrows()]
+    y_tuple = ['__'.join(row) for row in y]
     lbin = LabelBinarizer()
     y_oh = lbin.fit_transform(y_tuple)
     label_pool = lbin.classes_
@@ -175,7 +172,7 @@ def train_model(alpha,
                            names=['type'], axis=1)
     train_data.sort_index(inplace=True)
 
-    mix_batch = True
+    mix_batch = False
 
 
     def train_generator():
@@ -238,6 +235,9 @@ def train_model(alpha,
 
     init_tensorflow(n_jobs=n_jobs, debug=False)
 
+    adversaries = make_adversaries(label_pool)
+    np.save(join(artifact_dir, 'adversaries'), adversaries)
+    np.save(join(artifact_dir, 'classes'), lbin.classes_)
     model = make_model(X.shape[1],
                        alpha=alpha,
                        latent_dim=latent_dim,
@@ -270,7 +270,7 @@ def train_model(alpha,
     # Depth selection
     _run.info['score'] = {}
     depth_name = ['full', 'dataset', 'task']
-    for depth in [1, 2]:
+    for depth in [0, 1, 2]:
         this_y_pred_oh = y_pred_oh[depth]
         this_y_pred_oh_df = pd.DataFrame(index=X.index,
                                          data=this_y_pred_oh)
