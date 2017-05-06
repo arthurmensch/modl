@@ -58,7 +58,7 @@ def config():
     epochs = 50
     task_prob = 0
     n_jobs = 4
-    verbose = 1
+    verbose = 2
     seed = 10
     shared_supervised = False
     steps_per_epoch = None
@@ -140,8 +140,6 @@ def train_model(alpha,
                         for level in ['dataset', 'task', 'contrast']],
                        axis=1)
 
-    # le = LabelEncoder()
-    # y = le.fit_transform(y.flat).reshape(y.shape)
     y = pd.DataFrame(data=y, columns=['dataset', 'task', 'contrast'],
                      index=X.index)
 
@@ -177,7 +175,7 @@ def train_model(alpha,
                            names=['type'], axis=1)
     train_data.sort_index(inplace=True)
 
-    mix_batch = False
+    mix_batch = True
 
 
     def train_generator():
