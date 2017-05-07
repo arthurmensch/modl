@@ -17,7 +17,7 @@ sys.path.append(path.dirname(path.dirname
 from examples.contrast.predict_contrast_hierarchical\
     import predict_contrast_hierarchical
 
-multi_predict_task = Experiment('predict_contrast_hierarchical_parameter_2',
+multi_predict_task = Experiment('predict_contrast_hierarchical_parameter_full',
                                 ingredients=[predict_contrast_hierarchical])
 collection = multi_predict_task.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
