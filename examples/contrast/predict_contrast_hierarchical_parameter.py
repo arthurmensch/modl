@@ -17,7 +17,7 @@ sys.path.append(path.dirname(path.dirname
 from examples.contrast.predict_contrast_hierarchical\
     import predict_contrast_hierarchical
 
-multi_predict_task = Experiment('predict_contrast_hierarchical_parameter',
+multi_predict_task = Experiment('predict_contrast_hierarchical_parameter_2',
                                 ingredients=[predict_contrast_hierarchical])
 collection = multi_predict_task.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
@@ -26,7 +26,7 @@ multi_predict_task.observers.append(observer)
 
 @multi_predict_task.config
 def config():
-    n_jobs = 36
+    n_jobs = 15
     dropout_latent_list = [0., 0.5, 0.75]
     dropout_input_list = [0., 0.25]
     latent_dim_list = [25, 50, 100, 200]
@@ -68,7 +68,7 @@ def run(dropout_latent_list,
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid(
-        {'datasets': [['hcp', 'archi']],
+        {'datasets': [['hcp', 'archi', 'la5c', 'brainomics']],
          'shared_supervised': shared_supervised_list,
          'task_prob': task_prob_list,
          'dropout_latent': dropout_latent_list,

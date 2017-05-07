@@ -85,7 +85,7 @@ def config():
                        'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['archi', 'hcp']
+    datasets = ['archi', 'hcp', 'brainomics', 'la5c']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
@@ -95,17 +95,17 @@ def config():
     train_size = None
     validation = True
     alpha = 0.0001
-    latent_dim = 100
+    latent_dim = 50
     activation = 'linear'
     dropout_input = 0.25
     dropout_latent = 0.5
     batch_size = 128
-    epochs = 60
+    epochs = 100
     task_prob = 0.5
     n_jobs = 2
     verbose = 2
     seed = 10
-    shared_supervised = True
+    shared_supervised = False
     steps_per_epoch = None
     _seed = 0
 
@@ -200,19 +200,19 @@ def train_model(alpha,
 
     X_train = X.iloc[train]
 
-    # std_dict = {}
-    # for dataset, this_X_train in X_train.groupby(level='dataset'):
-    #     standard_scaler = StandardScaler()
-    #     standard_scaler.fit(this_X_train)
-    #     std_dict[dataset] = standard_scaler
-    # for dataset, this_X in X.groupby(level='dataset'):
-    #     this_X_new = std_dict[dataset].transform(this_X)
-    #     X.loc[dataset] = this_X_new
-
-    standard_scaler = StandardScaler()
-    standard_scaler.fit(X_train)
-    X_new = standard_scaler.transform(X)
-    X = pd.DataFrame(X_new, index=X.index)
+    std_dict = {}
+    for dataset, this_X_train in X_train.groupby(level='dataset'):
+        standard_scaler = StandardScaler()
+        standard_scaler.fit(this_X_train)
+        std_dict[dataset] = standard_scaler
+    for dataset, this_X in X.groupby(level='dataset'):
+        this_X_new = std_dict[dataset].transform(this_X)
+        X.loc[dataset] = this_X_new
+    #
+    # standard_scaler = StandardScaler()
+    # standard_scaler.fit(X_train)
+    # X_new = standard_scaler.transform(X)
+    # X = pd.DataFrame(X_new, index=X.index)
 
     x_test = X.iloc[test].values
     y_test = y.iloc[test].values
@@ -266,6 +266,22 @@ def train_model(alpha,
                         steps_per_epoch=steps_per_epoch,
                         verbose=verbose,
                         epochs=epochs)
+
+    # model.get_layer('latent').trainable = False
+    # model.compile(loss=['categorical_crossentropy'] * 3,
+    #               optimizer='adam',
+    #               loss_weights=depth_weight,
+    #               metrics=['accuracy'])
+    #
+    # model.fit_generator(train_generator(train_data, batch_size,
+    #                                     dataset_weight, _seed),
+    #                     callbacks=callbacks,
+    #                     validation_data=([x_test, y_test],
+    #                                      [y_oh_test] * 3),
+    #                     steps_per_epoch=steps_per_epoch,
+    #                     verbose=verbose,
+    #                     epochs=epochs)
+
     #
     # model.fit([X_train.values, y_train.values],
     #           sample_weight=[np.ones(X_train.shape[0])] * 3,
