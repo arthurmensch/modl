@@ -8,6 +8,7 @@ import keras.backend as K
 from scipy.linalg import pinv
 from tensorflow.python import debug as tf_debug
 from keras.initializers import Orthogonal
+
 MIN_FLOAT32 = np.finfo(np.float32).min
 
 
@@ -111,12 +112,10 @@ def make_model(n_features, alpha,
                        kernel_initializer=Orthogonal(seed=seed)
                        )(dropout_data)
         if dropout_latent > 0:
-            latent_dropout = Dropout(rate=dropout_latent, name='dropout',
-                                     seed=seed)(latent)
-        else:
-            latent_dropout = latent
+            latent = Dropout(rate=dropout_latent, name='dropout',
+                             seed=seed)(latent)
     else:
-        latent_dropout = dropout_data
+        latent = dropout_data
     masks = HierarchicalLabelMasking(n_labels, n_depths,
                                      weights=[adversaries],
                                      name='label_masking')(labels)
@@ -125,7 +124,8 @@ def make_model(n_features, alpha,
         logits = Dense(n_labels, activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
-                       name='supervised')(latent_dropout)
+                       kernel_initializer=Orthogonal(seed=seed),
+                       name='supervised')(latent)
         for i, mask in enumerate(masks):
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)
@@ -137,7 +137,7 @@ def make_model(n_features, alpha,
                            kernel_regularizer=l2(alpha),
                            # kernel_constraint=non_neg(),
                            # bias_constraint=non_neg(),
-                           name='supervised_depth_%i' % i)(latent_dropout)
+                           name='supervised_depth_%i' % i)(latent)
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)
     model = Model(inputs=[data, labels], outputs=outputs)

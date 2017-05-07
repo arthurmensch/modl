@@ -2,6 +2,7 @@ import os
 from math import sqrt
 from os.path import join
 
+import itertools
 import numpy as np
 import pandas as pd
 from keras.callbacks import TensorBoard, Callback
@@ -24,13 +25,57 @@ collection = predict_contrast_hierarchical.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
 
 
+def simple_generator(train_data, batch_size):
+    X_train = train_data['X_train']
+    y_train = train_data['y_train']
+    y_oh_train = train_data['y_oh_train']
+    len_x = X_train.shape[0]
+    while True:
+        permutation = check_random_state(0).permutation(len_x)
+        X_train = X_train.iloc[permutation]
+        y_train = y_train.iloc[permutation]
+        y_oh_train = y_oh_train.iloc[permutation]
+        batches = gen_batches(len_x, batch_size)
+        for batch in batches:
+            yield [X_train.values[batch], y_train.values[batch]], [
+                y_oh_train.values[batch]] * 3
+
+
+def train_generator(train_data,
+                    batch_size, dataset_weight, seed):
+    random_state = check_random_state(seed)
+    grouped_data = train_data.groupby(level='dataset')
+    grouped_data = {dataset: sub_data for dataset, sub_data in
+                    grouped_data}
+    batches_generator = {}
+    while True:
+        for dataset, data_one_dataset in grouped_data.items():
+            len_dataset = data_one_dataset.shape[0]
+            try:
+                batch = next(batches_generator[dataset])
+            except (KeyError, StopIteration):
+                batches_generator[dataset] = gen_batches(len_dataset,
+                                                         batch_size)
+                permutation = random_state.permutation(len_dataset)
+                data_one_dataset = data_one_dataset.iloc[permutation]
+                grouped_data[dataset] = data_one_dataset
+                batch = next(batches_generator[dataset])
+            batch_data = data_one_dataset.iloc[batch]
+            x_batch = batch_data['X_train'].values
+            y_batch = batch_data['y_train'].values
+            y_oh_batch = batch_data['y_oh_train'].values
+            sample_weight_batch = np.ones(x_batch.shape[0]) \
+                                  * dataset_weight[dataset]
+            yield ([x_batch, y_batch],
+                   [y_oh_batch for _ in range(3)],
+                   [sample_weight_batch for _ in range(3)])
+
 class MyCallback(Callback):
     def on_train_begin(self, logs={}):
         self.weights = []
 
     def on_epoch_end(self, epochs, logs={}):
         weights = self.model.get_layer('latent').get_weights()[0].flat[:10]
-        print('latent', weights)
         self.weights.append(weights)
 
 
@@ -40,7 +85,7 @@ def config():
                        'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['la5c', 'hcp']
+    datasets = ['archi', 'hcp']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
@@ -49,18 +94,18 @@ def config():
                           human_voice=1)
     train_size = None
     validation = True
-    alpha = 0.00001
-    latent_dim = 25
+    alpha = 0.0001
+    latent_dim = 100
     activation = 'linear'
     dropout_input = 0.25
     dropout_latent = 0.5
-    batch_size = 100
-    epochs = 50
+    batch_size = 128
+    epochs = 60
     task_prob = 0.5
-    n_jobs = 4
+    n_jobs = 2
     verbose = 2
     seed = 10
-    shared_supervised = False
+    shared_supervised = True
     steps_per_epoch = None
     _seed = 0
 
@@ -110,12 +155,14 @@ def train_model(alpha,
     depth_weight = [0., 1. - task_prob, task_prob]
     X = []
     keys = []
+
     for dataset in datasets:
         if dataset_weight[dataset] != 0:
             this_reduced_dir = join(reduced_dir, dataset)
             this_X = load(join(this_reduced_dir, 'Xt.pkl'))
             if dataset in ['archi', 'brainomics']:
-                this_X = this_X.drop(['effects_of_interest'], level='contrast',)
+                this_X = this_X.drop(['effects_of_interest'],
+                                     level='contrast', )
             subjects = this_X.index.get_level_values('subject'). \
                 unique().values.tolist()
             subjects = subjects[:n_subjects[dataset]]
@@ -141,7 +188,6 @@ def train_model(alpha,
                         for level in ['dataset', 'task', 'contrast']],
                        axis=1)
 
-
     y_tuple = ['__'.join(row) for row in y]
     lbin = LabelBinarizer()
     y_oh = lbin.fit_transform(y_tuple)
@@ -153,6 +199,15 @@ def train_model(alpha,
     y = pd.DataFrame(index=X.index, data=y)
 
     X_train = X.iloc[train]
+
+    # std_dict = {}
+    # for dataset, this_X_train in X_train.groupby(level='dataset'):
+    #     standard_scaler = StandardScaler()
+    #     standard_scaler.fit(this_X_train)
+    #     std_dict[dataset] = standard_scaler
+    # for dataset, this_X in X.groupby(level='dataset'):
+    #     this_X_new = std_dict[dataset].transform(this_X)
+    #     X.loc[dataset] = this_X_new
 
     standard_scaler = StandardScaler()
     standard_scaler.fit(X_train)
@@ -172,74 +227,12 @@ def train_model(alpha,
                            names=['type'], axis=1)
     train_data.sort_index(inplace=True)
 
-    mix_batch = True
-
-
-    def train_generator():
-        batches_generator = {}
-        random_state = check_random_state(_seed)
-        grouped_data = train_data.groupby(level='dataset')
-        grouped_data = {dataset: sub_data for dataset, sub_data in
-                        grouped_data}
-        n_dataset = len(grouped_data)
-        x_batch = np.empty((batch_size, train_data['X_train'].shape[1]))
-        y_batch = np.empty((batch_size, train_data['y_train'].shape[1]))
-        y_oh_batch = np.empty((batch_size, train_data['y_oh_train'].shape[1]))
-        sample_weight_batch = np.empty(batch_size)
-        for dataset, sub_data in grouped_data.items():
-            len_dataset = sub_data.shape[0]
-            if mix_batch:
-                batches_generator[dataset] = gen_batches(len_dataset,
-                                                         batch_size // n_dataset)
-            else:
-                batches_generator[dataset] = gen_batches(len_dataset,
-                                                         batch_size)
-        while True:
-            start = 0
-            for dataset, sub_data in grouped_data.items():
-                if not mix_batch:
-                    start = 0
-                len_dataset = sub_data.shape[0]
-                try:
-                    batch = next(batches_generator[dataset])
-                except StopIteration:
-                    if mix_batch:
-                        batches_generator[dataset] = gen_batches(len_dataset,
-                                                                 batch_size // n_dataset)
-                    else:
-                        batches_generator[dataset] = gen_batches(len_dataset,
-                                                                 batch_size)
-                    permutation = random_state.permutation(len_dataset)
-                    sub_data = sub_data.iloc[permutation]
-                    grouped_data[dataset] = sub_data
-                    batch = next(batches_generator[dataset])
-                len_batch = batch.stop - batch.start
-                stop = start + len_batch
-                batch_data = sub_data.iloc[batch]
-                x_batch[start:stop] = batch_data['X_train'].values
-                y_batch[start:stop] = batch_data['y_train'].values
-                y_oh_batch[start:stop] = batch_data['y_oh_train'].values
-                sample_weight_batch[start:stop] = dataset_weight[dataset]
-                start = stop
-                if not mix_batch:
-                    yield ([x_batch[:stop], y_batch[:stop]],
-                           [y_oh_batch[:stop] for _ in range(3)],
-                           [sample_weight_batch[:stop] for _ in range(3)])
-            if mix_batch:
-                yield ([x_batch[:stop], y_batch[:stop]],
-                       [y_oh_batch[:stop] for _ in range(3)],
-                       [sample_weight_batch[:stop] for _ in range(3)])
-
     if steps_per_epoch is None:
         steps_per_epoch = X_train.shape[0] // batch_size
 
     init_tensorflow(n_jobs=n_jobs, debug=False)
 
     adversaries = make_adversaries(label_pool)
-
-    # n_labels = label_pool.shape[0]
-    # permutation = check_random_state(0).permutation(n_labels)
-    # adversaries[2] = adversaries[1][permutation][:, permutation]
 
     np.save(join(artifact_dir, 'adversaries'), adversaries)
     np.save(join(artifact_dir, 'classes'), lbin.classes_)
@@ -258,22 +251,34 @@ def train_model(alpha,
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
     model.compile(loss=['categorical_crossentropy'] * 3,
-                  optimizer=Adam(),
+                  optimizer='adam',
                   loss_weights=depth_weight,
                   metrics=['accuracy'])
     callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
                              histogram_freq=0,
                              write_graph=True,
-                             write_images=True)]
-    model.fit_generator(train_generator(), callbacks=callbacks,
+                             write_images=True),]
+    model.fit_generator(train_generator(train_data, batch_size,
+                                        dataset_weight, _seed),
+                        callbacks=callbacks,
                         validation_data=([x_test, y_test],
                                          [y_oh_test] * 3),
                         steps_per_epoch=steps_per_epoch,
                         verbose=verbose,
                         epochs=epochs)
+    #
+    # model.fit([X_train.values, y_train.values],
+    #           sample_weight=[np.ones(X_train.shape[0])] * 3,
+    #           batch_size=batch_size,
+    #           y=[y_oh_train.values] * 3,
+    #           callbacks=callbacks,
+    #           validation_data=([x_test, y_test],
+    #                            [y_oh_test] * 3),
+    #           verbose=verbose,
+    #           epochs=epochs)
 
     y_pred_oh = model.predict(x=[X.values, y.values])
-    # Depth selection
+
     _run.info['score'] = {}
     depth_name = ['full', 'dataset', 'task']
     for depth in [0, 1, 2]:
@@ -298,6 +303,6 @@ def train_model(alpha,
                                'prediction_depth_%i.csv' % depth),
                           'prediction')
 
-    dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
+    # dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
     model.save(join(artifact_dir, 'model.keras'))
     _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')

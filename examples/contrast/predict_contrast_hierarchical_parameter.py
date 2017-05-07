@@ -46,7 +46,7 @@ def single_run(config_updates, _id, master_id):
     @predict_contrast_hierarchical.config
     def config():
         n_jobs = 1
-        epochs = 200
+        epochs = 60
         verbose = 0
 
     run = predict_contrast_hierarchical._create_run(config_updates=config_updates)
