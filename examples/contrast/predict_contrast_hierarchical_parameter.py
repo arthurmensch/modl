@@ -27,11 +27,11 @@ multi_predict_task.observers.append(observer)
 @multi_predict_task.config
 def config():
     n_jobs = 15
-    dropout_latent_list = [0.9]
+    dropout_latent_list = [0.5]
     dropout_input_list = [0.25]
-    latent_dim_list = [200]
-    shared_supervised_list = [False]
-    task_prob_list = [0.5]
+    latent_dim_list = [50]
+    shared_supervised_list = [False, True]
+    task_prob_list = [0., 0.5, 1]
     alpha_list = [1e-4]
     batch_size_list = [64, 128, 256]
     n_seeds = 10
@@ -47,7 +47,7 @@ def single_run(config_updates, _id, master_id):
     @predict_contrast_hierarchical.config
     def config():
         n_jobs = 1
-        epochs = 60
+        epochs = 100
         verbose = 0
 
     run = predict_contrast_hierarchical._create_run(config_updates=config_updates)
@@ -63,17 +63,22 @@ def single_run(config_updates, _id, master_id):
 def run(dropout_latent_list,
         dropout_input_list,
         latent_dim_list,
+        batch_size_list,
         shared_supervised_list,
         task_prob_list,
         n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     param_grid = ParameterGrid(
-        {'datasets': [['hcp', 'archi', 'la5c', 'brainomics']],
+        {'datasets': [['hcp', 'archi', 'la5c', 'brainomics'],
+                      ['hcp', 'archi'],
+                      ['hcp', 'brainomics'],
+                      ['hcp', 'la5c']],
          'shared_supervised': shared_supervised_list,
          'task_prob': task_prob_list,
          'dropout_latent': dropout_latent_list,
          'dropout_input': dropout_input_list,
+         'batch_size': batch_size_list,
          'latent_dim': latent_dim_list,
          # Hack to iterate over seed first'
          'aseed': seed_list})

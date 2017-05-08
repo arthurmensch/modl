@@ -4,6 +4,7 @@ from os.path import join
 import numpy as np
 import pandas as pd
 from keras.callbacks import TensorBoard, Callback, ReduceLROnPlateau
+from keras.optimizers import Adam
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sklearn.externals.joblib import load, dump
@@ -78,6 +79,7 @@ def train_generator_mix(train_data,
     x_batch = np.empty((batch_size, train_data['X_train'].shape[1]))
     y_batch = np.empty((batch_size, train_data['y_train'].shape[1]))
     y_oh_batch = np.empty((batch_size, train_data['y_oh_train'].shape[1]))
+    data_oh_batch = np.empty((batch_size, train_data['data_oh_train'].shape[1]))
     sample_weight_batch = np.empty(batch_size)
     while True:
         start = 0
@@ -99,11 +101,13 @@ def train_generator_mix(train_data,
             x_batch[start:stop] = batch_data['X_train'].values
             y_batch[start:stop] = batch_data['y_train'].values
             y_oh_batch[start:stop] = batch_data['y_oh_train'].values
+            data_oh_batch[start:stop] = batch_data['data_oh_train'].values
             sample_weight_batch[start:stop] = np.ones(len_batch) * dataset_weight[dataset]
             start = stop
         yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
-               [y_oh_batch[:stop].copy() for _ in range(3)],
-               [sample_weight_batch[:stop] for _ in range(3)])
+               [y_oh_batch[:stop].copy() for _ in range(3)]
+               + [data_oh_batch[:stop].copy()],
+               [sample_weight_batch[:stop] for _ in range(4)])
 
 
 class MyCallback(Callback):
@@ -121,7 +125,7 @@ def config():
                        'non_standardized')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['archi', 'hcp']
+    datasets = ['hcp', 'la5c']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
@@ -143,7 +147,7 @@ def config():
     n_jobs = 2
     verbose = 2
     seed = 10
-    shared_supervised = True
+    shared_supervised = False
     steps_per_epoch = None
     _seed = 0
 
@@ -192,7 +196,7 @@ def train_model(alpha,
 
     if verbose:
         print('Fetch data')
-    depth_weight = [1., 0., 0.]
+    depth_weight = [0., 1. - task_prob, task_prob]
     X = []
     keys = []
 
@@ -228,6 +232,13 @@ def train_model(alpha,
                         for level in ['dataset', 'task', 'contrast']],
                        axis=1)
 
+    lbin_data = LabelBinarizer()
+    data_oh = lbin_data.fit_transform(y[:, 0])
+    if data_oh.shape[1] == 1:
+        data_oh = np.hstack([data_oh, data_oh == 0])
+    data_oh = pd.DataFrame(index=X.index, data=data_oh)
+    n_datasets = data_oh.shape[1]
+
     y_tuple = ['__'.join(row) for row in y]
     lbin = LabelBinarizer()
     y_oh = lbin.fit_transform(y_tuple)
@@ -258,11 +269,10 @@ def train_model(alpha,
         X = pd.DataFrame(X_new, index=X.index)
         dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
 
-    sample_weight = []
-
     x_test = X.iloc[test]
     y_test = y.iloc[test]
     y_oh_test = y_oh.iloc[test]
+    data_oh_test = data_oh.iloc[test]
 
     sample_weight_test = []
     for dataset, this_x in x_test.groupby(level='dataset'):
@@ -277,13 +287,16 @@ def train_model(alpha,
     y_test = y_test.values
     y_oh_test = y_oh_test.values
     sample_weight_test = sample_weight_test.values
+    data_oh_test = data_oh_test.values
 
     X_train = X.iloc[train]
     y_train = y.iloc[train]
     y_oh_train = y_oh.iloc[train]
+    data_oh_train = data_oh.iloc[train]
 
-    train_data = pd.concat([X_train, y_train, y_oh_train,],
-                           keys=['X_train', 'y_train', 'y_oh_train',],
+    train_data = pd.concat([X_train, y_train, y_oh_train, data_oh_train],
+                           keys=['X_train', 'y_train', 'y_oh_train',
+                                 'data_oh_train'],
                            names=['type'], axis=1)
     train_data.sort_index(inplace=True)
 
@@ -304,15 +317,16 @@ def train_model(alpha,
                        dropout_input=dropout_input,
                        dropout_latent=dropout_latent,
                        adversaries=adversaries,
+                       n_datasets=n_datasets,
                        seed=_seed,
                        shared_supervised=shared_supervised)
     if not shared_supervised:
         for i, this_depth_weight in enumerate(depth_weight):
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
-    model.compile(loss=['categorical_crossentropy'] * 3,
+    model.compile(loss=['categorical_crossentropy'] * 4,
                   optimizer='adam',
-                  loss_weights=depth_weight,
+                  loss_weights=depth_weight + [1.],
                   metrics=['accuracy'])
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, min_lr=1e-5,
                                   patience=4, verbose=1)
@@ -321,7 +335,7 @@ def train_model(alpha,
                              histogram_freq=0,
                              write_graph=True,
                              write_images=True),
-                 reduce_lr
+                 # reduce_lr
                  ]
     if generate_batches:
         model.fit_generator(train_generator_mix(train_data, batch_size,
@@ -329,20 +343,39 @@ def train_model(alpha,
                                                 _seed),
                             callbacks=callbacks,
                             validation_data=([x_test, y_test],
-                                             [y_oh_test] * 3,
-                                             [sample_weight_test] * 3
+                                             [y_oh_test] * 3 + [data_oh_test],
+                                             [sample_weight_test] * 4
                                              ),
                             steps_per_epoch=steps_per_epoch,
                             verbose=verbose,
-                            epochs=epochs)
+                            epochs=epochs - 10)
+        # model.get_layer('latent').trainable = False
+        # model.get_layer('dropout').rate = 0
+        # model.get_layer('dropout_input').rate = 0
+        # model.compile(loss=['categorical_crossentropy'] * 4,
+        #               optimizer=Adam(lr=1e-4),
+        #               loss_weights=[0., 1., 0.] + [1.],
+        #               metrics=['accuracy'])
+        # model.fit_generator(train_generator_mix(train_data, batch_size,
+        #                                         dataset_weight,
+        #                                         _seed),
+        #                     callbacks=callbacks,
+        #                     validation_data=([x_test, y_test],
+        #                                      [y_oh_test] * 3 + [data_oh_test],
+        #                                      [sample_weight_test] * 4
+        #                                      ),
+        #                     steps_per_epoch=steps_per_epoch,
+        #                     verbose=verbose,
+        #                     initial_epoch=epochs - 10,
+        #                     epochs=epochs)
     else:
         model.fit([X_train.values, y_train.values],
                   # sample_weight=[sample_weight_train] * 3,
                   batch_size=batch_size,
-                  y=[y_oh_train.values] * 3,
+                  y=[y_oh_train.values] * 3 + data_oh_train.values,
                   callbacks=callbacks,
                   validation_data=([x_test, y_test],
-                                   [y_oh_test] * 3,
+                                   [y_oh_test] * 3 + [data_oh_test],
                                    [sample_weight_test] * 3),
                   verbose=verbose,
                   epochs=epochs)
