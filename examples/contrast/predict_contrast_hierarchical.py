@@ -61,8 +61,7 @@ def train_generator(train_data,
             x_batch = batch_data['X_train'].values
             y_batch = batch_data['y_train'].values
             y_oh_batch = batch_data['y_oh_train'].values
-            sample_weight_batch = np.ones(x_batch.shape[0]) \
-                                  * dataset_weight[dataset]
+            sample_weight_batch = batch_data['sample_weight_train'].values
             yield ([x_batch, y_batch],
                    [y_oh_batch for _ in range(3)],
                    [sample_weight_batch for _ in range(3)])
@@ -133,7 +132,7 @@ def config():
                           human_voice=1)
     train_size = None
     validation = True
-    generate_batches = True
+    generate_batches = False
     alpha = 0.0001
     latent_dim = 50
     activation = 'linear'
@@ -195,7 +194,7 @@ def train_model(alpha,
 
     if verbose:
         print('Fetch data')
-    depth_weight = [0., 0., 1.]
+    depth_weight = [0., 1., 1.]
     X = []
     keys = []
 
@@ -263,14 +262,19 @@ def train_model(alpha,
 
     sample_weight = []
 
-    for (dataset, task), this_x in X.groupby(level=['dataset', 'task']):
-        sample_weight.append(pd.Series(np.ones(this_x.shape[0])
-                                       / this_x.shape[0]
-                                       * dataset_weight[dataset],
-                                       index=this_x.index))
+    for dataset, this_X_dataset in X.groupby(level='dataset'):
+        sample_weight_dataset = []
+        for task, this_X_task in this_X_dataset.groupby(level='task'):
+            sample_weight_task = pd.Series(np.ones(this_X_task.shape[0]),
+                                           index=this_X_task.index) / this_X_task.shape[0]
+            sample_weight_dataset.append(sample_weight_task)
+        sample_weight_dataset = pd.concat(sample_weight_dataset, axis=0)
+        sample_weight_dataset *= dataset_weight[dataset] / sample_weight_dataset.sum()
+        if not generate_batches:
+            sample_weight_dataset /= this_X_dataset.shape[0]
+        sample_weight_dataset /= np.min(sample_weight_dataset)
+        sample_weight.append(sample_weight_dataset)
     sample_weight = pd.concat(sample_weight, axis=0)
-    sample_weight /= np.min(sample_weight)
-
     x_test = X.iloc[test]
     y_test = y.iloc[test]
     y_oh_test = y_oh.iloc[test]
@@ -349,7 +353,7 @@ def train_model(alpha,
                                    [y_oh_test] * 3,
                                    [sample_weight_test] * 3),
                   verbose=verbose,
-                  epochs=60)
+                  epochs=epochs)
 
     y_pred_oh = model.predict(x=[X.values, y.values])
 
