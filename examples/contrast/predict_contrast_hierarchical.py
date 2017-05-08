@@ -138,12 +138,12 @@ def config():
     dropout_latent = 0.5
     batch_size = 128
     per_dataset_std = False
-    epochs = 60
+    epochs = 20
     task_prob = 0.5
     n_jobs = 2
     verbose = 2
     seed = 10
-    shared_supervised = False
+    shared_supervised = True
     steps_per_epoch = None
     _seed = 0
 
@@ -192,7 +192,7 @@ def train_model(alpha,
 
     if verbose:
         print('Fetch data')
-    depth_weight = [0., 1., 0.]
+    depth_weight = [1., 0., 0.]
     X = []
     keys = []
 
