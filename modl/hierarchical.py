@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from keras.backend import set_session
 from keras.engine import Layer, Model, Input
-from keras.layers import Dense, Dropout
+from keras.layers import Dense, Dropout, BatchNormalization, Activation
 from keras.regularizers import l2
 import keras.backend as K
 from scipy.linalg import pinv
@@ -77,6 +77,7 @@ class HierarchicalLabelMasking(Layer):
     def get_config(self):
         config = {
             'n_labels': self.n_labels,
+            'n_depths': self.n_depths,
         }
         base_config = super(HierarchicalLabelMasking, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
@@ -106,11 +107,19 @@ def make_model(n_features, alpha,
     else:
         dropout_data = data
     if latent_dim is not None:
+        # for i in range(3):
+        #     latent = Dense(latent_dim, activation='linear',
+        #                    use_bias=False, name='latent_%i' % i,
+        #                    kernel_regularizer=l2(alpha),
+        #                    )(dropout_data)
+        #     latent = BatchNormalization(name='batch_norm_%i' % i)(latent)
+        #     latent = Activation(activation='relu')(latent)
+        #     if dropout_latent > 0:
+        #         latent = Dropout(rate=dropout_latent, name='dropout_%i' % i,
+        #                          seed=seed)(latent)
         latent = Dense(latent_dim, activation=activation,
                        use_bias=False, name='latent',
-                       kernel_regularizer=l2(alpha),
-                       kernel_initializer=Orthogonal(seed=seed)
-                       )(dropout_data)
+                       kernel_regularizer=l2(alpha))(dropout_data)
         if dropout_latent > 0:
             latent = Dropout(rate=dropout_latent, name='dropout',
                              seed=seed)(latent)
@@ -124,7 +133,6 @@ def make_model(n_features, alpha,
         logits = Dense(n_labels, activation='linear',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
-                       kernel_initializer=Orthogonal(seed=seed),
                        name='supervised')(latent)
         for i, mask in enumerate(masks):
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
@@ -158,7 +166,7 @@ def init_tensorflow(n_jobs=1, debug=False):
     set_session(sess)
 
 
-def make_projection_matrix(bases, scale_bases=True, inverse=True):
+def make_projection_matrix(bases, scale_bases=True, forward=True):
     if not isinstance(bases, list):
         bases = [bases]
     res = []
@@ -167,11 +175,11 @@ def make_projection_matrix(bases, scale_bases=True, inverse=True):
             S = np.std(basis, axis=1)
             S[S == 0] = 1
             basis = basis / S[:, np.newaxis]
-            if inverse:
+            if forward:
                 res.append(pinv(basis))
             else:
                 res.append(basis)
-    if inverse:
+    if forward:
         res = np.concatenate(res, axis=1)
     else:
         res = np.concatenate(res, axis=0)
