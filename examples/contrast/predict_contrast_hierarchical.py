@@ -138,7 +138,7 @@ def config():
     dropout_latent = 0.5
     batch_size = 128
     per_dataset_std = False
-    epochs = 20
+    epochs = 60
     task_prob = 0.5
     n_jobs = 2
     verbose = 2
@@ -192,7 +192,7 @@ def train_model(alpha,
 
     if verbose:
         print('Fetch data')
-    depth_weight = [0., 1., 1.]
+    depth_weight = [0., 1., 0.]
     X = []
     keys = []
 
