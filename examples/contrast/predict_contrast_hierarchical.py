@@ -68,7 +68,7 @@ def train_generator(train_data,
 
 
 def train_generator_mix(train_data,
-                        batch_size, seed):
+                        batch_size, dataset_weight, seed):
     random_state = check_random_state(seed)
     grouped_data = train_data.groupby(level='dataset')
     grouped_data = {dataset: sub_data for dataset, sub_data in
@@ -99,9 +99,7 @@ def train_generator_mix(train_data,
             x_batch[start:stop] = batch_data['X_train'].values
             y_batch[start:stop] = batch_data['y_train'].values
             y_oh_batch[start:stop] = batch_data['y_oh_train'].values
-            sample_weight_batch[start:stop] = batch_data[
-                                                  'sample_weight_train'].values[
-                                              :, 0]
+            sample_weight_batch[start:stop] = np.ones(len_batch) * dataset_weight[dataset]
             start = stop
         yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
                [y_oh_batch[:stop].copy() for _ in range(3)],
@@ -132,7 +130,7 @@ def config():
                           human_voice=1)
     train_size = None
     validation = True
-    generate_batches = False
+    generate_batches = True
     alpha = 0.0001
     latent_dim = 50
     activation = 'linear'
@@ -262,37 +260,30 @@ def train_model(alpha,
 
     sample_weight = []
 
-    for dataset, this_X_dataset in X.groupby(level='dataset'):
-        sample_weight_dataset = []
-        for task, this_X_task in this_X_dataset.groupby(level='task'):
-            sample_weight_task = pd.Series(np.ones(this_X_task.shape[0]),
-                                           index=this_X_task.index) / this_X_task.shape[0]
-            sample_weight_dataset.append(sample_weight_task)
-        sample_weight_dataset = pd.concat(sample_weight_dataset, axis=0)
-        sample_weight_dataset *= dataset_weight[dataset] / sample_weight_dataset.sum()
-        if not generate_batches:
-            sample_weight_dataset /= this_X_dataset.shape[0]
-        sample_weight_dataset /= np.min(sample_weight_dataset)
-        sample_weight.append(sample_weight_dataset)
-    sample_weight = pd.concat(sample_weight, axis=0)
     x_test = X.iloc[test]
     y_test = y.iloc[test]
     y_oh_test = y_oh.iloc[test]
 
+    sample_weight_test = []
+    for dataset, this_x in x_test.groupby(level='dataset'):
+        sample_weight_test.append(pd.Series(np.ones(this_x.shape[0])
+                                            / this_x.shape[0]
+                                            * dataset_weight[dataset],
+                                            index=this_x.index))
+    sample_weight_test = pd.concat(sample_weight_test, axis=0)
+    sample_weight_test /= np.min(sample_weight_test)
+
     x_test = x_test.values
     y_test = y_test.values
     y_oh_test = y_oh_test.values
+    sample_weight_test = sample_weight_test.values
 
     X_train = X.iloc[train]
     y_train = y.iloc[train]
     y_oh_train = y_oh.iloc[train]
-    sample_weight_train = sample_weight.iloc[train]
-    sample_weight_test = sample_weight.iloc[test].values
 
-    train_data = pd.concat([X_train, y_train, y_oh_train,
-                            sample_weight_train],
-                           keys=['X_train', 'y_train', 'y_oh_train',
-                                 'sample_weight_train'],
+    train_data = pd.concat([X_train, y_train, y_oh_train,],
+                           keys=['X_train', 'y_train', 'y_oh_train',],
                            names=['type'], axis=1)
     train_data.sort_index(inplace=True)
 
@@ -334,6 +325,7 @@ def train_model(alpha,
                  ]
     if generate_batches:
         model.fit_generator(train_generator_mix(train_data, batch_size,
+                                                dataset_weight,
                                                 _seed),
                             callbacks=callbacks,
                             validation_data=([x_test, y_test],
@@ -345,7 +337,7 @@ def train_model(alpha,
                             epochs=epochs)
     else:
         model.fit([X_train.values, y_train.values],
-                  sample_weight=[sample_weight_train] * 3,
+                  # sample_weight=[sample_weight_train] * 3,
                   batch_size=batch_size,
                   y=[y_oh_train.values] * 3,
                   callbacks=callbacks,
