@@ -97,6 +97,7 @@ def make_model(n_features, alpha,
                latent_dim, dropout_input,
                dropout_latent,
                activation,
+               reversal,
                seed, adversaries,
                shared_supervised):
     n_depths, n_labels, _ = adversaries.shape
@@ -109,16 +110,6 @@ def make_model(n_features, alpha,
     else:
         dropout_data = data
     if latent_dim is not None:
-        # for i in range(3):
-        #     latent = Dense(latent_dim, activation='linear',
-        #                    use_bias=False, name='latent_%i' % i,
-        #                    kernel_regularizer=l2(alpha),
-        #                    )(dropout_data)
-        #     latent = BatchNormalization(name='batch_norm_%i' % i)(latent)
-        #     latent = Activation(activation='relu')(latent)
-        #     if dropout_latent > 0:
-        #         latent = Dropout(rate=dropout_latent, name='dropout_%i' % i,
-        #                          seed=seed)(latent)
         latent = Dense(latent_dim, activation=activation,
                        use_bias=False, name='latent',
                        kernel_regularizer=l2(alpha))(dropout_data)
@@ -151,7 +142,10 @@ def make_model(n_features, alpha,
                            name='supervised_depth_%i' % i)(this_latent)
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)
-    reversed_latent = GradientReversal(name='gradient_reversal')(latent)
+    if reversal:
+        reversed_latent = GradientReversal(name='gradient_reversal')(latent)
+    else:
+        reversed_latent = latent
     dataset_prob = Dense(n_datasets,
                          activation='softmax',
                          use_bias=True,

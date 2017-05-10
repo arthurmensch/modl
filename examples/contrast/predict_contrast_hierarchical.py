@@ -59,13 +59,16 @@ def train_generator(train_data,
                 grouped_data[dataset] = data_one_dataset
                 batch = next(batches_generator[dataset])
             batch_data = data_one_dataset.iloc[batch]
+            len_batch = batch_data.shape[0]
             x_batch = batch_data['X_train'].values
             y_batch = batch_data['y_train'].values
             y_oh_batch = batch_data['y_oh_train'].values
-            sample_weight_batch = batch_data['sample_weight_train'].values
+            data_oh_batch = batch_data['data_oh_train'].values
+            sample_weight_batch = np.ones(len_batch) * dataset_weight[dataset]
             yield ([x_batch, y_batch],
-                   [y_oh_batch for _ in range(3)],
-                   [sample_weight_batch for _ in range(3)])
+                   [y_oh_batch for _ in range(3)]
+                   + [data_oh_batch],
+                   [sample_weight_batch for _ in range(4)])
 
 
 def train_generator_mix(train_data,
@@ -79,7 +82,8 @@ def train_generator_mix(train_data,
     x_batch = np.empty((batch_size, train_data['X_train'].shape[1]))
     y_batch = np.empty((batch_size, train_data['y_train'].shape[1]))
     y_oh_batch = np.empty((batch_size, train_data['y_oh_train'].shape[1]))
-    data_oh_batch = np.empty((batch_size, train_data['data_oh_train'].shape[1]))
+    data_oh_batch = np.empty(
+        (batch_size, train_data['data_oh_train'].shape[1]))
     sample_weight_batch = np.empty(batch_size)
     while True:
         start = 0
@@ -102,7 +106,8 @@ def train_generator_mix(train_data,
             y_batch[start:stop] = batch_data['y_train'].values
             y_oh_batch[start:stop] = batch_data['y_oh_train'].values
             data_oh_batch[start:stop] = batch_data['data_oh_train'].values
-            sample_weight_batch[start:stop] = np.ones(len_batch) * dataset_weight[dataset]
+            sample_weight_batch[start:stop] = np.ones(len_batch) * \
+                                              dataset_weight[dataset]
             start = stop
         yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
                [y_oh_batch[:stop].copy() for _ in range(3)]
@@ -123,32 +128,38 @@ class MyCallback(Callback):
 def config():
     reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced',
                        'non_standardized')
+    unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
+                      'contrast')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['hcp', 'la5c']
+    datasets = ['archi']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      human_voice=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None,
                       human_voice=None)
     dataset_weight = dict(hcp=1, archi=1, la5c=1, brainomics=1,
                           human_voice=1)
-    train_size = None
+    train_size = dict(hcp=None, archi=None, la5c=None, brainomics=None,
+                      human_voice=None)
     validation = True
     generate_batches = True
-    alpha = 0.0001
-    latent_dim = 50
+    geometric_reduction = False
+    alpha = 1e-2
+    latent_dim = None
     activation = 'linear'
-    dropout_input = 0.25
-    dropout_latent = 0.5
-    batch_size = 128
+    dropout_input = 0.
+    dropout_latent = 0.
+    batch_size = 100
     per_dataset_std = False
-    epochs = 20
-    task_prob = 0.5
+    common = True
+    epochs = 60
+    task_prob = .5
     n_jobs = 2
     verbose = 2
     seed = 10
     shared_supervised = False
-    steps_per_epoch = None
+    mix_batch = True
+    steps_per_epoch = 200
     _seed = 0
 
 
@@ -170,10 +181,14 @@ def test_model(prediction):
 def train_model(alpha,
                 latent_dim,
                 n_subjects,
+                unmask_dir,
+                geometric_reduction,
                 test_size,
                 train_size,
                 generate_batches,
                 dropout_input,
+                common,
+                mix_batch,
                 dropout_latent,
                 activation,
                 datasets,
@@ -196,14 +211,17 @@ def train_model(alpha,
 
     if verbose:
         print('Fetch data')
-    depth_weight = [0., 1. - task_prob, task_prob]
+    depth_weight = [1., 1. - task_prob, task_prob]
     X = []
     keys = []
 
     for dataset in datasets:
         if dataset_weight[dataset] != 0:
             this_reduced_dir = join(reduced_dir, dataset)
-            this_X = load(join(this_reduced_dir, 'Xt.pkl'))
+            if geometric_reduction:
+                this_X = load(join(this_reduced_dir, 'Xt.pkl'))
+            else:
+                this_X = load(join(unmask_dir, dataset, 'imgs.pkl'))
             if dataset in ['archi', 'brainomics']:
                 this_X = this_X.drop(['effects_of_interest'],
                                      level='contrast', )
@@ -213,6 +231,7 @@ def train_model(alpha,
             this_X = this_X.loc[idx[subjects]]
             X.append(this_X)
             keys.append(dataset)
+
     X = pd.concat(X, keys=keys, names=['dataset'])
 
     # Cross validation folds
@@ -226,7 +245,6 @@ def train_model(alpha,
 
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
-    dump(X, join(artifact_dir, 'X.pkl'))
 
     y = np.concatenate([X.index.get_level_values(level)[:, np.newaxis]
                         for level in ['dataset', 'task', 'contrast']],
@@ -317,6 +335,7 @@ def train_model(alpha,
                        dropout_input=dropout_input,
                        dropout_latent=dropout_latent,
                        adversaries=adversaries,
+                       reversal=False,
                        n_datasets=n_datasets,
                        seed=_seed,
                        shared_supervised=shared_supervised)
@@ -326,7 +345,7 @@ def train_model(alpha,
                 model.get_layer('supervised_depth_%i' % i).trainable = False
     model.compile(loss=['categorical_crossentropy'] * 4,
                   optimizer='adam',
-                  loss_weights=depth_weight + [1.],
+                  loss_weights=depth_weight + [0],
                   metrics=['accuracy'])
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, min_lr=1e-5,
                                   patience=4, verbose=1)
@@ -338,36 +357,72 @@ def train_model(alpha,
                  # reduce_lr
                  ]
     if generate_batches:
-        model.fit_generator(train_generator_mix(train_data, batch_size,
-                                                dataset_weight,
-                                                _seed),
-                            callbacks=callbacks,
-                            validation_data=([x_test, y_test],
-                                             [y_oh_test] * 3 + [data_oh_test],
-                                             [sample_weight_test] * 4
-                                             ),
-                            steps_per_epoch=steps_per_epoch,
-                            verbose=verbose,
-                            epochs=epochs - 10)
-        # model.get_layer('latent').trainable = False
-        # model.get_layer('dropout').rate = 0
-        # model.get_layer('dropout_input').rate = 0
-        # model.compile(loss=['categorical_crossentropy'] * 4,
-        #               optimizer=Adam(lr=1e-4),
-        #               loss_weights=[0., 1., 0.] + [1.],
-        #               metrics=['accuracy'])
-        # model.fit_generator(train_generator_mix(train_data, batch_size,
-        #                                         dataset_weight,
-        #                                         _seed),
-        #                     callbacks=callbacks,
-        #                     validation_data=([x_test, y_test],
-        #                                      [y_oh_test] * 3 + [data_oh_test],
-        #                                      [sample_weight_test] * 4
-        #                                      ),
-        #                     steps_per_epoch=steps_per_epoch,
-        #                     verbose=verbose,
-        #                     initial_epoch=epochs - 10,
-        #                     epochs=epochs)
+        if mix_batch:
+            generator = train_generator_mix
+        else:
+            generator = train_generator
+        if common:
+            model.fit_generator(generator(train_data, batch_size,
+                                          dataset_weight,
+                                          _seed),
+                                callbacks=callbacks,
+                                validation_data=([x_test, y_test],
+                                                 [y_oh_test] * 3 + [data_oh_test],
+                                                 [sample_weight_test] * 4
+                                                 ),
+                                steps_per_epoch=steps_per_epoch,
+                                verbose=verbose,
+                                epochs=epochs)
+            # model.get_layer('latent').trainable = False
+            # # model.get_layer('dropout').rate = 0
+            # # model.get_layer('dropout_input').rate = 0
+            # model.compile(loss=['categorical_crossentropy'] * 4,
+            #               optimizer=Adam(),
+            #               loss_weights=depth_weight + [0.],
+            #               metrics=['accuracy'])
+            # model.fit_generator(train_generator_mix(train_data, batch_size,
+            #                                         dataset_weight,
+            #                                         _seed),
+            #                     callbacks=callbacks,
+            #                     validation_data=([x_test, y_test],
+            #                                      [y_oh_test] * 3 + [data_oh_test],
+            #                                      [sample_weight_test] * 4
+            #                                      ),
+            #                     steps_per_epoch=steps_per_epoch,
+            #                     verbose=verbose,
+            #                     initial_epoch=epochs - 10,
+            #                     epochs=epochs)
+        else:
+            model.fit_generator(generator(train_data.loc[['hcp']], batch_size,
+                                          dataset_weight,
+                                          _seed),
+                                callbacks=callbacks,
+                                validation_data=([x_test, y_test],
+                                                 [y_oh_test] * 3 + [data_oh_test],
+                                                 [sample_weight_test] * 4
+                                                 ),
+                                steps_per_epoch=steps_per_epoch,
+                                verbose=verbose,
+                                epochs=epochs - 10)
+            model.get_layer('latent').trainable = False
+            # model.get_layer('dropout').rate = 0
+            # model.get_layer('dropout_input').rate = 0
+            model.compile(loss=['categorical_crossentropy'] * 4,
+                          optimizer=Adam(),
+                          loss_weights=depth_weight + [0.],
+                          metrics=['accuracy'])
+            model.fit_generator(train_generator_mix(train_data, batch_size,
+                                                    dataset_weight,
+                                                    _seed),
+                                callbacks=callbacks,
+                                validation_data=([x_test, y_test],
+                                                 [y_oh_test] * 3 + [data_oh_test],
+                                                 [sample_weight_test] * 4
+                                                 ),
+                                steps_per_epoch=steps_per_epoch,
+                                verbose=verbose,
+                                initial_epoch=epochs - 10,
+                                epochs=epochs)
     else:
         model.fit([X_train.values, y_train.values],
                   # sample_weight=[sample_weight_train] * 3,
