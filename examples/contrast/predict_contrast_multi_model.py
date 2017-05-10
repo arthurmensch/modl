@@ -272,24 +272,24 @@ def train_model(alpha,
     X, standard_scaler = scale(X, train, per_dataset_std)
     dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
 
-    X_train = X.iloc[train]
-
-    X_test = X.iloc[train]
-
     lbins = {'dataset': {}, 'task': {}}
     Xs_train = {'dataset': {}, 'task': {}}
+    Xs_test = {'dataset': {}, 'task': {}}
     for dataset, X_dataset in X.groupby(level='dataset'):
         lbin = LabelBinarizer()
         this_y = X_dataset.index.get_level_values(level='contrast')
         lbin.fit(this_y)
         lbins['dataset'][dataset] = lbin
         Xs_train['dataset'][dataset] = X_dataset.query("fold == 'train'")
+        Xs_test['dataset'][dataset] = X_dataset.query("fold == 'test'")
         lbins['task'][dataset] = {}
         Xs_train['task'][dataset] = {}
+        Xs_test['task'][dataset] = {}
         for task, X_task in X_dataset.groupby(level='task'):
             lbin = LabelBinarizer()
             lbins['task'][dataset][task] = lbin
             Xs_train['task'][dataset][task] = X_task.query("fold == 'train'")
+            Xs_test['task'][dataset][task] = X_task.query("fold == 'test'")
 
     models = make_multi_model(X,
                               alpha=alpha,
@@ -348,11 +348,23 @@ def train_model(alpha,
     our_batch_generator_task = {dataset: batch_generator_task(dataset)
                                 for dataset in Xs_train['dataset']}
 
-    while n_iter < 100000:
+    while n_iter < 1000:
         dataset, model, X_batch, y_oh_batch = next(our_batch_generator_dataset)
         model.train_on_batch(X_batch, y_oh_batch)
+        n_iter += 1
         task, model, X_batch, y_oh_batch = next(our_batch_generator_task[dataset])
         model.train_on_batch(X_batch, y_oh_batch)
+        n_iter += 1
+
+    for dataset in Xs_test['dataset']:
+        X_dataset = Xs_test['dataset'][dataset]
+        lbins['dataset'][dataset] = lbin
+        Xs_train['dataset'][dataset] = X_dataset.query("fold == 'train'")
+        Xs_test['dataset'][dataset] = X_dataset.query("fold == 'test'")
+        lbins['task'][dataset] = {}
+        Xs_train['task'][dataset] = {}
+        Xs_test['task'][dataset] = {}
+        for task, X_task in X_dataset.groupby(level='task'):
 
     y_pred_oh = model.predict(x=[X.values, y.values])
 
