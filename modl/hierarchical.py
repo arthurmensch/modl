@@ -93,11 +93,9 @@ def make_adversaries(label_pool):
 
 
 def make_model(n_features, alpha,
-               n_datasets,
                latent_dim, dropout_input,
                dropout_latent,
                activation,
-               reversal,
                seed, adversaries,
                shared_supervised):
     n_depths, n_labels, _ = adversaries.shape
@@ -137,21 +135,9 @@ def make_model(n_features, alpha,
                            activation='linear',
                            use_bias=True,
                            kernel_regularizer=l2(alpha),
-                           # kernel_constraint=non_neg(),
-                           # bias_constraint=non_neg(),
                            name='supervised_depth_%i' % i)(this_latent)
             prob = PartialSoftmax(name='softmax_depth_%i' % i)([logits, mask])
             outputs.append(prob)
-    if reversal:
-        reversed_latent = GradientReversal(name='gradient_reversal')(latent)
-    else:
-        reversed_latent = latent
-    dataset_prob = Dense(n_datasets,
-                         activation='softmax',
-                         use_bias=True,
-                         kernel_regularizer=l2(alpha),
-                         name='supervised_dataset')(reversed_latent)
-    outputs.append(dataset_prob)
     model = Model(inputs=[data, labels], outputs=outputs)
     return model
 
@@ -170,59 +156,19 @@ def init_tensorflow(n_jobs=1, debug=False):
     set_session(sess)
 
 
-def make_projection_matrix(bases, scale_bases=True, forward=True):
+def make_projection_matrix(bases, scale_bases=True):
     if not isinstance(bases, list):
         bases = [bases]
-    res = []
+    proj = []
+    rec = []
     for i, basis in enumerate(bases):
         if scale_bases:
             S = np.std(basis, axis=1)
             S[S == 0] = 1
             basis = basis / S[:, np.newaxis]
-            if forward:
-                res.append(pinv(basis))
-            else:
-                res.append(basis)
-    if forward:
-        res = np.concatenate(res, axis=1)
-    else:
-        res = np.concatenate(res, axis=0)
-
-    return res
-
-
-def reverse_gradient(X):
-    '''Flips the sign of the incoming gradient during training.'''
-    try:
-        reverse_gradient.num_calls += 1
-    except AttributeError:
-        reverse_gradient.num_calls = 1
-
-    grad_name = "GradientReversal%d" % reverse_gradient.num_calls
-
-    @tf.RegisterGradient(grad_name)
-    def _flip_gradients(op, grad):
-        return tf.negative(grad)
-
-    g = K.get_session().graph
-    with g.gradient_override_map({'Identity': grad_name}):
-        y = tf.identity(X)
-
-    return y
-
-
-class GradientReversal(Layer):
-    '''Flip the sign of gradient during training.'''
-    def __init__(self, **kwargs):
-        super(GradientReversal, self).__init__(**kwargs)
-        self.supports_masking = False
-
-    def build(self, input_shape):
-        super(GradientReversal, self).build(input_shape)
-
-    def call(self, inputs, mask=None):
-        return reverse_gradient(inputs)
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
+            proj.append(pinv(basis))
+            rec.append(basis)
+    proj = np.concatenate(proj, axis=1)
+    rec = np.concatenate(rec, axis=0)
+    proj_inv = np.linalg.inv(proj.T.dot(rec.T)).T.dot(rec)
+    return proj, proj_inv

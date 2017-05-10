@@ -3,6 +3,7 @@ from os import path
 from os.path import join
 
 import numpy as np
+from modl.datasets import get_data_dirs
 from sacred import Experiment
 from sacred.observers import MongoObserver
 from sacred.optional import pymongo
@@ -11,12 +12,10 @@ from sklearn.externals.joblib import delayed
 from sklearn.model_selection import ParameterGrid
 from sklearn.utils import check_random_state
 
-from modl.datasets import get_data_dirs
-
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
-from examples.contrast.predict_contrast import predict_contrast
+from examples.contrast.old.predict_contrast import predict_contrast
 
 multi_predict_task = Experiment('multi_predict_contrast',
                                 ingredients=[predict_contrast])

@@ -3,8 +3,11 @@ from os.path import join
 
 import numpy as np
 import pandas as pd
-from keras.callbacks import TensorBoard, Callback, ReduceLROnPlateau
-from keras.optimizers import Adam, SGD
+from keras.callbacks import TensorBoard, Callback
+from keras.optimizers import SGD, Adam
+from modl.datasets import get_data_dirs
+from modl.hierarchical import make_model, init_tensorflow, make_adversaries
+from modl.model_selection import StratifiedGroupShuffleSplit
 from modl.utils.system import get_cache_dirs
 from sacred import Experiment
 from sacred.observers import MongoObserver
@@ -12,14 +15,10 @@ from sklearn.externals.joblib import load, dump, Memory
 from sklearn.preprocessing import LabelBinarizer, StandardScaler
 from sklearn.utils import gen_batches, check_random_state
 
-from modl.datasets import get_data_dirs
-from modl.hierarchical import make_model, init_tensorflow, make_adversaries
-from modl.model_selection import StratifiedGroupShuffleSplit
-
 idx = pd.IndexSlice
 
-predict_contrast_hierarchical = Experiment('predict_contrast')
-collection = predict_contrast_hierarchical.path
+predict_contrast_exp = Experiment('predict_contrast')
+collection = predict_contrast_exp.path
 
 observer = MongoObserver.create(db_name='amensch', collection=collection)
 
@@ -84,9 +83,9 @@ def train_generator(train_data, batch_size, dataset_weight,
                                                          batch_size
                                                          // n_dataset if mix
                                                          else batch_size)
-                permutation = random_state.permutation(len_dataset)
-                data_one_dataset = data_one_dataset.iloc[permutation]
-                grouped_data[dataset] = data_one_dataset
+                # permutation = random_state.permutation(len_dataset)
+                # data_one_dataset = data_one_dataset.iloc[permutation]
+                # grouped_data[dataset] = data_one_dataset
                 batch = next(batches_generator[dataset])
             len_batch = batch.stop - batch.start
             stop = start + len_batch
@@ -116,14 +115,14 @@ class MyCallback(Callback):
         self.weights.append(weights)
 
 
-@predict_contrast_hierarchical.config
+@predict_contrast_exp.config
 def config():
     reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
     unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
                       'contrast')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['archi', 'hcp', 'camcan', 'brainomics']
+    datasets = ['archi', 'hcp']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      camcan=.5,
                      human_voice=0.5)
@@ -136,29 +135,30 @@ def config():
     train_size = dict(hcp=None, archi=None, la5c=None, brainomics=None,
                       camcan=None,
                       human_voice=None)
-    validation = True
+    validation = False
     geometric_reduction = True
-    alpha = 1e-5
-    latent_dim = 100
+    alpha = 1e-4
+    latent_dim = 200
     activation = 'linear'
     source = 'hcp_rs_concat'
     optimizer = 'adam'
-    dropout_input = 0.25
-    dropout_latent = 0.75
-    batch_size = 100
+    lr = 1e-3
+    dropout_input = 0.
+    dropout_latent = 0.9
+    batch_size = 64
     per_dataset_std = False
     joint_training = True
-    epochs = 60
-    depth_weight = [0., 1., 1.]
+    epochs = 30
+    depth_weight = [0., 1., 0.]
     n_jobs = 2
     verbose = 2
     seed = 10
-    shared_supervised = False
+    shared_supervised = True
     mix_batch = False
     steps_per_epoch = None
     _seed = 0
 
-@predict_contrast_hierarchical.named_config
+@predict_contrast_exp.named_config
 def no_geometric():
     datasets = ['camcan']
     validation = False
@@ -197,7 +197,7 @@ def test_model(prediction):
     return res
 
 
-@predict_contrast_hierarchical.automain
+@predict_contrast_exp.automain
 def train_model(alpha,
                 latent_dim,
                 n_subjects,
@@ -207,6 +207,7 @@ def train_model(alpha,
                 train_size,
                 dropout_input,
                 joint_training,
+                lr,
                 mix_batch,
                 source,
                 dropout_latent,
@@ -230,8 +231,6 @@ def train_model(alpha,
     artifact_dir = join(artifact_dir, str(_run._id))
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
-
-    mem = Memory(cachedir=get_cache_dirs()[0])
 
     if verbose:
         print('Fetch data')
@@ -337,18 +336,19 @@ def train_model(alpha,
         for i, this_depth_weight in enumerate(depth_weight):
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
+    if optimizer == 'sgd':
+        optimizer = SGD(lr=lr)
+    elif optimizer == 'adam':
+        optimizer = Adam(lr=lr)
     model.compile(loss=['categorical_crossentropy'] * 3,
-                  optimizer=optimizer if optimizer != 'sgd' else SGD(lr=1e-4),
+                  optimizer=optimizer,
                   loss_weights=depth_weight,
                   metrics=['accuracy'])
-    # reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, min_lr=1e-5,
-    #                               patience=4, verbose=1)
 
     callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
                              histogram_freq=0,
                              write_graph=True,
                              write_images=True),
-                 # reduce_lr
                  ]
     if joint_training:
         model.fit_generator(train_generator(train_data,

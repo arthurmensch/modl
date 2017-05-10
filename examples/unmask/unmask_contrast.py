@@ -1,5 +1,6 @@
 from os.path import join
 
+from modl.datasets.camcan import fetch_camcan
 from modl.datasets.human_voice import fetch_human_voice
 from nilearn.datasets import load_mni152_brain_mask
 from sacred import Experiment
@@ -17,11 +18,8 @@ from modl.datasets.la5c import fetch_la5c
 from modl.input_data.fmri.unmask import create_raw_contrast_data
 
 unmask_contrast = Experiment('unmask_contrast')
-observer = MongoObserver.create(db_name='amensch', collection='runs')
-unmask_contrast.observers.append(observer)
 
 output_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
-
 
 
 @unmask_contrast.config
@@ -44,6 +42,8 @@ def run(n_jobs, batch_size, dataset,
         fetch_data = fetch_la5c
     elif dataset == 'human_voice':
         fetch_data = fetch_human_voice
+    elif dataset == 'camcan':
+        fetch_data = fetch_camcan
     else:
         raise ValueError
 
