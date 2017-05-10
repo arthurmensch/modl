@@ -26,7 +26,8 @@ class PartialSoftmax(Layer):
         logits = tf.where(mask, logits, logits_min)
         logits_max = K.max(logits, axis=1, keepdims=True)
         logits -= logits_max
-        exp_logits = tf.exp(logits)
+        # exp_logits = tf.exp(logits)
+        exp_logits = tf.where(mask, tf.exp(logits), tf.zeros(tf.shape(logits)))
         sum_exp_logits = K.sum(exp_logits, axis=1, keepdims=True)
         return exp_logits / sum_exp_logits
 
@@ -90,6 +91,52 @@ def make_adversaries(label_pool):
         for i in range(0, depth):
             adversaries[depth] *= label_pool[:, [i]] == label_pool[:, i]
     return adversaries
+
+
+def make_multi_model(n_features, y_ohs,
+                     label_structure, alpha, latent_dim, dropout_input,
+                     dropout_latent, activation, seed):
+
+    data = Input(shape=(n_features,), name='data', dtype='float32')
+
+    if dropout_input > 0:
+        dropout_data = Dropout(rate=dropout_input, seed=seed,
+                               name='dropout_input')(data)
+    else:
+        dropout_data = data
+    if latent_dim is not None:
+        latent = Dense(latent_dim, activation=activation,
+                       use_bias=False, name='latent',
+                       kernel_regularizer=l2(alpha))(dropout_data)
+        if dropout_latent > 0:
+            latent = Dropout(rate=dropout_latent, name='dropout',
+                             seed=seed)(latent)
+    else:
+        latent = dropout_data
+
+    models = {'dataset': {}, 'task': {}}
+
+    for dataset in label_structure:
+        len_output = y_ohs['dataset'][dataset].shape[1]
+        output = Dense(len_output, activation='softmax',
+                       use_bias=True,
+                       kernel_regularizer=l2(alpha),
+                       name='supervised_%s_%s' % (dataset, task))(latent)
+        model = Model(inputs=[data], outputs=output)
+        models['dataset'][dataset] = model
+
+        for task in label_structure[dataset]:
+            len_output = y_ohs['task'][dataset][task].shape[1]
+            output = Dense(len_output, activation='softmax',
+                           use_bias=True,
+                           kernel_regularizer=l2(alpha),
+                           name='supervised_%s_%s' % (dataset, task))(latent)
+            model = Model(inputs=[data], outputs=output)
+            model.compile(loss='categorical_crossentropy',
+                          optimizer='adam')
+            models['task'][dataset][task] = model
+    return models
+
 
 
 def make_model(n_features, alpha,

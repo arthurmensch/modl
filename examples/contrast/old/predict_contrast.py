@@ -31,7 +31,7 @@ def config():
     n_components_list = [16, 64, 256]
 
     from_loadings = True
-    reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
+    reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced', 'hcp_rs_concat')
 
     datasets = ['archi']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5)
@@ -44,14 +44,14 @@ def config():
     max_samples = int(1e6)
     alpha = 0.0001
     beta = 0.0
-    latent_dim = 30
+    latent_dim = 50
     activation = 'linear'
     dropout_input = 0.25
     dropout_latent = 0.5
     batch_size = 100
     early_stop = False
     optimizer = 'adam'
-    fine_tune = 0.1
+    fine_tune = 0.
 
     # projection = True
 
@@ -60,7 +60,7 @@ def config():
 
     model_indexing = 'dataset'
 
-    n_jobs = 24
+    n_jobs = 2
     verbose = 2
     seed = 10
 

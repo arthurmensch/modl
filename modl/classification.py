@@ -96,6 +96,7 @@ class FactoredLogistic(BaseEstimator, LinearClassifierMixin):
 
         Parameters
         ----------
+        model_indices
         X : {array-like, sparse matrix}, shape (n_samples, n_features)
             Training vector, where n_samples is the number of samples and
             n_features is the number of features.

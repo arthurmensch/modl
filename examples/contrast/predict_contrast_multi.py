@@ -73,8 +73,8 @@ def run(n_seeds, n_jobs, _run, _seed):
                         'lr': lr,
                         'optimizer': 'sgd',
                         'seed': seed} for seed in seed_list
-                       for alpha in np.logspace(-4, 0, 5)
-                       for lr in [1e-3, 1e-4]]
+                       for alpha in np.logspace(-4, 1, 6)
+                       for lr in [1e-3]]
         geometric_reduction = [{'datasets': [dataset],
                                 'geometric_reduction': True,
                                 'latent_dim': None,
@@ -84,7 +84,7 @@ def run(n_seeds, n_jobs, _run, _seed):
                                 'epochs': 200,
                                 'optimizer': 'adam',
                                 'seed': seed} for seed in seed_list
-                               for alpha in np.logspace(-4, 0, 5)]
+                               for alpha in np.logspace(-4, 1, 6)]
         latent_dropout = [{'datasets': [dataset],
                            'geometric_reduction': True,
                            'latent_dim': 50,
