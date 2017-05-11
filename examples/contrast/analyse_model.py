@@ -10,7 +10,8 @@ from nilearn.image import index_img
 from nilearn.input_data import MultiNiftiMasker
 from nilearn.plotting import plot_stat_map
 from numpy.linalg import lstsq, svd
-from sklearn.decomposition import FastICA
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.decomposition import FastICA, PCA
 from sklearn.externals.joblib import Memory, load, Parallel, delayed
 from sklearn.metrics import confusion_matrix
 from wordcloud import WordCloud
@@ -73,10 +74,11 @@ def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
     if overwrite or not os.path.exists(target):
         fig = plt.figure(figsize=(24, 5))
         gs = gridspec.GridSpec(1, 5, width_ratios=[2, 1, 1, 1, 1])
-        for i, (dataset, sub_freqs) in enumerate(freqs.groupby(level='dataset')):
+        for i, (dataset, sub_freqs) in enumerate(
+                freqs.groupby(level='dataset')):
             ax = plt.subplot(gs[i + 1])
             bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.
-                                                           inverted())
+                                                      inverted())
             width, height = bbox.width, bbox.height
             width *= fig.dpi
             height *= fig.dpi
@@ -88,7 +90,8 @@ def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
             # Remove labels below chance level
             lim = np.where(sub_freqs < 1 / sub_freqs.shape[0])[0][0]
             sub_freqs = sub_freqs.iloc[:lim]
-            freq_dict = {label[2]: freq for label, freq in sub_freqs.iteritems()}
+            freq_dict = {label[2]: freq for label, freq in
+                         sub_freqs.iteritems()}
             title += str(freq_dict)
             wc.generate_from_frequencies(freq_dict)
             ax.imshow(wc)
@@ -119,8 +122,8 @@ def run(overwrite=False):
     if not os.path.exists(assets_dir):
         os.makedirs(assets_dir)
 
-    n_components = 50
-    n_vectors = 96
+    n_components = 10
+    n_vectors = 10
 
     # HTML output
     env = Environment(loader=PackageLoader('modl', 'templates'),
@@ -133,7 +136,6 @@ def run(overwrite=False):
     print('Load model')
     mask = join(get_data_dirs()[0], 'mask_img.nii.gz')
     masker = MultiNiftiMasker(mask_img=mask, smoothing_fwhm=0).fit()
-    standard_scaler = load(join(artifact_dir, 'standard_scaler.pkl'))  # D
     # Expected shape (?, 336)
     lbin = load(join(artifact_dir, 'lbin.pkl'))
     labels = lbin.classes_
@@ -148,6 +150,7 @@ def run(overwrite=False):
                        custom_objects={'HierarchicalLabelMasking':
                                            HierarchicalLabelMasking,
                                        'PartialSoftmax': PartialSoftmax})
+    # standard_scaler = load(join(artifact_dir, 'standard_scaler.pkl'))
 
     weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
     # Shape (336, 50)
@@ -156,7 +159,7 @@ def run(overwrite=False):
     bias_supervised = {}
     for depth in [1, 2]:
         weight_supervised[depth], bias_supervised[depth] = model.get_layer(
-            'supervised_depth_%i' % depth).get_weights()  # W_s
+            'supervised').get_weights()  # W_s
     # Shape (50, 97)
 
     # Latent factors
@@ -171,34 +174,33 @@ def run(overwrite=False):
         label_index, names=('dataset', 'task', 'condition'))
     # Shape (200000, 336)
 
-    print('Prediction')
-    for i in range(3):
-        prediction = pd.read_csv(
-            join(artifact_dir, 'prediction_depth_%i.csv' % i))
-        prediction = prediction.set_index(
-            ['fold', 'dataset', 'subject', 'task', 'contrast', ])
-        match = prediction['true_label'] == prediction['predicted_label']
-        prediction = prediction.assign(match=match)
-        prediction.sort_index(inplace=True)
-        train_conf = confusion_matrix(prediction.loc['train', 'true_label'],
-                                      prediction.loc[
-                                          'train', 'predicted_label'],
-                                      labels=labels)
-        test_conf = confusion_matrix(prediction.loc['test', 'true_label'],
-                                     prediction.loc['test', 'predicted_label'],
-                                     labels=labels)
-        plt.figure()
-        plot_confusion_matrix(train_conf, labels)
-        plt.savefig(join(analysis_dir, 'train_conf_depth_%i.png' % i))
-        plot_confusion_matrix(test_conf, labels)
-        plt.savefig(join(analysis_dir, 'test_conf_depth_%i.png' % i))
+    # print('Prediction')
+    # for i in range(3):
+    #     prediction = pd.read_csv(
+    #         join(artifact_dir, 'prediction_depth_%i.csv' % i))
+    #     prediction = prediction.set_index(
+    #         ['fold', 'dataset', 'subject', 'task', 'contrast', ])
+    #     match = prediction['true_label'] == prediction['predicted_label']
+    #     prediction = prediction.assign(match=match)
+    #     prediction.sort_index(inplace=True)
+    #     train_conf = confusion_matrix(prediction.loc['train', 'true_label'],
+    #                                   prediction.loc[
+    #                                       'train', 'predicted_label'],
+    #                                   labels=labels)
+    #     test_conf = confusion_matrix(prediction.loc['test', 'true_label'],
+    #                                  prediction.loc['test', 'predicted_label'],
+    #                                  labels=labels)
+    #     plt.figure()
+    #     plot_confusion_matrix(train_conf, labels)
+    #     plt.savefig(join(analysis_dir, 'train_conf_depth_%i.png' % i))
+    #     plot_confusion_matrix(test_conf, labels)
+    #     plt.savefig(join(analysis_dir, 'test_conf_depth_%i.png' % i))
     #
     # print('Forward analysis')
-    # proj = memory.cache(make_projection_matrix)(components,
-    #                                             scale_bases=True,
-    #                                             forward=True)
-    # scaled_proj = proj / standard_scaler.scale_[np.newaxis, :]
-    # latent_proj = scaled_proj.dot(weight_latent)
+    # proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
+    #                                                       scale_bases=True,
+    #                                                       )
+    # latent_proj = proj.dot(weight_latent)
     # for depth in [1, 2]:
     #     classification_vectors = latent_proj.dot(weight_supervised[depth]).T
     #     classification_vectors = pd.DataFrame(data=classification_vectors,
@@ -247,7 +249,9 @@ def run(overwrite=False):
     weight_supervised = weight_supervised[1]  # Dataset level
     n_labels = weight_supervised.shape[1]
     weight_latent, r = np.linalg.qr(weight_latent)
-    # weight_supervised = r.dot(weight_supervised)
+    weight_supervised = r.dot(weight_supervised)
+
+
 
     # ICA
     # # Manual sample weight
@@ -256,59 +260,77 @@ def run(overwrite=False):
     repeat = max_sample_weight / sample_weight
     repeat = repeat.astype('int')
     new_X = []
-    keys = []
     for dataset, sub_X in X.groupby(level=['dataset']):
         new_X += [sub_X] * repeat[dataset]
-        keys.append(dataset)
-    X = pd.concat(new_X, keys=keys, names=['dataset'])
-
+    X = pd.concat(new_X)
     X = X.values
-    X = standard_scaler.transform(X)
     X = X.dot(weight_latent)
-    #
-    #
-    #
-    print('ICA')
-    fast_ica = FastICA(whiten=True, n_components=10, max_iter=10000)
-    fast_ica.fit(X)
-    mean_load = np.sqrt(np.sum(fast_ica.transform(X) ** 2, axis=0) / X.shape[0])
-    VT = mean_load[:, np.newaxis] * fast_ica.mixing_.T + fast_ica.mean_
-    VT_neg = - mean_load[:, np.newaxis] * fast_ica.mixing_.T + fast_ica.mean_
-    VT = np.concatenate([VT, VT_neg], axis=0)
 
-    # # PCA
+    # pca = PCA(whiten=True).fit(X)
+    # VT = pca.components_ + pca.mean_
+
+    #
+    #
+    #
+    # print('ICA')
+    # X = X.values
+    # X = X.dot(weight_latent)
+    # fast_ica = FastICA(whiten=True, n_components=n_components, max_iter=10000)
+    # fast_ica.fit(X)
+    # mean_load = np.sqrt(
+    #     np.sum(fast_ica.transform(X) ** 2, axis=0)) / X.shape[0]
+    # mean_load *= 100
+    # VT = mean_load[:, np.newaxis] * fast_ica.mixing_.T # + fast_ica.mean_
+    # VT_neg = - mean_load[:, np.newaxis] * fast_ica.mixing_.T # + fast_ica.mean_
+    # VT = np.concatenate([VT, VT_neg], axis=0)
+
+    kmeans = MiniBatchKMeans(n_clusters=53)
+    kmeans.fit(X)
+    VT = kmeans.cluster_centers_[:20]
+
+    # VT = X.query("contrast == 'LH'").values[:20].dot(weight_latent)
+    # PCA
     # Sample weight
-    # sample_weight = X.iloc[:, 0].groupby(level=['dataset']).transform('count')
+    # sample_weight = X.iloc[:, 0].groupby(level=['dataset',
+    #                                             'task']).transform('count')
     # sample_weight = 1 / sample_weight
     # sample_weight /= sample_weight.min()
     # sample_weight = sample_weight.values
     #
     # X = X.values
-    # X = standard_scaler.transform(X)
-    # X = X.dot(weight_latent)
+    # X_proj = X.dot(weight_latent)
     #
-    # # Sample weight PCA
-    # mean = np.sum(X * sample_weight[:, np.newaxis], axis=0) / np.sum(sample_weight)
-    # X -= mean[np.newaxis, :]
-    # G = (X.T * sample_weight).dot(X) / (np.sum(sample_weight))
+    # # VT = X_proj[3000:3020]
+    #
+    # # # Sample weight PCA
+    # mean = np.sum(X_proj * sample_weight[:, np.newaxis], axis=0) / np.sum(
+    #     sample_weight)
+    # X_proj = X_proj - mean[np.newaxis, :]
+    # G = (X_proj.T * sample_weight).dot(X_proj) / (np.sum(sample_weight))
     # _, S, VT = svd(G)
     # VT = VT[:n_components]
     # S = S[:n_components]
-    # VT = S[:, np.newaxis] * VT + mean
-    # VT_neg = - S[:, np.newaxis] * VT + mean
+    # VT = np.sqrt(S[:, np.newaxis]) * VT + mean
+    # VT_neg = - np.sqrt(S[:, np.newaxis]) * VT + mean
     # VT = np.concatenate([VT, VT_neg])
 
-    proj = memory.cache(make_projection_matrix)(components,
-                                                scale_bases=True,
-                                                forward=True)
-    inv_proj = memory.cache(make_projection_matrix)(components,
-                                                    scale_bases=True,
-                                                    forward=False)
-    latent_loadings = lstsq(weight_latent.T, VT.T)[0].T
-    latent_loadings = standard_scaler.inverse_transform(latent_loadings)
-    latent_imgs = latent_loadings.dot(inv_proj)
+    proj, inv_proj, rec = make_projection_matrix(components, scale_bases=True)
+
+
+    # VT = np.eye(50)
+    # Least square in span W_g + least square in dictionary span
+    # model_input = lstsq(weight_latent.T, VT.T)[0].T
+    # latent_imgs = model_input.dot(inv_proj)
+
+    # Least square in dictionary span
+    full_proj = rec.dot(proj).dot(weight_latent)
+    latent_geometric = lstsq(full_proj.T, VT.T)[0].T
+    latent_imgs = latent_geometric.dot(rec)
     model_input = latent_imgs.dot(proj)
-    model_input = standard_scaler.transform(model_input)
+    #
+    # model_input = X[:20]
+    # latent_imgs = X[:20].dot(inv_proj)
+
     freqs = np.zeros((VT.shape[0], n_labels))
 
     count = pd.DataFrame(data=np.ones(label_index.shape[0]),

@@ -14,9 +14,9 @@ from sklearn.utils import check_random_state
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 
-from examples.contrast.predict_contrast import predict_contrast_exp
+from examples.contrast.predict_contrast_legacy import predict_contrast_exp
 
-predict_contrast_multi_exp = Experiment('predict_contrast_multi',
+predict_contrast_multi_exp = Experiment('predict_contrast_legacy_multi',
                                         ingredients=[predict_contrast_exp])
 collection = predict_contrast_multi_exp.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
@@ -25,8 +25,8 @@ predict_contrast_multi_exp.observers.append(observer)
 
 @predict_contrast_multi_exp.config
 def config():
-    n_jobs = 24
-    n_seeds = 10
+    n_jobs = 30
+    n_seeds = 4
     seed = 2
 
 
@@ -37,21 +37,14 @@ def single_run(config_updates, _id, master_id):
     @predict_contrast_exp.config
     def config():
         n_jobs = 1
-        epochs = 400
-        steps_per_epoch = 400
+        geometric_reduction = True
+        alpha = 1e-5
+        latent_dim = 50
+        budget = 1e7
         dropout_input = 0.25
         dropout_latent = 0.5
         source = 'hcp_rs_concat'
-        depth_prob = [0, 1., 0]
-        shared_supervised = False
-        batch_size = 64
-        alpha = 1e-5
-        validation = False
-        mix_batch = False
-        verbose = 2
-        train_size = dict(hcp=None, archi=None, la5c=None, brainomics=None,
-                          camcan=None,
-                          human_voice=None)
+        verbose = 1
 
     run = predict_contrast_exp._create_run(
         config_updates=config_updates)
@@ -76,34 +69,29 @@ def run(n_seeds, n_jobs, _run, _seed):
                         'dropout_latent': 0.,
                         'alpha': alpha,
                         'epochs': 30,
-                        'steps_per_epoch': None,
-                        'batch_size': 300,
                         'lr': 1e-3,
                         'optimizer': 'sgd',
                         'seed': seed} for seed in seed_list
-                       for alpha in np.logspace(-5, 1, 7)]
+                       for alpha in np.logspace(-4, 1, 6)]
         geometric_reduction = [{'datasets': [dataset],
                                 'geometric_reduction': True,
                                 'latent_dim': None,
                                 'dropout_input': 0.,
                                 'dropout_latent': 0.,
                                 'alpha': alpha,
-                                'optimizer': 'adam',
                                 'seed': seed} for seed in seed_list
-                               for alpha in [1e-5, 1e-4]]
+                               for alpha in [1e-5]]
         latent_dropout = [{'datasets': [dataset],
                            'geometric_reduction': True,
                            'latent_dim': 50,
                            'dropout_input': 0.25,
                            'dropout_latent': 0.5,
-                           'optimizer': 'adam',
                            'seed': seed} for seed in seed_list]
         transfer = [{'datasets': [dataset, 'hcp'],
                      'geometric_reduction': True,
                      'latent_dim': 50,
                      'dropout_input': 0.25,
                      'dropout_latent': 0.5,
-                     'optimizer': 'adam',
                      'seed': seed} for seed in seed_list]
         # exps += multinomial
         exps += geometric_reduction

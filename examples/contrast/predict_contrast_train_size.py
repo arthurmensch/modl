@@ -38,13 +38,13 @@ def single_run(config_updates, _id, master_id):
     def config():
         n_jobs = 1
         epochs = 400
-        steps_per_epoch = 400
+        steps_per_epoch = 200
         dropout_input = 0.25
         dropout_latent = 0.5
         source = 'hcp_rs_concat'
         depth_prob = [0, 1., 0]
         shared_supervised = False
-        batch_size = 64
+        batch_size = 100
         alpha = 1e-5
         validation = False
         mix_batch = False
@@ -69,45 +69,19 @@ def run(n_seeds, n_jobs, _run, _seed):
                                                   size=n_seeds)
     exps = []
     for dataset in ['archi', 'brainomics', 'camcan']:
-        multinomial = [{'datasets': [dataset],
-                        'geometric_reduction': False,
-                        'latent_dim': None,
-                        'dropout_input': 0.,
-                        'dropout_latent': 0.,
-                        'alpha': alpha,
-                        'epochs': 30,
-                        'steps_per_epoch': None,
-                        'batch_size': 300,
-                        'lr': 1e-3,
-                        'optimizer': 'sgd',
-                        'seed': seed} for seed in seed_list
-                       for alpha in np.logspace(-5, 1, 7)]
-        geometric_reduction = [{'datasets': [dataset],
-                                'geometric_reduction': True,
-                                'latent_dim': None,
-                                'dropout_input': 0.,
-                                'dropout_latent': 0.,
-                                'alpha': alpha,
-                                'optimizer': 'adam',
-                                'seed': seed} for seed in seed_list
-                               for alpha in [1e-5, 1e-4]]
-        latent_dropout = [{'datasets': [dataset],
-                           'geometric_reduction': True,
-                           'latent_dim': 50,
-                           'dropout_input': 0.25,
-                           'dropout_latent': 0.5,
-                           'optimizer': 'adam',
-                           'seed': seed} for seed in seed_list]
+        train_sizes = [dict(hcp=None, archi=i, la5c=None, brainomics=i,
+                            camcan=i,
+                            human_voice=None) for i in [5, 10, 20, 30, None]]
         transfer = [{'datasets': [dataset, 'hcp'],
                      'geometric_reduction': True,
                      'latent_dim': 50,
                      'dropout_input': 0.25,
                      'dropout_latent': 0.5,
+                     'train_size': train_size,
                      'optimizer': 'adam',
-                     'seed': seed} for seed in seed_list]
+                     'seed': seed} for seed in seed_list
+                    for train_size in train_sizes]
         # exps += multinomial
-        exps += geometric_reduction
-        exps += latent_dropout
         exps += transfer
 
     # Robust labelling of experiments

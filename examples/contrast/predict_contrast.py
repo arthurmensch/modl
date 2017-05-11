@@ -1,10 +1,11 @@
 import os
+from math import sqrt
 from os.path import join
 
 import numpy as np
 import pandas as pd
 from keras.callbacks import TensorBoard, Callback, ReduceLROnPlateau
-from keras.optimizers import SGD, RMSprop, Adam
+from keras.optimizers import SGD, RMSprop, Adam, Nadam
 from modl.datasets import get_data_dirs
 from modl.hierarchical import make_model, init_tensorflow, make_adversaries
 from modl.model_selection import StratifiedGroupShuffleSplit
@@ -26,13 +27,18 @@ def scale(X, train, per_dataset_std):
     X_train = X.iloc[train]
     if per_dataset_std:
         standard_scaler = {}
+        corr = np.sum(np.sqrt(X_train[0].groupby(level='dataset').aggregate('count').values))
         for dataset, this_X_train in X_train.groupby(level='dataset'):
             this_standard_scaler = StandardScaler()
             this_standard_scaler.fit(this_X_train)
+            this_standard_scaler.scale_ /= sqrt(this_X_train.shape[0]) / corr
             standard_scaler[dataset] = this_standard_scaler
+        new_X = []
         for dataset, this_X in X.groupby(level='dataset'):
-            this_X_new = standard_scaler[dataset].transform(this_X)
-            X.loc[dataset] = this_X_new
+            this_new_X = standard_scaler[dataset].transform(this_X)
+            this_new_X = pd.DataFrame(this_new_X, this_X.index)
+            new_X.append(this_new_X)
+        X = pd.concat(new_X)
     else:
         standard_scaler = StandardScaler(with_std=False)
         standard_scaler.fit(X_train)
@@ -64,6 +70,8 @@ def train_generator(train_data, batch_size, dataset_weight,
     grouped_data = {dataset: sub_data for dataset, sub_data in
                     grouped_data}
     batches_generator = {}
+    datasets = list(grouped_data.keys())
+    datasets = [dataset for dataset in datasets for _ in range(dataset_weight[dataset])]
     n_dataset = len(grouped_data)
     x_batch = np.empty((batch_size, train_data['X'].shape[1]))
     y_batch = np.empty((batch_size, train_data['y'].shape[1]))
@@ -71,7 +79,8 @@ def train_generator(train_data, batch_size, dataset_weight,
     sample_weight_batch = np.empty(batch_size)
     while True:
         start = 0
-        for dataset, data_one_dataset in grouped_data.items():
+        for dataset in datasets:
+            data_one_dataset = grouped_data[dataset]
             if not mix:
                 start = 0
             len_dataset = data_one_dataset.shape[0]
@@ -92,8 +101,7 @@ def train_generator(train_data, batch_size, dataset_weight,
             x_batch[start:stop] = batch_data['X'].values
             y_batch[start:stop] = batch_data['y'].values
             y_oh_batch[start:stop] = batch_data['y_oh'].values
-            sample_weight_batch[start:stop] = np.ones(len_batch) * \
-                                              dataset_weight[dataset]
+            sample_weight_batch[start:stop] = np.ones(len_batch) # * dataset_weight[dataset]
             start = stop
             if not mix:
                 yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
@@ -103,7 +111,6 @@ def train_generator(train_data, batch_size, dataset_weight,
             yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
                    [y_oh_batch[:stop].copy()] * 3,
                    [sample_weight_batch[:stop]] * 3)
-
 
 class MyCallback(Callback):
     def on_train_begin(self, logs={}):
@@ -136,10 +143,10 @@ def config():
                       human_voice=None)
     validation = True
     geometric_reduction = True
-    alpha = 1e-4
+    alpha = 1e-5
     latent_dim = 50
     activation = 'linear'
-    source = 'hcp_rs_concat'
+    source = 'hcp_rs'
     optimizer = 'adam'
     lr = 1e-3
     dropout_input = 0.25
@@ -147,19 +154,19 @@ def config():
     batch_size = 100
     per_dataset_std = False
     joint_training = True
-    epochs = 50
+    epochs = 100
     depth_weight = [0., 1., 0.]
     n_jobs = 2
     verbose = 2
     seed = 10
-    shared_supervised = True
+    shared_supervised = False
     mix_batch = False
-    steps_per_epoch = None
+    steps_per_epoch = 200
     _seed = 0
 
 @predict_contrast_exp.named_config
 def no_geometric():
-    datasets = ['camcan']
+    datasets = ['archi']
     validation = False
     geometric_reduction = False
     alpha = 1
@@ -258,6 +265,8 @@ def train_model(alpha,
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
 
+    dump(X, join(artifact_dir, 'X.pkl'))
+
     # Cross validation folds
     cv = StratifiedGroupShuffleSplit(stratify_levels='dataset',
                                      group_name='subject',
@@ -267,7 +276,7 @@ def train_model(alpha,
                                      random_state=0)
     train, test = next(cv.split(X))
 
-    # X, standard_scaler = scale(X, train, per_dataset_std)
+    # X, standard_scaler = scale(X, train, True)
     # dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
 
     y = np.concatenate([X.index.get_level_values(level)[:, np.newaxis]
@@ -336,19 +345,17 @@ def train_model(alpha,
             if this_depth_weight == 0:
                 model.get_layer('supervised_depth_%i' % i).trainable = False
     if optimizer == 'sgd':
-        optimizer = SGD(lr=lr)
+        optimizer = SGD(lr=lr, momentum=.1)
     elif optimizer == 'adam':
-        optimizer = Adam(lr=lr)
+        optimizer = Adam(lr=lr) # beta_2=0.9)
     model.compile(loss=['categorical_crossentropy'] * 3,
                   optimizer=optimizer,
                   loss_weights=depth_weight,
                   metrics=['accuracy'])
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', min_lr=1e-5)
     callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
                              histogram_freq=0,
                              write_graph=True,
                              write_images=True),
-                 reduce_lr
                  ]
     if joint_training:
         model.fit_generator(train_generator(train_data,

@@ -7,7 +7,6 @@ from keras.regularizers import l2
 import keras.backend as K
 from scipy.linalg import pinv
 from tensorflow.python import debug as tf_debug
-from keras.initializers import Orthogonal
 
 MIN_FLOAT32 = np.finfo(np.float32).min
 
@@ -94,8 +93,8 @@ def make_adversaries(label_pool):
 
 def make_multi_model(n_features, lbins,
                      alpha, latent_dim, dropout_input,
-                     dropout_latent, activation, seed):
-
+                     dropout_latent, activation, use_task_specific,
+                     seed):
     data = Input(shape=(n_features,), name='data', dtype='float32')
 
     if dropout_input > 0:
@@ -104,7 +103,7 @@ def make_multi_model(n_features, lbins,
     else:
         dropout_data = data
     if latent_dim is not None:
-        latent = Dense(latent_dim, activation=activation,
+        latent = Dense(latent_dim, activation='linear',
                        use_bias=False, name='latent',
                        kernel_regularizer=l2(alpha))(dropout_data)
         if dropout_latent > 0:
@@ -125,26 +124,28 @@ def make_multi_model(n_features, lbins,
         model.compile(loss='categorical_crossentropy',
                       optimizer='adam')
         models['dataset'][dataset] = model
-        models['task'][dataset] = {}
-        for task in lbins['task'][dataset]:
-            len_output = len(lbins['task'][dataset][task].classes_)
-            if len_output == 2:
-                output = Dense(1, activation='sigmoid',
-                               use_bias=True,
-                               kernel_regularizer=l2(alpha),
-                               name='supervised_%s_%s' % (dataset, task))(
-                    latent)
-                loss = 'binary_crossentropy'
-            else:
-                output = Dense(len_output, activation='softmax',
-                               use_bias=True,
-                               kernel_regularizer=l2(alpha),
-                               name='supervised_%s_%s' % (dataset, task))(latent)
-                loss = 'categorical_crossentropy'
-            model = Model(inputs=[data], outputs=output)
-            model.compile(loss=loss,
-                          optimizer='adam')
-            models['task'][dataset][task] = model
+        if use_task_specific:
+            models['task'][dataset] = {}
+            for task in lbins['task'][dataset]:
+                len_output = len(lbins['task'][dataset][task].classes_)
+                if len_output == 2:
+                    output = Dense(1, activation='sigmoid',
+                                   use_bias=True,
+                                   kernel_regularizer=l2(alpha),
+                                   name='supervised_%s_%s' % (dataset, task))(
+                        latent)
+                    loss = 'binary_crossentropy'
+                else:
+                    output = Dense(len_output, activation='softmax',
+                                   use_bias=True,
+                                   kernel_regularizer=l2(alpha),
+                                   name='supervised_%s_%s' % (dataset, task))(
+                        latent)
+                    loss = 'categorical_crossentropy'
+                model = Model(inputs=[data], outputs=output)
+                model.compile(loss=loss,
+                              optimizer='adam')
+                models['task'][dataset][task] = model
     return models
 
 
@@ -165,7 +166,7 @@ def make_model(n_features, alpha,
         dropout_data = data
     if latent_dim is not None:
         latent = Dense(latent_dim, activation=activation,
-                       use_bias=True, name='latent',
+                       use_bias=False, name='latent',
                        kernel_regularizer=l2(alpha))(dropout_data)
         if dropout_latent > 0:
             latent = Dropout(rate=dropout_latent, name='dropout',
@@ -227,4 +228,4 @@ def make_projection_matrix(bases, scale_bases=True):
     proj = np.concatenate(proj, axis=1)
     rec = np.concatenate(rec, axis=0)
     proj_inv = np.linalg.inv(proj.T.dot(rec.T)).T.dot(rec)
-    return proj, proj_inv
+    return proj, proj_inv, rec
