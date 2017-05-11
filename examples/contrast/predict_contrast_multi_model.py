@@ -3,17 +3,14 @@ from os.path import join
 
 import numpy as np
 import pandas as pd
-from keras.callbacks import TensorBoard, Callback, ReduceLROnPlateau
-from keras.optimizers import SGD, RMSprop
 from modl.datasets import get_data_dirs
-from modl.hierarchical import make_model, init_tensorflow, make_adversaries, \
-    make_multi_model
+from modl.hierarchical import make_multi_model
 from modl.model_selection import StratifiedGroupShuffleSplit
 from sacred import Experiment
 from sacred.observers import MongoObserver
-from sklearn.externals.joblib import load, dump
+from sklearn.externals.joblib import load
 from sklearn.preprocessing import LabelBinarizer, StandardScaler
-from sklearn.utils import gen_batches, check_random_state
+from sklearn.utils import gen_batches, check_random_state, shuffle
 
 idx = pd.IndexSlice
 
@@ -23,96 +20,55 @@ collection = predict_contrast_exp.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
 
 
-def scale(X, train, per_dataset_std):
-    X_train = X.iloc[train]
-    if per_dataset_std:
-        standard_scaler = {}
-        for dataset, this_X_train in X_train.groupby(level='dataset'):
-            this_standard_scaler = StandardScaler()
-            this_standard_scaler.fit(this_X_train)
-            standard_scaler[dataset] = this_standard_scaler
-        for dataset, this_X in X.groupby(level='dataset'):
-            this_X_new = standard_scaler[dataset].transform(this_X)
-            X.loc[dataset] = this_X_new
-    else:
-        standard_scaler = StandardScaler()
-        standard_scaler.fit(X_train)
-        X_new = standard_scaler.transform(X)
-        X = pd.DataFrame(X_new, index=X.index)
-    return X, standard_scaler
-
-
-def simple_generator(train_data, batch_size):
-    X_train = train_data['X_train']
-    y_train = train_data['y_train']
-    y_oh_train = train_data['y_oh_train']
-    len_x = X_train.shape[0]
-    while True:
-        permutation = check_random_state(0).permutation(len_x)
-        X_train = X_train.iloc[permutation]
-        y_train = y_train.iloc[permutation]
-        y_oh_train = y_oh_train.iloc[permutation]
-        batches = gen_batches(len_x, batch_size)
-        for batch in batches:
-            yield [X_train.values[batch], y_train.values[batch]], [
-                y_oh_train.values[batch]] * 3
-
-
-def train_generator(train_data, batch_size, dataset_weight,
-                    mix, seed):
+def batch_generator_dataset(Xs_train, lbins, models, batch_size, seed):
+    batch_generators = {}
     random_state = check_random_state(seed)
-    grouped_data = train_data.groupby(level='dataset')
-    grouped_data = {dataset: sub_data for dataset, sub_data in
-                    grouped_data}
-    batches_generator = {}
-    n_dataset = len(grouped_data)
-    x_batch = np.empty((batch_size, train_data['X'].shape[1]))
-    y_batch = np.empty((batch_size, train_data['y'].shape[1]))
-    y_oh_batch = np.empty((batch_size, train_data['y_oh'].shape[1]))
-    sample_weight_batch = np.empty(batch_size)
     while True:
-        start = 0
-        for dataset, data_one_dataset in grouped_data.items():
-            if not mix:
-                start = 0
-            len_dataset = data_one_dataset.shape[0]
+        for dataset in Xs_train['dataset']:
+            lbin = lbins['dataset'][dataset]
+            X_dataset = Xs_train['dataset'][dataset]
+            model = models['dataset'][dataset]
             try:
-                batch = next(batches_generator[dataset])
+                batch = next(batch_generators[dataset])
+                new_epoch = False
             except (KeyError, StopIteration):
-                batches_generator[dataset] = gen_batches(len_dataset,
-                                                         batch_size
-                                                         // n_dataset if mix
-                                                         else batch_size)
-                permutation = random_state.permutation(len_dataset)
-                data_one_dataset = data_one_dataset.iloc[permutation]
-                grouped_data[dataset] = data_one_dataset
-                batch = next(batches_generator[dataset])
-            len_batch = batch.stop - batch.start
-            stop = start + len_batch
-            batch_data = data_one_dataset.iloc[batch]
-            x_batch[start:stop] = batch_data['X'].values
-            y_batch[start:stop] = batch_data['y'].values
-            y_oh_batch[start:stop] = batch_data['y_oh'].values
-            sample_weight_batch[start:stop] = np.ones(len_batch) * \
-                                              dataset_weight[dataset]
-            start = stop
-            if not mix:
-                yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
-                       [y_oh_batch[:stop].copy()] * 3,
-                       [sample_weight_batch[:stop]] * 3)
-        if mix:
-            yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
-                   [y_oh_batch[:stop].copy()] * 3,
-                   [sample_weight_batch[:stop]] * 3)
+                len_dataset = X_dataset.shape[0]
+                shuffle(X_dataset, random_state=random_state)
+                batch_generators[dataset] = gen_batches(len_dataset,
+                                                        batch_size)
+                batch = next(batch_generators[dataset])
+                new_epoch = True
+            X_batch = X_dataset.iloc[batch]
+            y_oh_batch = X_batch.index.get_level_values(level='contrast')
+            y_oh_batch = lbin.transform(y_oh_batch)
+            X_batch = X_batch.values
+            yield dataset, model, X_batch, y_oh_batch, new_epoch
 
 
-class MyCallback(Callback):
-    def on_train_begin(self, logs={}):
-        self.weights = []
-
-    def on_epoch_end(self, epochs, logs={}):
-        weights = self.model.get_layer('latent').get_weights()[0].flat[:10]
-        self.weights.append(weights)
+def batch_generator_task(Xs_train, lbins, models, batch_size, seed,
+                         dataset):
+    batch_generators = {}
+    random_state = check_random_state(seed)
+    while True:
+        for task in Xs_train['task'][dataset]:
+            lbin = lbins['task'][dataset][task]
+            X_task = Xs_train['task'][dataset][task]
+            model = models['task'][dataset][task]
+            try:
+                batch = next(batch_generators[task])
+                new_epoch = False
+            except (KeyError, StopIteration):
+                len_task = X_task.shape[0]
+                shuffle(X_task, random_state=random_state)
+                batch_generators[task] = gen_batches(len_task,
+                                                     batch_size)
+                batch = next(batch_generators[task])
+                new_epoch = True
+            X_batch = X_task.iloc[batch]
+            y_oh_batch = X_batch.index.get_level_values(level='contrast')
+            y_oh_batch = lbin.transform(y_oh_batch)
+            X_batch = X_batch.values
+            yield task, model, X_batch, y_oh_batch, new_epoch
 
 
 @predict_contrast_exp.config
@@ -269,12 +225,18 @@ def train_model(alpha,
                                      random_state=0)
     train, test = next(cv.split(X))
 
-    X, standard_scaler = scale(X, train, per_dataset_std)
-    dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
+    X = pd.concat([X.iloc[train], X.iloc[test]], keys=['train', 'test'],
+                  names=['fold'])
+    X.sort_index(inplace=True)
+    n_features = X.shape[1]
+
+    # X, standard_scaler = scale(X, train, per_dataset_std)
+    # dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
 
     lbins = {'dataset': {}, 'task': {}}
     Xs_train = {'dataset': {}, 'task': {}}
     Xs_test = {'dataset': {}, 'task': {}}
+    pred = {'dataset': {}, 'task': {}}
     for dataset, X_dataset in X.groupby(level='dataset'):
         lbin = LabelBinarizer()
         this_y = X_dataset.index.get_level_values(level='contrast')
@@ -287,110 +249,69 @@ def train_model(alpha,
         Xs_test['task'][dataset] = {}
         for task, X_task in X_dataset.groupby(level='task'):
             lbin = LabelBinarizer()
+            this_y = X_task.index.get_level_values(level='contrast')
+            lbin.fit(this_y)
             lbins['task'][dataset][task] = lbin
             Xs_train['task'][dataset][task] = X_task.query("fold == 'train'")
             Xs_test['task'][dataset][task] = X_task.query("fold == 'test'")
 
-    models = make_multi_model(X,
+    models = make_multi_model(n_features=n_features,
+                              lbins=lbins,
                               alpha=alpha,
                               latent_dim=latent_dim,
                               activation=activation,
                               dropout_input=dropout_input,
                               dropout_latent=dropout_latent,
                               seed=_seed)
-    n_iter = 0
 
-    def batch_generator_dataset():
-        batch_generators = {}
-        random_state = check_random_state(_seed)
-        while True:
-            for dataset in Xs_train['dataset']:
-                lbin = lbins['dataset'][dataset]
-                X_dataset = Xs_train['dataset'][dataset]
-                model = models['dataset'][dataset]
-                try:
-                    batch = next(batch_generators[dataset])
-                except (KeyError, StopIteration):
-                    len_dataset = X_dataset.shape[0]
-                    random_state.shuffle(X_dataset)
-                    batch_generators[dataset] = gen_batches(len_dataset,
-                                                            batch_size)
-                    batch = next(batch_generators[dataset])
-                X_batch = X_dataset.iloc[batch]
-                y_oh_batch = X_batch.index.get_level_values(level='contrast')
-                y_oh_batch = lbin.transform(y_oh_batch)
-                X_batch = X_batch.values
-                yield dataset, model, X_batch, y_oh_batch
-
-    def batch_generator_task(dataset):
-        batch_generators = {}
-        random_state = check_random_state(_seed)
-        while True:
-            for task in Xs_train['task'][dataset]:
-                lbin = lbins['task'][dataset][task]
-                X_task = Xs_train['task'][dataset][task]
-                model = models['task'][dataset][task]
-                try:
-                    batch = next(batch_generators[task])
-                except (KeyError, StopIteration):
-                    len_task = X_task.shape[0]
-                    random_state.shuffle(X_task)
-                    batch_generators[task] = gen_batches(len_task,
-                                                            batch_size)
-                    batch = next(batch_generators[task])
-                X_batch = X_task.iloc[batch]
-                y_oh_batch = X_batch.index.get_level_values(level='contrast')
-                y_oh_batch = lbin.transform(y_oh_batch)
-                X_batch = X_batch.values
-                yield model, X_batch, y_oh_batch
-
-    our_batch_generator_dataset = batch_generator_dataset()
-    our_batch_generator_task = {dataset: batch_generator_task(dataset)
+    our_batch_generator_dataset = batch_generator_dataset(Xs_train, lbins, models, batch_size, _seed)
+    our_batch_generator_task = {dataset: batch_generator_task(Xs_train, lbins, models, batch_size, _seed,
+                                                              dataset)
                                 for dataset in Xs_train['dataset']}
 
-    while n_iter < 1000:
-        dataset, model, X_batch, y_oh_batch = next(our_batch_generator_dataset)
+    n_samples = 0
+    while n_samples < 1e7:
+        dataset, model, X_batch, y_oh_batch, new_epoch = next(our_batch_generator_dataset)
+        n_samples += X_batch.shape[0]
         model.train_on_batch(X_batch, y_oh_batch)
-        n_iter += 1
-        task, model, X_batch, y_oh_batch = next(our_batch_generator_task[dataset])
+        if new_epoch:
+            X_test = Xs_test['dataset'][dataset]
+            lbin = lbins['dataset'][dataset]
+            contrast = lbin.inverse_transform(model.predict(X_test.values))
+            true_contrast = X_test.index.get_level_values(level='contrast').values
+            accuracy = np.mean(contrast == true_contrast)
+            print(n_samples, 'condition vs all', dataset, 'acc', accuracy)
+        task, model, X_batch, y_oh_batch, new_epoch = next(
+            our_batch_generator_task[dataset])
+        n_samples += X_batch.shape[0]
         model.train_on_batch(X_batch, y_oh_batch)
-        n_iter += 1
+        if new_epoch:
+            X_test = Xs_test['task'][dataset][task]
+            lbin = lbins['task'][dataset][task]
+            contrast = lbin.inverse_transform(model.predict(X_test.values))
+            true_contrast = X_test.index.get_level_values(level='contrast').values
+            accuracy = np.mean(contrast == true_contrast)
+            print(n_samples, 'condition vs task', dataset, task, 'acc', accuracy)
 
     for dataset in Xs_test['dataset']:
         X_dataset = Xs_test['dataset'][dataset]
-        lbins['dataset'][dataset] = lbin
-        Xs_train['dataset'][dataset] = X_dataset.query("fold == 'train'")
-        Xs_test['dataset'][dataset] = X_dataset.query("fold == 'test'")
-        lbins['task'][dataset] = {}
-        Xs_train['task'][dataset] = {}
-        Xs_test['task'][dataset] = {}
+        model = models['dataset'][dataset]
+        lbin = lbins['dataset'][dataset]
+        contrast = lbin.inverse_transform(model.predict(X_dataset.values))
+        pred['dataset'][dataset] = pd.DataFrame(data=contrast,
+                                                index=X_dataset.index)
         for task, X_task in X_dataset.groupby(level='task'):
-
-    y_pred_oh = model.predict(x=[X.values, y.values])
-
-    _run.info['score'] = {}
-    depth_name = ['full', 'dataset', 'task']
-    for depth in [0, 1, 2]:
-        this_y_pred_oh = y_pred_oh[depth]
-        this_y_pred_oh_df = pd.DataFrame(index=X.index,
-                                         data=this_y_pred_oh)
-        dump(this_y_pred_oh_df, join(artifact_dir,
-                                     'y_pred_depth_%i.pkl' % depth))
-        y_pred = lbin.inverse_transform(this_y_pred_oh)  # "0_0_0"
-        prediction = pd.DataFrame({'true_label': y_tuple,
-                                   'predicted_label': y_pred},
-                                  index=X.index)
-        prediction = pd.concat([prediction.iloc[train],
-                                prediction.iloc[test]],
-                               names=['fold'], keys=['train', 'test'])
-        prediction.to_csv(join(artifact_dir,
-                               'prediction_depth_%i.csv' % depth))
-        res = test_model(prediction)
-        _run.info['score'][depth_name[depth]] = res
-        print('Prediction at depth %s' % depth_name[depth], res)
-        _run.add_artifact(join(artifact_dir,
-                               'prediction_depth_%i.csv' % depth),
-                          'prediction')
-
-    model.save(join(artifact_dir, 'model.keras'))
-    _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')
+            model = models['task'][dataset][task]
+            lbin = lbins['task'][dataset][task]
+            contrast = lbin.inverse_transform(model.predict(X_task.values))
+            pred['task'][(dataset, task)] = pd.DataFrame(data=contrast,
+                                                         index=X_task.index)
+    pred_dataset = pd.concat(pred['dataset'].values(),
+                             keys=pred['dataset'].keys(),
+                             names=['dataset'])
+    pred_task = pd.concat(pred['task'].values(),
+                          keys=pred['task'].keys(),
+                          names=['dataset', 'task'])
+    #
+    # model.save(join(artifact_dir, 'model.keras'))
+    # _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')

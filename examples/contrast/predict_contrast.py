@@ -4,7 +4,7 @@ from os.path import join
 import numpy as np
 import pandas as pd
 from keras.callbacks import TensorBoard, Callback, ReduceLROnPlateau
-from keras.optimizers import SGD, RMSprop
+from keras.optimizers import SGD, RMSprop, Adam
 from modl.datasets import get_data_dirs
 from modl.hierarchical import make_model, init_tensorflow, make_adversaries
 from modl.model_selection import StratifiedGroupShuffleSplit
@@ -136,18 +136,18 @@ def config():
                       human_voice=None)
     validation = True
     geometric_reduction = True
-    alpha = 0
-    latent_dim = 100
+    alpha = 1e-4
+    latent_dim = 50
     activation = 'linear'
     source = 'hcp_rs_concat'
-    optimizer = 'sgd'
-    lr = 1e-2
-    dropout_input = 0.0
-    dropout_latent = 0.6
+    optimizer = 'adam'
+    lr = 1e-3
+    dropout_input = 0.25
+    dropout_latent = 0.5
     batch_size = 128
     per_dataset_std = False
     joint_training = True
-    epochs = 100
+    epochs = 40
     depth_weight = [0., 1., 0.]
     n_jobs = 2
     verbose = 2
@@ -267,8 +267,8 @@ def train_model(alpha,
                                      random_state=0)
     train, test = next(cv.split(X))
 
-    X, standard_scaler = scale(X, train, per_dataset_std)
-    dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
+    # X, standard_scaler = scale(X, train, per_dataset_std)
+    # dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
 
     y = np.concatenate([X.index.get_level_values(level)[:, np.newaxis]
                         for level in ['dataset', 'task', 'contrast']],
@@ -338,7 +338,7 @@ def train_model(alpha,
     if optimizer == 'sgd':
         optimizer = SGD(lr=lr)
     elif optimizer == 'adam':
-        optimizer = RMSprop(lr=lr)
+        optimizer = Adam(lr=lr)
     model.compile(loss=['categorical_crossentropy'] * 3,
                   optimizer=optimizer,
                   loss_weights=depth_weight,

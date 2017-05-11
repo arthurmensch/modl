@@ -93,8 +93,8 @@ def make_adversaries(label_pool):
     return adversaries
 
 
-def make_multi_model(n_features, y_ohs,
-                     label_structure, alpha, latent_dim, dropout_input,
+def make_multi_model(n_features, lbins,
+                     alpha, latent_dim, dropout_input,
                      dropout_latent, activation, seed):
 
     data = Input(shape=(n_features,), name='data', dtype='float32')
@@ -106,7 +106,7 @@ def make_multi_model(n_features, y_ohs,
         dropout_data = data
     if latent_dim is not None:
         latent = Dense(latent_dim, activation=activation,
-                       use_bias=False, name='latent',
+                       use_bias=True, name='latent',
                        kernel_regularizer=l2(alpha))(dropout_data)
         if dropout_latent > 0:
             latent = Dropout(rate=dropout_latent, name='dropout',
@@ -116,23 +116,34 @@ def make_multi_model(n_features, y_ohs,
 
     models = {'dataset': {}, 'task': {}}
 
-    for dataset in label_structure:
-        len_output = y_ohs['dataset'][dataset].shape[1]
+    for dataset in lbins['dataset']:
+        len_output = len(lbins['dataset'][dataset].classes_)
         output = Dense(len_output, activation='softmax',
                        use_bias=True,
                        kernel_regularizer=l2(alpha),
-                       name='supervised_%s_%s' % (dataset, task))(latent)
+                       name='supervised_%s' % dataset)(latent)
         model = Model(inputs=[data], outputs=output)
+        model.compile(loss='categorical_crossentropy',
+                      optimizer='adam')
         models['dataset'][dataset] = model
-
-        for task in label_structure[dataset]:
-            len_output = y_ohs['task'][dataset][task].shape[1]
-            output = Dense(len_output, activation='softmax',
-                           use_bias=True,
-                           kernel_regularizer=l2(alpha),
-                           name='supervised_%s_%s' % (dataset, task))(latent)
+        models['task'][dataset] = {}
+        for task in lbins['task'][dataset]:
+            len_output = len(lbins['task'][dataset][task].classes_)
+            if len_output == 2:
+                output = Dense(1, activation='sigmoid',
+                               use_bias=True,
+                               kernel_regularizer=l2(alpha),
+                               name='supervised_%s_%s' % (dataset, task))(
+                    latent)
+                loss = 'binary_crossentropy'
+            else:
+                output = Dense(len_output, activation='softmax',
+                               use_bias=True,
+                               kernel_regularizer=l2(alpha),
+                               name='supervised_%s_%s' % (dataset, task))(latent)
+                loss = 'categorical_crossentropy'
             model = Model(inputs=[data], outputs=output)
-            model.compile(loss='categorical_crossentropy',
+            model.compile(loss=loss,
                           optimizer='adam')
             models['task'][dataset][task] = model
     return models

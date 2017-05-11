@@ -273,6 +273,7 @@ def run(alpha,
         _run.info['%s_score' % fold] = np.mean(sub_match)
     for (fold, dataset), sub_match in match.groupby(level=['fold', 'dataset']):
         _run.info['%s_%s_score' % (fold, dataset)] = np.mean(sub_match)
+    print(_run.info)
     if verbose:
         print('Write task prediction artifacts')
     prediction.to_csv(join(artifact_dir, 'prediction.csv'))
