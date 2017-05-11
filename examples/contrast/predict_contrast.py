@@ -34,7 +34,7 @@ def scale(X, train, per_dataset_std):
             this_X_new = standard_scaler[dataset].transform(this_X)
             X.loc[dataset] = this_X_new
     else:
-        standard_scaler = StandardScaler()
+        standard_scaler = StandardScaler(with_std=False)
         standard_scaler.fit(X_train)
         X_new = standard_scaler.transform(X)
         X = pd.DataFrame(X_new, index=X.index)
@@ -144,10 +144,10 @@ def config():
     lr = 1e-3
     dropout_input = 0.25
     dropout_latent = 0.5
-    batch_size = 128
+    batch_size = 100
     per_dataset_std = False
     joint_training = True
-    epochs = 40
+    epochs = 50
     depth_weight = [0., 1., 0.]
     n_jobs = 2
     verbose = 2

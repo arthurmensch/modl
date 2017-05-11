@@ -26,8 +26,7 @@ class PartialSoftmax(Layer):
         logits = tf.where(mask, logits, logits_min)
         logits_max = K.max(logits, axis=1, keepdims=True)
         logits -= logits_max
-        # exp_logits = tf.exp(logits)
-        exp_logits = tf.where(mask, tf.exp(logits), tf.zeros(tf.shape(logits)))
+        exp_logits = tf.exp(logits)
         sum_exp_logits = K.sum(exp_logits, axis=1, keepdims=True)
         return exp_logits / sum_exp_logits
 
@@ -106,7 +105,7 @@ def make_multi_model(n_features, lbins,
         dropout_data = data
     if latent_dim is not None:
         latent = Dense(latent_dim, activation=activation,
-                       use_bias=True, name='latent',
+                       use_bias=False, name='latent',
                        kernel_regularizer=l2(alpha))(dropout_data)
         if dropout_latent > 0:
             latent = Dropout(rate=dropout_latent, name='dropout',
@@ -149,7 +148,6 @@ def make_multi_model(n_features, lbins,
     return models
 
 
-
 def make_model(n_features, alpha,
                latent_dim, dropout_input,
                dropout_latent,
@@ -167,7 +165,7 @@ def make_model(n_features, alpha,
         dropout_data = data
     if latent_dim is not None:
         latent = Dense(latent_dim, activation=activation,
-                       use_bias=False, name='latent',
+                       use_bias=True, name='latent',
                        kernel_regularizer=l2(alpha))(dropout_data)
         if dropout_latent > 0:
             latent = Dropout(rate=dropout_latent, name='dropout',

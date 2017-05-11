@@ -33,7 +33,7 @@ def config():
     from_loadings = True
     reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced', 'hcp_rs_concat')
 
-    datasets = ['archi']
+    datasets = ['archi', 'hcp']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5)
     n_subjects = dict(hcp=None, archi=None, la5c=None, brainomics=None)
     dataset_weight = dict(hcp=1, archi=1, la5c=1, brainomics=1)
@@ -167,30 +167,17 @@ def run(alpha,
                                      n_splits=1,
                                      random_state=_seed)
     train, test = next(cv.split(X))
+
+
+    model_indices_train = model_indices.iloc[train]
+    X_train = X.iloc[train]
     y_train = y.iloc[train]
 
-    if validation:
-        cv = StratifiedGroupShuffleSplit(stratify_levels=stratify_levels,
-                                         group_name='subject',
-                                         test_size=.1,
-                                         train_size=None,
-                                         n_splits=1,
-                                         random_state=_seed)
-        sub_train, val = next(cv.split(y_train))
-        sub_train = train[sub_train]
-        val = train[val]
-        X_train = X.iloc[sub_train]
-        y_train = y.iloc[sub_train]
-        model_indices_train = model_indices.iloc[sub_train]
-        X_val = X.iloc[val]
-        y_val = y.iloc[val]
-        model_indices_val = model_indices.iloc[val]
-        train = sub_train
-        fit_kwargs = {'validation_data': (X_val, y_val, model_indices_val)}
-    else:
-        model_indices_train = model_indices.iloc[train]
-        X_train = X.iloc[train]
-        fit_kwargs = {}
+    model_indices_test = model_indices.iloc[test]
+    X_test = X.iloc[test]
+    y_test = y.iloc[test]
+
+    fit_kwargs = {'validation_data': (X_test, y_test, model_indices_test)}
 
     if verbose:
         print('Transform and fit data')
@@ -216,35 +203,35 @@ def run(alpha,
 
     print('Fit time: %.2f' % (time.time() - t0))
 
-    if model_indexing == 'dataset_task':
-        print('Refitting')
-        model_indices = pd.Series(data=datasets, index=X.index)
-        model_indices_train = model_indices.iloc[train]
-        model_indices_val = model_indices.iloc[val]
-        model_weight = dataset_weight
-        fit_kwargs = {'validation_data': (X_val, y_val, model_indices_val)}
-
-        dump(classifier, join(artifact_dir, 'classifier.pkl'))
-
-        new_classifier = FactoredLogistic(optimizer=optimizer,
-                                          max_samples=max_samples,
-                                          activation='linear',
-                                          fit_intercept=True,
-                                          latent_dim=latent_dim,
-                                          dropout_latent=dropout_latent,
-                                          dropout_input=dropout_input,
-                                          alpha=alpha,
-                                          beta=beta,
-                                          early_stop=False,
-                                          fine_tune=0,
-                                          batch_size=batch_size,
-                                          n_jobs=n_jobs,
-                                          verbose=verbose)
-        new_classifier.fit(X_train, y_train, model_weight=model_weight,
-                           latent_weights=classifier.encoder_.get_layer('latent').get_weights(),
-                           model_indices=model_indices_train,
-                           **fit_kwargs)
-        classifier = new_classifier
+    # if model_indexing == 'dataset_task':
+    #     print('Refitting')
+    #     model_indices = pd.Series(data=datasets, index=X.index)
+    #     model_indices_train = model_indices.iloc[train]
+    #     model_indices_val = model_indices.iloc[val]
+    #     model_weight = dataset_weight
+    #     fit_kwargs = {'validation_data': (X_val, y_val, model_indices_val)}
+    #
+    #     dump(classifier, join(artifact_dir, 'classifier.pkl'))
+    #
+    #     new_classifier = FactoredLogistic(optimizer=optimizer,
+    #                                       max_samples=max_samples,
+    #                                       activation='linear',
+    #                                       fit_intercept=True,
+    #                                       latent_dim=latent_dim,
+    #                                       dropout_latent=dropout_latent,
+    #                                       dropout_input=dropout_input,
+    #                                       alpha=alpha,
+    #                                       beta=beta,
+    #                                       early_stop=False,
+    #                                       fine_tune=0,
+    #                                       batch_size=batch_size,
+    #                                       n_jobs=n_jobs,
+    #                                       verbose=verbose)
+    #     new_classifier.fit(X_train, y_train, model_weight=model_weight,
+    #                        latent_weights=classifier.encoder_.get_layer('latent').get_weights(),
+    #                        model_indices=model_indices_train,
+    #                        **fit_kwargs)
+    #     classifier = new_classifier
 
     predicted_labels = classifier.predict(X, model_indices=model_indices)
     predicted_labels = le.inverse_transform(predicted_labels)
@@ -254,15 +241,9 @@ def run(alpha,
                                'predicted_label': predicted_labels},
                               index=X.index)
 
-    if validation:
-        prediction = pd.concat([prediction.iloc[train],
-                                prediction.iloc[val],
-                                prediction.iloc[test]],
-                               names=['fold'], keys=['train', 'val', 'test'])
-    else:
-        prediction = pd.concat([prediction.iloc[train],
-                                prediction.iloc[test]],
-                               names=['fold'], keys=['train', 'test'])
+    prediction = pd.concat([prediction.iloc[train],
+                            prediction.iloc[test]],
+                           names=['fold'], keys=['train', 'val', 'test'])
     prediction.sort_index()
     match = prediction['true_label'] == prediction['predicted_label']
 
