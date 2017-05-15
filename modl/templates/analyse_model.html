@@ -14,8 +14,7 @@
 <ul>
     {% for vector in classification_array %}
         <li>{{ vector.label }}<br />
-            <img src="assets/{{ vector[0].src }}" title="{{ vector[0].label }}"/>
-            <img src="assets/{{ vector[1].src }}" title="{{ vector[1].label }}"/>
+            <img src="assets/{{ vector.src }}" title="{{ vector.label }}"/>
 
         </li>
     {% endfor %}

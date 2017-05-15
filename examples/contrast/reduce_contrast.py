@@ -2,6 +2,8 @@ import os
 from os.path import join
 
 import pandas as pd
+from nilearn.input_data import NiftiLabelsMasker
+
 from modl.datasets import get_data_dirs
 from modl.hierarchical import make_projection_matrix
 from modl.input_data.fmri.unmask import retrieve_components, \
@@ -26,7 +28,7 @@ def config():
     n_jobs = 24
     verbose = 2
 
-    source = 'hcp_rs_concat'
+    source = 'craddock'
 
     output_dir = join(get_data_dirs()[0], 'pipeline', 'contrast')
     dataset_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
@@ -43,22 +45,32 @@ def run(dictionary_penalty,
     this_dataset_dir = join(dataset_dir, dataset)
     masker, X = get_raw_contrast_data(this_dataset_dir)
     print('Retrieve components')
-    if source == 'msdl':
-        components = fetch_atlas_msdl()['maps']
-        proj = masker.transform(components).T
-    elif source in ['hcp_rs', 'hcp_rs_concat']:
-        if source == 'hcp_rs':
-            n_components_list = [64]
-        else:
-            n_components_list = [16, 64, 256]
-        components = memory.cache(retrieve_components)(dictionary_penalty,
-                                                       masker,
-                                                       n_components_list)
+    if source == 'craddock':
+        components = join(get_data_dirs()[0],
+                          'ADHD200_parcellations',
+                          'ADHD200_parcellate_400.nii.gz')
+        niimgs = masker.inverse_transform(X.values)
+        label_masker = NiftiLabelsMasker(labels_img=components,
+                                         smoothing_fwhm=0,
+                                         mask_img=masker.mask_img_).fit()
+        Xt = label_masker.transform(niimgs)
+    else:
+        if source == 'msdl':
+            components = fetch_atlas_msdl()['maps']
+            proj = masker.transform(components).T
+        elif source in ['hcp_rs', 'hcp_rs_concat']:
+            if source == 'hcp_rs':
+                n_components_list = [64]
+            else:
+                n_components_list = [16, 64, 256]
+            components = memory.cache(retrieve_components)(dictionary_penalty,
+                                                           masker,
+                                                           n_components_list)
 
-        print('Transform and fit data')
-        proj, _ = memory.cache(make_projection_matrix)(components,
-                                                       scale_bases=True, )
-    Xt = X.dot(proj)
+            print('Transform and fit data')
+            proj, _ = memory.cache(make_projection_matrix)(components,
+                                                           scale_bases=True, )
+        Xt = X.dot(proj)
     Xt = pd.DataFrame(data=Xt, index=X.index)
     this_output_dir = join(output_dir, source, dataset)
     if not os.path.exists(this_output_dir):

@@ -16,7 +16,7 @@ sys.path.append(path.dirname(path.dirname
 
 from examples.contrast.predict_contrast import predict_contrast_exp
 
-predict_contrast_multi_exp = Experiment('predict_contrast_multi',
+predict_contrast_multi_exp = Experiment('predict_contrast_multinomial',
                                         ingredients=[predict_contrast_exp])
 collection = predict_contrast_multi_exp.path
 observer = MongoObserver.create(db_name='amensch', collection=collection)
@@ -37,8 +37,8 @@ def single_run(config_updates, _id, master_id):
     @predict_contrast_exp.config
     def config():
         n_jobs = 1
-        epochs = 100
-        steps_per_epoch = 300
+        epochs = 300
+        steps_per_epoch = 200
         dropout_input = 0.25
         dropout_latent = 0.5
         source = 'hcp_rs_concat'
@@ -49,7 +49,7 @@ def single_run(config_updates, _id, master_id):
         validation = False
         mix_batch = False
         verbose = 0
-        train_size = dict(hcp=None, archi=30, la5c=50, brainomics=30,
+        train_size = dict(hcp=None, archi=30, la5c=None, brainomics=30,
                           camcan=100,
                           human_voice=None)
 
@@ -68,7 +68,7 @@ def run(n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     exps = []
-    for dataset in ['camcan', 'brainomics', 'archi']:
+    for dataset in ['archi', 'brainomics', 'camcan']:
         multinomial = [{'datasets': [dataset],
                         'geometric_reduction': False,
                         'latent_dim': None,
@@ -100,24 +100,17 @@ def run(n_seeds, n_jobs, _run, _seed):
                            'dropout_latent': 0.5,
                            'optimizer': 'adam',
                            'seed': seed} for seed in seed_list]
-        train_size = {'hcp': None,
-                      'archi': 30 if dataset == 'archi' else None,
-                      'la5c': 50,
-                      'brainomics': 30 if dataset == 'brainomics' else None,
-                      'camcan': 100 if dataset == 'camcan' else None,
-                      'human_voice': None}
-        transfer = [{'datasets': ['archi', 'hcp', 'brainomics', 'camcan'],
+        transfer = [{'datasets': [dataset, 'hcp'],
                      'geometric_reduction': True,
                      'latent_dim': 50,
                      'dropout_input': 0.25,
                      'dropout_latent': 0.5,
-                     'train_size': train_size,
                      'optimizer': 'adam',
                      'seed': seed} for seed in seed_list]
-        # exps += multinomial
+        exps += multinomial
         # exps += geometric_reduction
         # exps += latent_dropout
-        exps += transfer
+        # exps += transfer
 
     # Robust labelling of experiments
     client = pymongo.MongoClient()
@@ -126,8 +119,6 @@ def run(n_seeds, n_jobs, _run, _seed):
     c = c.sort('_id', pymongo.DESCENDING).limit(1)
     c = c.next()['_id'] + 1 if c.count() else 1
     exps = shuffle(exps)
-
-
     Parallel(n_jobs=n_jobs,
              verbose=10)(delayed(single_run)(config_updates, c + i, _run._id)
                          for i, config_updates in enumerate(exps))

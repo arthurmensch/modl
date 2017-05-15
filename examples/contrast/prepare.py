@@ -26,6 +26,6 @@ def launch_dataset(dataset, source):
                                             )))
     run()
 
-Parallel(n_jobs=4)(delayed(launch_dataset)(dataset, source) for dataset in
-                   ['archi', 'hcp', 'camcan', 'brainomics', 'la5c']
-                   for source in ['msdl', 'hcp_rs', 'hcp_rs_concat'])
+Parallel(n_jobs=5)(delayed(launch_dataset)(dataset, source) for dataset in
+                   ['hcp', 'camcan', 'brainomics', 'la5c']
+                   for source in ['craddock'])

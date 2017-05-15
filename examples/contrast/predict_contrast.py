@@ -128,7 +128,7 @@ def config():
                       'contrast')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'prediction_hierarchical')
-    datasets = ['archi', 'hcp']
+    datasets = ['archi', 'hcp', 'brainomics', 'camcan']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      camcan=.5,
                      human_voice=0.5)
@@ -144,24 +144,24 @@ def config():
     validation = True
     geometric_reduction = True
     alpha = 1e-5
-    latent_dim = 50
+    latent_dim = None
     activation = 'linear'
-    source = 'hcp_rs'
+    source = 'hcp_rs_concat'
     optimizer = 'adam'
     lr = 1e-3
-    dropout_input = 0.25
-    dropout_latent = 0.5
-    batch_size = 100
+    dropout_input = 0.0
+    dropout_latent = 0.0
+    batch_size = 256
     per_dataset_std = False
     joint_training = True
-    epochs = 100
+    epochs = 200
     depth_weight = [0., 1., 0.]
     n_jobs = 2
     verbose = 2
     seed = 10
     shared_supervised = False
     mix_batch = False
-    steps_per_epoch = 200
+    steps_per_epoch = 100
     _seed = 0
 
 @predict_contrast_exp.named_config
@@ -185,7 +185,7 @@ def no_geometric():
     seed = 10
     shared_supervised = False
     mix_batch = False
-    steps_per_epoch = None
+    steps_per_epoch = 100
     _seed = 0
 
 
@@ -234,6 +234,7 @@ def train_model(alpha,
                 n_jobs,
                 _run,
                 _seed):
+    _run._id = 'no_latent'
     artifact_dir = join(artifact_dir, str(_run._id))
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)

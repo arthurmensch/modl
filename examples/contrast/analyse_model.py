@@ -1,6 +1,10 @@
 import os
 from os.path import join
 
+import matplotlib
+from nipy.labs.viz_tools.coord_tools import find_cut_coords
+
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import numpy as np
@@ -8,10 +12,9 @@ import pandas as pd
 from jinja2 import select_autoescape, PackageLoader, Environment
 from nilearn.image import index_img
 from nilearn.input_data import MultiNiftiMasker
-from nilearn.plotting import plot_stat_map
-from numpy.linalg import lstsq, svd
+from nilearn.plotting import plot_stat_map, find_xyz_cut_coords
+from numpy.linalg import lstsq
 from sklearn.cluster import MiniBatchKMeans
-from sklearn.decomposition import FastICA, PCA
 from sklearn.externals.joblib import Memory, load, Parallel, delayed
 from sklearn.metrics import confusion_matrix
 from wordcloud import WordCloud
@@ -21,17 +24,18 @@ from modl.hierarchical import HierarchicalLabelMasking, PartialSoftmax, \
     make_projection_matrix
 from modl.input_data.fmri.unmask import retrieve_components
 from modl.utils.system import get_cache_dirs
+from keras.models import load_model
 
 
-def plot_confusion_matrix(conf_arr, labels):
+def plot_confusion_matrix(conf_arr, labels, normalize=True):
     fig = plt.figure(figsize=(20, 20))
     plt.clf()
     ax = fig.add_subplot(111)
     ax.set_aspect(1)
-
-    S = np.sum(conf_arr, axis=1, keepdims=True)
-    S[S == 0] = 1
-    conf_arr = conf_arr / S
+    if normalize:
+        S = np.sum(conf_arr, axis=1, keepdims=True)
+        S[S == 0] = 1
+        conf_arr = conf_arr / S
 
     res = ax.imshow(conf_arr,
                     interpolation='nearest')
@@ -54,13 +58,39 @@ def plot_classification_vector(classification_vectors_nii, label_index,
         img = index_img(classification_vectors_nii, i)
         vmax = np.max(img.get_data())
         fig, ax = plt.subplots(1, 1, figsize=(8, 5))
-        plot_stat_map(index_img(classification_vectors_nii, i),
+        plot_stat_map(img,
                       axes=ax, figure=fig, colorbar=True,
                       threshold=vmax / 3,
                       title=label)
         fig.savefig(join(assets_dir, src))
         plt.close(fig)
     return {'src': src, 'label': label}
+
+
+def plot_both_classification_vector(classification_vectors_nii, label_index,
+                               assets_dir, i, overwrite=False):
+    src = 'classification_depth_%i.png' % (i)
+    label = 'd: %s - t: %s - c: %s' % label_index.values[i]
+    target = join(assets_dir, src)
+    if overwrite or not os.path.exists(target):
+        img = index_img(classification_vectors_nii[True], i)
+        img_2 = index_img(classification_vectors_nii[False], i)
+        vmax = np.max(img.get_data())
+        fig, axes = plt.subplots(2, 1, figsize=(8, 10))
+        cut_coords = find_xyz_cut_coords(img, activation_threshold=vmax / 3)
+        plot_stat_map(img,
+                      axes=axes[0], figure=fig, colorbar=True,
+                      threshold=vmax / 3,
+                      cut_coords=cut_coords,
+                      title=label)
+        vmax = np.max(img_2.get_data())
+        plot_stat_map(img_2,
+                      axes=axes[1], figure=fig, colorbar=True,
+                      threshold=vmax / 3,
+                      cut_coords=cut_coords,
+                      title=label)
+        fig.savefig(join(assets_dir, src))
+        plt.close(fig)
 
 
 def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
@@ -104,6 +134,86 @@ def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
     return {'src': src, 'title': title, 'freq': repr(freq_dict)}
 
 
+def compare():
+    # Load model
+    # y =X_full W_g D^-1 W_e W_s
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
+
+    dictionary_penalty = 1e-4
+    n_components_list = [16, 64, 256]
+
+    artifact_dir = {'latent': join(get_data_dirs()[0], 'pipeline', 'contrast',
+                                   'prediction_hierarchical', 'None'),
+                    'no_latent': join(get_data_dirs()[0], 'pipeline',
+                                      'contrast',
+                                      'prediction_hierarchical', 'no_latent')}
+
+    analysis_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
+                        'prediction_hierarchical', 'compare')
+    assets_dir = join(analysis_dir, 'assets')
+
+    if not os.path.exists(assets_dir):
+        os.makedirs(assets_dir)
+
+    mask = join(get_data_dirs()[0], 'mask_img.nii.gz')
+    masker = MultiNiftiMasker(mask_img=mask, smoothing_fwhm=0).fit()
+
+
+    components = memory.cache(retrieve_components)(dictionary_penalty,
+                                                   masker,
+                                                   n_components_list)  # W_g
+
+    proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
+                                                               scale_bases=True, )
+
+    lbin = load(join(artifact_dir['latent'], 'lbin.pkl'))
+    labels = lbin.classes_
+
+    label_index = []
+    for label in labels:
+        label_index.append(label.split('__'))
+    label_index = pd.MultiIndex.from_tuples(
+        label_index, names=('dataset', 'task', 'condition'))
+
+    print('Load model')
+    classification_vectors_nii = {}
+    for latent in [True, False]:
+        # Expected shape (?, 336)
+        this_artifact_dir = artifact_dir['latent' if latent else 'no_latent']
+        lbin = load(join(this_artifact_dir, 'lbin.pkl'))
+        labels = lbin.classes_
+        model = load_model(join(this_artifact_dir, 'model.keras'),
+                           custom_objects={'HierarchicalLabelMasking':
+                                               HierarchicalLabelMasking,
+                                           'PartialSoftmax': PartialSoftmax})
+        if latent:
+            weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
+            latent_proj = proj.dot(weight_latent)
+        else:
+            latent_proj = proj
+        # Shape (336, 50)
+        weight_supervised, _ = model.get_layer('supervised_depth_1').get_weights()  # W_s
+        classification_vectors = latent_proj.dot(weight_supervised).T
+        # gram = classification_vectors.T.dot(classification_vectors)
+        # plot_confusion_matrix(gram, labels, normalize=False)
+        # gram_src = 'gram_%s.png' % 'latent' if latent else 'no_latent'
+        # plt.savefig(join(assets_dir, gram_src))
+
+        # classification_vectors = pd.DataFrame(data=classification_vectors,
+        #                                       index=label_index)
+        # mean = classification_vectors.groupby(level='dataset').transform('mean')
+        # # We can translate classification vectors
+        # classification_vectors -= mean
+        classification_vectors_nii[latent] = masker.inverse_transform(classification_vectors)
+        # Display
+    print('Plotting')
+    Parallel(n_jobs=2, verbose=10)(
+        delayed(plot_both_classification_vector)(
+            classification_vectors_nii, label_index, assets_dir,
+            i, overwrite=True)
+        for i in range(label_index.shape[0]))
+
+
 def run(overwrite=False):
     # Load model
     # y =X_full W_g D^-1 W_e W_s
@@ -112,18 +222,21 @@ def run(overwrite=False):
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
 
+    latent = True
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
-                        'prediction_hierarchical', 'None')
+                        'prediction_hierarchical',
+                        'None' if latent else 'no_latent')
 
     analysis_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
-                        'prediction_hierarchical', 'analysis')
+                        'prediction_hierarchical', 'analysis' if latent else
+                        'analysis_no_latent')
     assets_dir = join(analysis_dir, 'assets')
 
     if not os.path.exists(assets_dir):
         os.makedirs(assets_dir)
 
-    n_components = 10
-    n_vectors = 10
+    n_components = 30
+    n_vectors = 76
 
     # HTML output
     env = Environment(loader=PackageLoader('modl', 'templates'),
@@ -151,15 +264,15 @@ def run(overwrite=False):
                                            HierarchicalLabelMasking,
                                        'PartialSoftmax': PartialSoftmax})
     # standard_scaler = load(join(artifact_dir, 'standard_scaler.pkl'))
-
-    weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
+    if latent:
+        weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
     # Shape (336, 50)
 
     weight_supervised = {}
     bias_supervised = {}
     for depth in [1, 2]:
         weight_supervised[depth], bias_supervised[depth] = model.get_layer(
-            'supervised').get_weights()  # W_s
+            'supervised_depth_%i' % depth).get_weights()  # W_s
     # Shape (50, 97)
 
     # Latent factors
@@ -174,75 +287,73 @@ def run(overwrite=False):
         label_index, names=('dataset', 'task', 'condition'))
     # Shape (200000, 336)
 
-    # print('Prediction')
-    # for i in range(3):
-    #     prediction = pd.read_csv(
-    #         join(artifact_dir, 'prediction_depth_%i.csv' % i))
-    #     prediction = prediction.set_index(
-    #         ['fold', 'dataset', 'subject', 'task', 'contrast', ])
-    #     match = prediction['true_label'] == prediction['predicted_label']
-    #     prediction = prediction.assign(match=match)
-    #     prediction.sort_index(inplace=True)
-    #     train_conf = confusion_matrix(prediction.loc['train', 'true_label'],
-    #                                   prediction.loc[
-    #                                       'train', 'predicted_label'],
-    #                                   labels=labels)
-    #     test_conf = confusion_matrix(prediction.loc['test', 'true_label'],
-    #                                  prediction.loc['test', 'predicted_label'],
-    #                                  labels=labels)
-    #     plt.figure()
-    #     plot_confusion_matrix(train_conf, labels)
-    #     plt.savefig(join(analysis_dir, 'train_conf_depth_%i.png' % i))
-    #     plot_confusion_matrix(test_conf, labels)
-    #     plt.savefig(join(analysis_dir, 'test_conf_depth_%i.png' % i))
-    #
-    # print('Forward analysis')
-    # proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
-    #                                                       scale_bases=True,
-    #                                                       )
-    # latent_proj = proj.dot(weight_latent)
-    # for depth in [1, 2]:
-    #     classification_vectors = latent_proj.dot(weight_supervised[depth]).T
-    #     classification_vectors = pd.DataFrame(data=classification_vectors,
-    #                                           index=label_index)
-    #     if depth == 1:
-    #         mean = classification_vectors.groupby(level='dataset'). \
-    #             transform('mean')
-    #     else:
-    #         mean = classification_vectors.groupby(
-    #             level=['dataset', 'task']).transform('mean')
-    #     # We can translate classification vectors
-    #     classification_vectors -= mean
-    #     np.save(join(analysis_dir, 'classification'),
-    #             classification_vectors)
-    #     np.save(join(analysis_dir, 'weight_supervised_depth_%i' % depth),
-    #             weight_supervised[depth])
-    #     classification_vectors_nii = masker.inverse_transform(
-    #         classification_vectors)
-    #     classification_vectors_nii.to_filename(
-    #         join(analysis_dir,
-    #              'classification_vectors_depth_%i.nii.gz' % depth))
-    #     # Display
-    #     print('Plotting')
-    #     this_classification_array = \
-    #         Parallel(n_jobs=2, verbose=10)(
-    #             delayed(plot_classification_vector)(
-    #                 classification_vectors_nii, label_index, assets_dir,
-    #                 depth, i, overwrite=overwrite)
-    #             for i in range(n_vectors))
-    #     classification_array.append(this_classification_array)
-    #
-    #     gram = classification_vectors.dot(classification_vectors.T)
-    #     np.save(join(analysis_dir, 'gram'), gram)
-    #     fig, ax = plt.subplots(1, 1)
-    #     cax = ax.imshow(gram)
-    #     fig.colorbar(cax)
-    #     gram_src = 'gram_depth_%i.png' % depth
-    #     gram = {'src': gram_src, 'title': 'Gram at depth %i' % depth}
-    #     gram_array.append(gram)
-    #     fig.savefig(join(assets_dir, gram_src))
-    #     plt.close(fig)
-    # classification_array = list(zip(*classification_array))
+    print('Prediction')
+    for i in range(3):
+        prediction = pd.read_csv(
+            join(artifact_dir, 'prediction_depth_%i.csv' % i))
+        prediction = prediction.set_index(
+            ['fold', 'dataset', 'subject', 'task', 'contrast', ])
+        match = prediction['true_label'] == prediction['predicted_label']
+        prediction = prediction.assign(match=match)
+        prediction.sort_index(inplace=True)
+        train_conf = confusion_matrix(prediction.loc['train', 'true_label'],
+                                      prediction.loc[
+                                          'train', 'predicted_label'],
+                                      labels=labels)
+        test_conf = confusion_matrix(prediction.loc['test', 'true_label'],
+                                     prediction.loc['test', 'predicted_label'],
+                                     labels=labels)
+        plt.figure()
+        plot_confusion_matrix(train_conf, labels)
+        plt.savefig(join(analysis_dir, 'train_conf_depth_%i.png' % i))
+        plot_confusion_matrix(test_conf, labels)
+        plt.savefig(join(analysis_dir, 'test_conf_depth_%i.png' % i))
+
+    print('Forward analysis')
+    proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
+                                                               scale_bases=True,
+                                                               )
+    if latent:
+        latent_proj = proj.dot(weight_latent)
+    else:
+        latent_proj = proj
+    for depth in [1]:
+        classification_vectors = latent_proj.dot(weight_supervised[depth]).T
+        classification_vectors = pd.DataFrame(data=classification_vectors,
+                                              index=label_index)
+        mean = classification_vectors.groupby(level='dataset').transform(
+            'mean')
+        # We can translate classification vectors
+        # classification_vectors -= mean
+        np.save(join(analysis_dir, 'classification'),
+                classification_vectors)
+        np.save(join(analysis_dir, 'weight_supervised_depth_%i' % depth),
+                weight_supervised[depth])
+        classification_vectors_nii = masker.inverse_transform(
+            classification_vectors)
+        classification_vectors_nii.to_filename(
+            join(analysis_dir,
+                 'classification_vectors_depth_%i.nii.gz' % depth))
+        # Display
+        print('Plotting')
+        this_classification_array = \
+            Parallel(n_jobs=2, verbose=10)(
+                delayed(plot_classification_vector)(
+                    classification_vectors_nii, label_index, assets_dir,
+                    depth, i, overwrite=overwrite)
+                for i in range(n_vectors))
+        classification_array.append(this_classification_array)
+
+        gram = classification_vectors.dot(classification_vectors.T).values
+        np.save(join(analysis_dir, 'gram'), gram)
+        fig = plt.figure()
+        plot_confusion_matrix(gram, labels)
+        gram_src = 'gram_depth_%i.png' % depth
+        gram = {'src': gram_src, 'title': 'Gram at depth %i' % depth}
+        gram_array.append(gram)
+        fig.savefig(join(assets_dir, gram_src))
+        plt.close(fig)
+    classification_array = classification_array[0]
 
     print('Backward analysis')
     # Backward
@@ -251,10 +362,7 @@ def run(overwrite=False):
     weight_latent, r = np.linalg.qr(weight_latent)
     weight_supervised = r.dot(weight_supervised)
 
-
-
     # ICA
-    # # Manual sample weight
     sample_weight = X.iloc[:, 0].groupby(level=['dataset']).aggregate('count')
     max_sample_weight = sample_weight.max()
     repeat = max_sample_weight / sample_weight
@@ -266,70 +374,17 @@ def run(overwrite=False):
     X = X.values
     X = X.dot(weight_latent)
 
-    # pca = PCA(whiten=True).fit(X)
-    # VT = pca.components_ + pca.mean_
-
-    #
-    #
-    #
-    # print('ICA')
-    # X = X.values
-    # X = X.dot(weight_latent)
-    # fast_ica = FastICA(whiten=True, n_components=n_components, max_iter=10000)
-    # fast_ica.fit(X)
-    # mean_load = np.sqrt(
-    #     np.sum(fast_ica.transform(X) ** 2, axis=0)) / X.shape[0]
-    # mean_load *= 100
-    # VT = mean_load[:, np.newaxis] * fast_ica.mixing_.T # + fast_ica.mean_
-    # VT_neg = - mean_load[:, np.newaxis] * fast_ica.mixing_.T # + fast_ica.mean_
-    # VT = np.concatenate([VT, VT_neg], axis=0)
-
-    kmeans = MiniBatchKMeans(n_clusters=53)
+    kmeans = MiniBatchKMeans(n_clusters=76)
     kmeans.fit(X)
-    VT = kmeans.cluster_centers_[:20]
-
-    # VT = X.query("contrast == 'LH'").values[:20].dot(weight_latent)
-    # PCA
-    # Sample weight
-    # sample_weight = X.iloc[:, 0].groupby(level=['dataset',
-    #                                             'task']).transform('count')
-    # sample_weight = 1 / sample_weight
-    # sample_weight /= sample_weight.min()
-    # sample_weight = sample_weight.values
-    #
-    # X = X.values
-    # X_proj = X.dot(weight_latent)
-    #
-    # # VT = X_proj[3000:3020]
-    #
-    # # # Sample weight PCA
-    # mean = np.sum(X_proj * sample_weight[:, np.newaxis], axis=0) / np.sum(
-    #     sample_weight)
-    # X_proj = X_proj - mean[np.newaxis, :]
-    # G = (X_proj.T * sample_weight).dot(X_proj) / (np.sum(sample_weight))
-    # _, S, VT = svd(G)
-    # VT = VT[:n_components]
-    # S = S[:n_components]
-    # VT = np.sqrt(S[:, np.newaxis]) * VT + mean
-    # VT_neg = - np.sqrt(S[:, np.newaxis]) * VT + mean
-    # VT = np.concatenate([VT, VT_neg])
+    VT = kmeans.cluster_centers_[:n_components]
 
     proj, inv_proj, rec = make_projection_matrix(components, scale_bases=True)
-
-
-    # VT = np.eye(50)
-    # Least square in span W_g + least square in dictionary span
-    # model_input = lstsq(weight_latent.T, VT.T)[0].T
-    # latent_imgs = model_input.dot(inv_proj)
 
     # Least square in dictionary span
     full_proj = rec.dot(proj).dot(weight_latent)
     latent_geometric = lstsq(full_proj.T, VT.T)[0].T
     latent_imgs = latent_geometric.dot(rec)
     model_input = latent_imgs.dot(proj)
-    #
-    # model_input = X[:20]
-    # latent_imgs = X[:20].dot(inv_proj)
 
     freqs = np.zeros((VT.shape[0], n_labels))
 
@@ -362,5 +417,57 @@ def run(overwrite=False):
         f.write(html_file)
 
 
+def plot_gram_matrix():
+    # Load model
+    # y =X_full W_g D^-1 W_e W_s
+    memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
+
+    dictionary_penalty = 1e-4
+    n_components_list = [16, 64, 256]
+
+    artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
+                        'prediction_hierarchical', 'None')
+
+    analysis_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
+                        'prediction_hierarchical', 'analysis_latent')
+    assets_dir = join(analysis_dir, 'assets')
+
+    if not os.path.exists(assets_dir):
+        os.makedirs(assets_dir)
+
+    # HTML output
+
+    print('Load model')
+    # Expected shape (?, 336)
+    lbin = load(join(artifact_dir, 'lbin.pkl'))
+    labels = lbin.classes_
+    mask = join(get_data_dirs()[0], 'mask_img.nii.gz')
+    masker = MultiNiftiMasker(mask_img=mask, smoothing_fwhm=0).fit()
+    components = memory.cache(retrieve_components)(dictionary_penalty, masker,
+                                                   n_components_list)  # W_g
+
+    model = load_model(join(artifact_dir, 'model.keras'),
+                       custom_objects={'HierarchicalLabelMasking':
+                                           HierarchicalLabelMasking,
+                                       'PartialSoftmax': PartialSoftmax})
+    weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
+    # Shape (336, 50)
+    weight_supervised, _ = model.get_layer(
+        'supervised_depth_1').get_weights()  # W_s
+
+    proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
+                                                               scale_bases=True,
+                                                               )
+    latent_proj = proj.dot(weight_latent)
+    classification_vectors = latent_proj.dot(weight_supervised).T
+    S = np.sqrt(np.sum(classification_vectors ** 2, axis=1, keepdims=True))
+    classification_vectors /= S
+    gram = classification_vectors.dot(classification_vectors.T)
+    np.save(join(analysis_dir, 'gram'), gram)
+    plot_confusion_matrix(gram, labels, normalize=False)
+    gram_src = 'gram_depth_1.png'
+    plt.savefig(join(assets_dir, gram_src))
+
+
 if __name__ == '__main__':
-    run(overwrite=True)
+    compare()
