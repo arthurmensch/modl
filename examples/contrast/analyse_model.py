@@ -2,7 +2,6 @@ import os
 from os.path import join
 
 import matplotlib
-from nipy.labs.viz_tools.coord_tools import find_cut_coords
 
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -12,7 +11,8 @@ import pandas as pd
 from jinja2 import select_autoescape, PackageLoader, Environment
 from nilearn.image import index_img
 from nilearn.input_data import MultiNiftiMasker
-from nilearn.plotting import plot_stat_map, find_xyz_cut_coords
+from nilearn.plotting import plot_stat_map, find_xyz_cut_coords, \
+    plot_glass_brain
 from numpy.linalg import lstsq
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.externals.joblib import Memory, load, Parallel, delayed
@@ -25,6 +25,8 @@ from modl.hierarchical import HierarchicalLabelMasking, PartialSoftmax, \
 from modl.input_data.fmri.unmask import retrieve_components
 from modl.utils.system import get_cache_dirs
 from keras.models import load_model
+
+idx = pd.IndexSlice
 
 
 def plot_confusion_matrix(conf_arr, labels, normalize=True):
@@ -68,27 +70,37 @@ def plot_classification_vector(classification_vectors_nii, label_index,
 
 
 def plot_both_classification_vector(classification_vectors_nii, label_index,
-                               assets_dir, i, overwrite=False):
+                                    assets_dir, i, overwrite=False):
     src = 'classification_depth_%i.png' % (i)
     label = 'd: %s - t: %s - c: %s' % label_index.values[i]
     target = join(assets_dir, src)
     if overwrite or not os.path.exists(target):
         img = index_img(classification_vectors_nii[True], i)
         img_2 = index_img(classification_vectors_nii[False], i)
+        img_3 = index_img(classification_vectors_nii['sample'], i)
         vmax = np.max(img.get_data())
-        fig, axes = plt.subplots(2, 1, figsize=(8, 10))
-        cut_coords = find_xyz_cut_coords(img, activation_threshold=vmax / 3)
-        plot_stat_map(img,
-                      axes=axes[0], figure=fig, colorbar=True,
-                      threshold=vmax / 3,
-                      cut_coords=cut_coords,
-                      title=label)
+        fig, axes = plt.subplots(3, 1, figsize=(8, 10))
+        cut_coords = find_xyz_cut_coords(img, activation_threshold=vmax / 2)
+        plot_glass_brain(img,
+                         axes=axes[0], figure=fig, colorbar=True,
+                         threshold=vmax / 3,
+                         plot_abs=False,
+                         cut_coords=cut_coords,
+                         title=label)
         vmax = np.max(img_2.get_data())
-        plot_stat_map(img_2,
-                      axes=axes[1], figure=fig, colorbar=True,
-                      threshold=vmax / 3,
-                      cut_coords=cut_coords,
-                      title=label)
+        plot_glass_brain(img_2,
+                         axes=axes[1], figure=fig, colorbar=True,
+                         threshold=vmax / 3,
+                         plot_abs=False,
+                         cut_coords=cut_coords,
+                         title=label)
+        vmax = np.max(img_3.get_data())
+        plot_glass_brain(img_3,
+                         axes=axes[2], figure=fig, colorbar=True,
+                         threshold=vmax / 5,
+                         plot_abs=False,
+                         cut_coords=cut_coords,
+                         title=label)
         fig.savefig(join(assets_dir, src))
         plt.close(fig)
 
@@ -138,12 +150,14 @@ def compare():
     # Load model
     # y =X_full W_g D^-1 W_e W_s
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
+    unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
+                      'contrast')
 
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
 
     artifact_dir = {'latent': join(get_data_dirs()[0], 'pipeline', 'contrast',
-                                   'prediction_hierarchical', 'None'),
+                                   'prediction_hierarchical', 'latent'),
                     'no_latent': join(get_data_dirs()[0], 'pipeline',
                                       'contrast',
                                       'prediction_hierarchical', 'no_latent')}
@@ -157,7 +171,6 @@ def compare():
 
     mask = join(get_data_dirs()[0], 'mask_img.nii.gz')
     masker = MultiNiftiMasker(mask_img=mask, smoothing_fwhm=0).fit()
-
 
     components = memory.cache(retrieve_components)(dictionary_penalty,
                                                    masker,
@@ -192,20 +205,45 @@ def compare():
         else:
             latent_proj = proj
         # Shape (336, 50)
-        weight_supervised, _ = model.get_layer('supervised_depth_1').get_weights()  # W_s
+        weight_supervised, _ = model.get_layer(
+            'supervised_depth_1').get_weights()  # W_s
         classification_vectors = latent_proj.dot(weight_supervised).T
         # gram = classification_vectors.T.dot(classification_vectors)
         # plot_confusion_matrix(gram, labels, normalize=False)
         # gram_src = 'gram_%s.png' % 'latent' if latent else 'no_latent'
         # plt.savefig(join(assets_dir, gram_src))
 
-        # classification_vectors = pd.DataFrame(data=classification_vectors,
-        #                                       index=label_index)
-        # mean = classification_vectors.groupby(level='dataset').transform('mean')
-        # # We can translate classification vectors
-        # classification_vectors -= mean
-        classification_vectors_nii[latent] = masker.inverse_transform(classification_vectors)
-        # Display
+        classification_vectors = pd.DataFrame(data=classification_vectors,
+                                              index=label_index)
+        classification_vectors.sort_index(inplace=True)
+        datasets = label_index.get_level_values('dataset').unique().values
+        for dataset in datasets:
+            mean = np.mean(classification_vectors.loc[dataset], axis=0).values
+            classification_vectors.loc[dataset] = classification_vectors.loc[
+                                                      dataset].values - mean
+        # We can translate classification vectors
+        classification_vectors_nii[latent] = masker.inverse_transform(
+            classification_vectors.values)
+
+    X = []
+    keys = []
+    for dataset in datasets:
+        this_X = load(join(unmask_dir, dataset, 'imgs.pkl'))
+        if dataset in ['archi', 'brainomics']:
+            this_X = this_X.drop(['effects_of_interest'],
+                                 level='contrast', )
+        subjects = this_X.index.get_level_values('subject'). \
+            unique().values.tolist()
+        subjects = subjects[:1]
+        this_X = this_X.loc[idx[subjects]]
+        X.append(this_X)
+        keys.append(dataset)
+    X = pd.concat(X, keys=keys, names=['dataset'])
+    samples = X.groupby(level=['dataset', 'task', 'contrast']).first()
+    samples = samples.reindex(classification_vectors.index)
+    samples = masker.inverse_transform(samples.values)
+    classification_vectors_nii['sample'] = samples
+    # Display
     print('Plotting')
     Parallel(n_jobs=2, verbose=10)(
         delayed(plot_both_classification_vector)(

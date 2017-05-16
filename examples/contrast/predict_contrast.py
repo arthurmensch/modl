@@ -127,8 +127,8 @@ def config():
     unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
                       'contrast')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
-                        'prediction_hierarchical')
-    datasets = ['archi', 'hcp', 'brainomics', 'camcan']
+                        'prediction_hierarchical_introspect')
+    datasets = ['archi', 'hcp']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      camcan=.5,
                      human_voice=0.5)
@@ -143,14 +143,14 @@ def config():
                       human_voice=None)
     validation = True
     geometric_reduction = True
-    alpha = 1e-5
-    latent_dim = None
+    alpha = 1e-4
+    latent_dim = 50
     activation = 'linear'
     source = 'hcp_rs_concat'
     optimizer = 'adam'
     lr = 1e-3
-    dropout_input = 0.0
-    dropout_latent = 0.0
+    dropout_input = 0.25
+    dropout_latent = 0.5
     batch_size = 256
     per_dataset_std = False
     joint_training = True
@@ -160,9 +160,16 @@ def config():
     verbose = 2
     seed = 10
     shared_supervised = False
+    retrain = False
     mix_batch = False
     steps_per_epoch = 100
     _seed = 0
+
+@predict_contrast_exp.named_config
+def no_latent():
+    latent_dim = None
+    dropout_input = 0.
+    dropout_latent = 0.
 
 @predict_contrast_exp.named_config
 def no_geometric():
@@ -211,6 +218,7 @@ def train_model(alpha,
                 geometric_reduction,
                 test_size,
                 train_size,
+                retrain,
                 dropout_input,
                 joint_training,
                 lr,
@@ -234,8 +242,10 @@ def train_model(alpha,
                 n_jobs,
                 _run,
                 _seed):
-    _run._id = 'no_latent'
-    artifact_dir = join(artifact_dir, str(_run._id))
+    if latent_dim is None:
+        artifact_dir = join(artifact_dir, 'no_latent')
+    else:
+        artifact_dir = join(artifact_dir, 'latent')
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
@@ -372,6 +382,28 @@ def train_model(alpha,
                             steps_per_epoch=steps_per_epoch,
                             verbose=verbose,
                             epochs=epochs)
+        if retrain:
+            model.get_layer('latent').trainable = False
+            model.get_layer('dropout_input').rate = 0
+            model.get_layer('dropout').rate = 0
+            model.compile(loss=['categorical_crossentropy'] * 3,
+                          optimizer=optimizer,
+                          loss_weights=depth_weight,
+                          metrics=['accuracy'])
+            model.fit_generator(train_generator(train_data, batch_size,
+                                                dataset_weight=dataset_weight,
+                                                mix=False,
+                                                seed=_seed),
+                                callbacks=callbacks,
+                                validation_data=([x_test, y_test],
+                                                 [y_oh_test] * 3,
+                                                 [sample_weight_test] * 3,
+                                                 ) if validation else None,
+                                steps_per_epoch=steps_per_epoch,
+                                verbose=verbose,
+                                initial_epoch=epochs,
+                                epochs=epochs + 30)
+
     else:
         model.fit_generator(
             train_generator(train_data.loc[['hcp']], batch_size,
