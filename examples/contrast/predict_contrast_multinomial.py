@@ -25,7 +25,7 @@ predict_contrast_multi_exp.observers.append(observer)
 
 @predict_contrast_multi_exp.config
 def config():
-    n_jobs = 24
+    n_jobs = 36
     n_seeds = 10
     seed = 2
 
@@ -41,7 +41,7 @@ def single_run(config_updates, _id, master_id):
         steps_per_epoch = 200
         dropout_input = 0.25
         dropout_latent = 0.5
-        source = 'hcp_rs_concat'
+        source = 'hcp_rs'
         depth_prob = [0, 1., 0]
         shared_supervised = False
         batch_size = 256
@@ -49,10 +49,10 @@ def single_run(config_updates, _id, master_id):
         validation = False
         mix_batch = False
         verbose = 0
-        train_size = dict(hcp=None, archi=30, la5c=None, brainomics=30,
+        train_size = dict(hcp=None, archi=30, la5c=50, brainomics=30,
                           camcan=100,
                           human_voice=None)
-
+        unmask_dir = '/storage/data/contrast'
     run = predict_contrast_exp._create_run(
         config_updates=config_updates)
     run._id = _id
@@ -68,49 +68,52 @@ def run(n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     exps = []
-    for dataset in ['archi', 'brainomics', 'camcan']:
-        multinomial = [{'datasets': [dataset],
-                        'geometric_reduction': False,
-                        'latent_dim': None,
-                        'dropout_input': 0.,
-                        'dropout_latent': 0.,
-                        'alpha': alpha,
-                        'epochs': 30,
-                        'steps_per_epoch': None,
-                        'batch_size': 300,
-                        'lr': 1e-3,
-                        'optimizer': 'sgd',
-                        'seed': seed} for seed in seed_list
-                       for alpha in np.logspace(-5, 1, 7)]
-        geometric_reduction = [{'datasets': [dataset],
-                                'geometric_reduction': True,
-                                'latent_dim': None,
-                                'dropout_input': 0.,
-                                'dropout_latent': 0.,
-                                'source': source,
-                                'alpha': alpha,
-                                'optimizer': 'adam',
-                                'seed': seed} for seed in seed_list
-                               for alpha in [1e-5, 1e-4]
-                               for source in ['hcp_rs', 'hcp_rs_concat']]
-        latent_dropout = [{'datasets': [dataset],
-                           'geometric_reduction': True,
-                           'latent_dim': 50,
-                           'dropout_input': 0.25,
-                           'dropout_latent': 0.5,
-                           'optimizer': 'adam',
-                           'seed': seed} for seed in seed_list]
-        transfer = [{'datasets': [dataset, 'hcp'],
-                     'geometric_reduction': True,
-                     'latent_dim': 50,
-                     'dropout_input': 0.25,
-                     'dropout_latent': 0.5,
-                     'optimizer': 'adam',
-                     'seed': seed} for seed in seed_list]
-        exps += multinomial
-        # exps += geometric_reduction
-        # exps += latent_dropout
-        # exps += transfer
+    for seed in seed_list:
+        for dataset in ['la5c']:
+            multinomial = [{'datasets': [dataset],
+                            'geometric_reduction': False,
+                            'latent_dim': None,
+                            'dropout_input': 0.,
+                            'dropout_latent': 0.,
+                            'epochs': 1000,
+                            'steps_per_epoch': None,
+                            'batch_size': 300,
+                            'alpha': alpha,
+                            # 'lr': lr,
+                            'optimizer': 'sgd',
+                            'seed': seed}
+                           # for source in ['hcp_rs_concat', 'hcp_rs']
+                           for alpha in np.logspace(-4, 1, 6)
+                           ]
+            geometric_reduction = [{'datasets': [dataset],
+                                    'geometric_reduction': True,
+                                    'latent_dim': None,
+                                    'dropout_input': 0.,
+                                    'dropout_latent': 0.,
+                                    'source': source,
+                                    'alpha': alpha,
+                                    'optimizer': 'adam',
+                                    'seed': seed} for seed in seed_list
+                                   for alpha in [1e-5, 1e-4]
+                                   for source in ['hcp_rs', 'hcp_rs_concat']]
+            latent_dropout = [{'datasets': [dataset],
+                               'geometric_reduction': True,
+                               'latent_dim': 50,
+                               'dropout_input': 0.25,
+                               'dropout_latent': 0.5,
+                               'optimizer': 'adam',
+                               'seed': seed} for seed in seed_list]
+            transfer = [{'datasets': [dataset, 'hcp'],
+                         'geometric_reduction': True,
+                         'latent_dim': 50,
+                         'dropout_input': 0.25,
+                         'dropout_latent': 0.5,
+                         'optimizer': 'adam',
+                         'seed': seed} for seed in seed_list]
+            exps += multinomial
+            # exps += geometric_reduction
+            # exps += latent_dropout
+            # exps += transfer
 
     # Robust labelling of experiments
     client = pymongo.MongoClient()

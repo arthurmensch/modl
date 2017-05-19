@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from keras.callbacks import TensorBoard, Callback, ReduceLROnPlateau
 from keras.optimizers import SGD, RMSprop, Adam, Nadam
+from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
+
 from modl.datasets import get_data_dirs
 from modl.hierarchical import make_model, init_tensorflow, make_adversaries
 from modl.model_selection import StratifiedGroupShuffleSplit
@@ -27,7 +29,8 @@ def scale(X, train, per_dataset_std):
     X_train = X.iloc[train]
     if per_dataset_std:
         standard_scaler = {}
-        corr = np.sum(np.sqrt(X_train[0].groupby(level='dataset').aggregate('count').values))
+        corr = np.sum(np.sqrt(
+            X_train[0].groupby(level='dataset').aggregate('count').values))
         for dataset, this_X_train in X_train.groupby(level='dataset'):
             this_standard_scaler = StandardScaler()
             this_standard_scaler.fit(this_X_train)
@@ -71,7 +74,8 @@ def train_generator(train_data, batch_size, dataset_weight,
                     grouped_data}
     batches_generator = {}
     datasets = list(grouped_data.keys())
-    datasets = [dataset for dataset in datasets for _ in range(dataset_weight[dataset])]
+    datasets = [dataset for dataset in datasets for _ in
+                range(dataset_weight[dataset])]
     n_dataset = len(grouped_data)
     x_batch = np.empty((batch_size, train_data['X'].shape[1]))
     y_batch = np.empty((batch_size, train_data['y'].shape[1]))
@@ -101,7 +105,8 @@ def train_generator(train_data, batch_size, dataset_weight,
             x_batch[start:stop] = batch_data['X'].values
             y_batch[start:stop] = batch_data['y'].values
             y_oh_batch[start:stop] = batch_data['y_oh'].values
-            sample_weight_batch[start:stop] = np.ones(len_batch) # * dataset_weight[dataset]
+            sample_weight_batch[start:stop] = np.ones(
+                len_batch)  # * dataset_weight[dataset]
             start = stop
             if not mix:
                 yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
@@ -111,6 +116,7 @@ def train_generator(train_data, batch_size, dataset_weight,
             yield ([x_batch[:stop].copy(), y_batch[:stop].copy()],
                    [y_oh_batch[:stop].copy()] * 3,
                    [sample_weight_batch[:stop]] * 3)
+
 
 class MyCallback(Callback):
     def on_train_begin(self, logs={}):
@@ -127,8 +133,8 @@ def config():
     unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
                       'contrast')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
-                        'prediction_hierarchical_introspect')
-    datasets = ['archi', 'hcp']
+                        'test')
+    datasets = ['archi']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      camcan=.5,
                      human_voice=0.5)
@@ -143,8 +149,8 @@ def config():
                       human_voice=None)
     validation = True
     geometric_reduction = True
-    alpha = 1e-4
-    latent_dim = 50
+    alpha = 1e-1
+    latent_dim = 75
     activation = 'linear'
     source = 'hcp_rs_concat'
     optimizer = 'adam'
@@ -154,7 +160,7 @@ def config():
     batch_size = 256
     per_dataset_std = False
     joint_training = True
-    epochs = 200
+    epochs = 20
     depth_weight = [0., 1., 0.]
     n_jobs = 2
     verbose = 2
@@ -165,11 +171,29 @@ def config():
     steps_per_epoch = 100
     _seed = 0
 
+
 @predict_contrast_exp.named_config
 def no_latent():
     latent_dim = None
     dropout_input = 0.
     dropout_latent = 0.
+    epochs = 400
+
+
+@predict_contrast_exp.named_config
+def latent_single():
+    datasets = ['archi']
+    epochs = 200
+
+
+@predict_contrast_exp.named_config
+def no_latent_single():
+    datasets = ['archi']
+    latent_dim = None
+    dropout_input = 0.
+    dropout_latent = 0.
+    epochs = 200
+
 
 @predict_contrast_exp.named_config
 def no_geometric():
@@ -243,9 +267,15 @@ def train_model(alpha,
                 _run,
                 _seed):
     if latent_dim is None:
-        artifact_dir = join(artifact_dir, 'no_latent')
+        if len(datasets) == 1:
+            artifact_dir = join(artifact_dir, 'no_latent_single')
+        else:
+            artifact_dir = join(artifact_dir, 'no_latent')
     else:
-        artifact_dir = join(artifact_dir, 'latent')
+        if len(datasets) == 1:
+            artifact_dir = join(artifact_dir, 'latent_single')
+        else:
+            artifact_dir = join(artifact_dir, 'latent')
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
@@ -275,8 +305,6 @@ def train_model(alpha,
 
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
-
-    dump(X, join(artifact_dir, 'X.pkl'))
 
     # Cross validation folds
     cv = StratifiedGroupShuffleSplit(stratify_levels='dataset',
@@ -342,50 +370,97 @@ def train_model(alpha,
     np.save(join(artifact_dir, 'adversaries'), adversaries)
     np.save(join(artifact_dir, 'classes'), lbin.classes_)
 
-    model = make_model(X.shape[1],
-                       alpha=alpha,
-                       latent_dim=latent_dim,
-                       activation=activation,
-                       dropout_input=dropout_input,
-                       dropout_latent=dropout_latent,
-                       adversaries=adversaries,
-                       seed=_seed,
-                       shared_supervised=shared_supervised)
-    if not shared_supervised:
-        for i, this_depth_weight in enumerate(depth_weight):
-            if this_depth_weight == 0:
-                model.get_layer('supervised_depth_%i' % i).trainable = False
-    if optimizer == 'sgd':
-        optimizer = SGD(lr=lr, momentum=.1)
-    elif optimizer == 'adam':
-        optimizer = Adam(lr=lr) # beta_2=0.9)
-    model.compile(loss=['categorical_crossentropy'] * 3,
-                  optimizer=optimizer,
-                  loss_weights=depth_weight,
-                  metrics=['accuracy'])
-    callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
-                             histogram_freq=0,
-                             write_graph=True,
-                             write_images=True),
-                 ]
-    if joint_training:
-        model.fit_generator(train_generator(train_data,
-                                            batch_size,
-                                            dataset_weight=dataset_weight,
-                                            mix=mix_batch,
-                                            seed=_seed),
-                            callbacks=callbacks,
-                            validation_data=([x_test, y_test],
-                                             [y_oh_test] * 3,
-                                             [sample_weight_test] * 3
-                                             ) if validation else None,
-                            steps_per_epoch=steps_per_epoch,
-                            verbose=verbose,
-                            epochs=epochs)
-        if retrain:
+    if no_geometric or latent_dim is None:
+        # alphas = np.logspace(-5, 1, 7)
+        model = LogisticRegression(solver='sag',
+                                   C=1 / (X_train.shape[0] * alpha),
+                                   verbose=verbose,
+                                   max_iter=epochs,
+                                   n_jobs=n_jobs,
+                                   multi_class='multinomial')
+        y_oh_train_inverse = lbin.inverse_transform(y_oh_train.values)
+        model.fit(X_train.values, y_oh_train_inverse)
+        y_pred_oh = model.predict_proba(X.values)
+        y_pred_oh = {depth: y_pred_oh for depth in [0, 1, 2]}
+    else:
+        model = make_model(X.shape[1],
+                           alpha=alpha,
+                           latent_dim=latent_dim,
+                           activation=activation,
+                           dropout_input=dropout_input,
+                           dropout_latent=dropout_latent,
+                           adversaries=adversaries,
+                           seed=_seed,
+                           shared_supervised=shared_supervised)
+        if not shared_supervised:
+            for i, this_depth_weight in enumerate(depth_weight):
+                if this_depth_weight == 0:
+                    model.get_layer(
+                        'supervised_depth_%i' % i).trainable = False
+        if optimizer == 'sgd':
+            optimizer = SGD(lr=lr, momentum=.1)
+        elif optimizer == 'adam':
+            optimizer = Adam(lr=lr)  # beta_2=0.9)
+        model.compile(loss=['categorical_crossentropy'] * 3,
+                      optimizer=optimizer,
+                      loss_weights=depth_weight,
+                      metrics=['accuracy'])
+        callbacks = [TensorBoard(log_dir=join(artifact_dir, 'logs'),
+                                 histogram_freq=0,
+                                 write_graph=True,
+                                 write_images=True),
+                     ]
+        if joint_training:
+            model.fit_generator(train_generator(train_data,
+                                                batch_size,
+                                                dataset_weight=dataset_weight,
+                                                mix=mix_batch,
+                                                seed=_seed),
+                                callbacks=callbacks,
+                                validation_data=([x_test, y_test],
+                                                 [y_oh_test] * 3,
+                                                 [sample_weight_test] * 3
+                                                 ) if validation else None,
+                                steps_per_epoch=steps_per_epoch,
+                                verbose=verbose,
+                                epochs=epochs)
+            if retrain:
+                model.get_layer('latent').trainable = False
+                model.get_layer('dropout_input').rate = 0
+                model.get_layer('dropout').rate = 0
+                model.compile(loss=['categorical_crossentropy'] * 3,
+                              optimizer=optimizer,
+                              loss_weights=depth_weight,
+                              metrics=['accuracy'])
+                model.fit_generator(train_generator(train_data, batch_size,
+                                                    dataset_weight=dataset_weight,
+                                                    mix=False,
+                                                    seed=_seed),
+                                    callbacks=callbacks,
+                                    validation_data=([x_test, y_test],
+                                                     [y_oh_test] * 3,
+                                                     [sample_weight_test] * 3,
+                                                     ) if validation else None,
+                                    steps_per_epoch=steps_per_epoch,
+                                    verbose=verbose,
+                                    initial_epoch=epochs,
+                                    epochs=epochs + 30)
+
+        else:
+            model.fit_generator(
+                train_generator(train_data.loc[['hcp']], batch_size,
+                                dataset_weight=dataset_weight,
+                                mix=False,
+                                seed=_seed),
+                callbacks=callbacks,
+                validation_data=([x_test, y_test],
+                                 [y_oh_test] * 3,
+                                 [sample_weight_test] * 3
+                                 ) if validation else None,
+                steps_per_epoch=steps_per_epoch,
+                verbose=verbose,
+                epochs=epochs - 10)
             model.get_layer('latent').trainable = False
-            model.get_layer('dropout_input').rate = 0
-            model.get_layer('dropout').rate = 0
             model.compile(loss=['categorical_crossentropy'] * 3,
                           optimizer=optimizer,
                           loss_weights=depth_weight,
@@ -401,42 +476,9 @@ def train_model(alpha,
                                                  ) if validation else None,
                                 steps_per_epoch=steps_per_epoch,
                                 verbose=verbose,
-                                initial_epoch=epochs,
-                                epochs=epochs + 30)
-
-    else:
-        model.fit_generator(
-            train_generator(train_data.loc[['hcp']], batch_size,
-                            dataset_weight=dataset_weight,
-                            mix=False,
-                            seed=_seed),
-            callbacks=callbacks,
-            validation_data=([x_test, y_test],
-                             [y_oh_test] * 3,
-                             [sample_weight_test] * 3
-                             ) if validation else None,
-            steps_per_epoch=steps_per_epoch,
-            verbose=verbose,
-            epochs=epochs - 10)
-        model.get_layer('latent').trainable = False
-        model.compile(loss=['categorical_crossentropy'] * 3,
-                      optimizer=optimizer,
-                      loss_weights=depth_weight,
-                      metrics=['accuracy'])
-        model.fit_generator(train_generator(train_data, batch_size,
-                            dataset_weight=dataset_weight,
-                            mix=False,
-                            seed=_seed),
-                            callbacks=callbacks,
-                            validation_data=([x_test, y_test],
-                                             [y_oh_test] * 3,
-                                             [sample_weight_test] * 3,
-                                             ) if validation else None,
-                            steps_per_epoch=steps_per_epoch,
-                            verbose=verbose,
-                            initial_epoch=epochs - 10,
-                            epochs=epochs)
-    y_pred_oh = model.predict(x=[X.values, y.values])
+                                initial_epoch=epochs - 10,
+                                epochs=epochs)
+        y_pred_oh = model.predict(x=[X.values, y.values])
 
     _run.info['score'] = {}
     depth_name = ['full', 'dataset', 'task']
@@ -462,5 +504,5 @@ def train_model(alpha,
                                'prediction_depth_%i.csv' % depth),
                           'prediction')
 
-    model.save(join(artifact_dir, 'model.keras'))
-    _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')
+    # model.save(join(artifact_dir, 'model.keras'))
+    # _run.add_artifact(join(artifact_dir, 'model.keras'), 'model')

@@ -2,6 +2,7 @@ import os
 from os.path import join
 
 import matplotlib
+from matplotlib.cm import get_cmap
 
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -25,6 +26,8 @@ from modl.hierarchical import HierarchicalLabelMasking, PartialSoftmax, \
 from modl.input_data.fmri.unmask import retrieve_components
 from modl.utils.system import get_cache_dirs
 from keras.models import load_model
+
+from PIL import ImageColor
 
 idx = pd.IndexSlice
 
@@ -75,35 +78,48 @@ def plot_both_classification_vector(classification_vectors_nii, label_index,
     label = 'd: %s - t: %s - c: %s' % label_index.values[i]
     target = join(assets_dir, src)
     if overwrite or not os.path.exists(target):
-        img = index_img(classification_vectors_nii[True], i)
-        img_2 = index_img(classification_vectors_nii[False], i)
-        img_3 = index_img(classification_vectors_nii['sample'], i)
+        img = index_img(classification_vectors_nii['no_latent'], i)
+        img_2 = index_img(classification_vectors_nii['latent_single'], i)
+        img_3 = index_img(classification_vectors_nii['latent_multi'], i)
         vmax = np.max(img.get_data())
         fig, axes = plt.subplots(3, 1, figsize=(8, 10))
-        cut_coords = find_xyz_cut_coords(img, activation_threshold=vmax / 2)
-        plot_glass_brain(img,
-                         axes=axes[0], figure=fig, colorbar=True,
-                         threshold=vmax / 3,
-                         plot_abs=False,
-                         cut_coords=cut_coords,
-                         title=label)
+        condition = label_index.values[i][2]
+        if condition in ['computation', 'calculaudio', 'calculvideo', 'MATH']:
+            cut_coords = (-28, -62, 50)
+        elif condition in ['OBK_FACE', '2BK_FACE', 'face_control',
+                           'face_trusty', 'face_sex', 'FACES']:
+            cut_coords = (-38, -50, -22)  # FFA
+        elif condition in ['triangle_random', 'triangle_intention']:
+            cut_coords = (-54, -58, 6)
+        else:
+            cut_coords = find_xyz_cut_coords(img_3,
+                                             activation_threshold=vmax / 2)
+        plot_stat_map(img,
+                      axes=axes[0], figure=fig, colorbar=True,
+                      threshold=vmax / 5,
+                      cut_coords=cut_coords,
+                      title=label)
         vmax = np.max(img_2.get_data())
-        plot_glass_brain(img_2,
-                         axes=axes[1], figure=fig, colorbar=True,
-                         threshold=vmax / 3,
-                         plot_abs=False,
-                         cut_coords=cut_coords,
-                         title=label)
+        plot_stat_map(img_2,
+                      axes=axes[1], figure=fig, colorbar=True,
+                      threshold=vmax / 5,
+                      cut_coords=cut_coords,
+                      title=label)
         vmax = np.max(img_3.get_data())
-        plot_glass_brain(img_3,
-                         axes=axes[2], figure=fig, colorbar=True,
-                         threshold=vmax / 5,
-                         plot_abs=False,
-                         cut_coords=cut_coords,
-                         title=label)
+        plot_stat_map(img_3,
+                      axes=axes[2], figure=fig, colorbar=True,
+                      threshold=vmax / 5,
+                      cut_coords=cut_coords,
+                      title=label)
         fig.savefig(join(assets_dir, src))
         plt.close(fig)
 
+
+def convert_tuple_to_rgb(x):
+    r = int(x[0] * 256)
+    g = int(x[1] * 256)
+    b = int(x[2] * 256)
+    return 'rgb(%i,%i,%o)' % (r, g, b)
 
 def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
                        overwrite=False):
@@ -114,33 +130,77 @@ def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
     title = 'Latent component %i' % i
     target = join(assets_dir, src)
     if overwrite or not os.path.exists(target):
-        fig = plt.figure(figsize=(24, 5))
-        gs = gridspec.GridSpec(1, 5, width_ratios=[2, 1, 1, 1, 1])
+        fig = plt.figure(figsize=(2.55 * 6, .6 * 6))
+        fig.subplots_adjust(left=0, right=1, wspace=0, top=1, bottom=0)
+        gs = gridspec.GridSpec(1, 2, width_ratios=[2, 1])
+        ax = plt.subplot(gs[1])
+        bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.
+                                                  inverted())
+        width, height = bbox.width, bbox.height
+        width *= fig.dpi
+        height *= fig.dpi
+        width = int(width)
+        height = int(height)
+
+        flatui = get_cmap('Vega20').colors[0::2]
+
+        def color_func(word, font_size, position, orientation, **kwargs):
+            if word in freqs.loc['hcp'].index.get_level_values(
+                    'condition').unique().values:
+                return convert_tuple_to_rgb(flatui[0])
+            elif (word in freqs.loc['archi'].index.get_level_values(
+                    'condition').unique().values or
+                          word in ['Raudioclick', 'Laudioclick',
+                                   'Lvideoclick', 'Rvideoclick',
+                                   'audiocalculation', 'videocalculation',
+                                   'V_checkerboard', 'H_checkerboard']):
+                return convert_tuple_to_rgb(flatui[1])
+            elif word in freqs.loc['camcan'].index.get_level_values(
+                    'condition').unique().values:
+                return convert_tuple_to_rgb(flatui[2])
+            elif word in freqs.loc['brainomics'].index.get_level_values(
+                    'condition').unique().values:
+                return convert_tuple_to_rgb(flatui[3])
+
+        wc = WordCloud(width=width, height=height, relative_scaling=1,
+                       prefer_horizontal=1,
+                       background_color='white', random_state=0,
+                       color_func=color_func)
+
+        freq_dict = {}
         for i, (dataset, sub_freqs) in enumerate(
                 freqs.groupby(level='dataset')):
-            ax = plt.subplot(gs[i + 1])
-            bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.
-                                                      inverted())
-            width, height = bbox.width, bbox.height
-            width *= fig.dpi
-            height *= fig.dpi
-            width = int(width)
-            height = int(height)
-            wc = WordCloud(width=width, height=height, relative_scaling=.5,
-                           background_color='white', random_state=0)
             sub_freqs = sub_freqs.sort_values(ascending=False)
             # Remove labels below chance level
             lim = np.where(sub_freqs < 1 / sub_freqs.shape[0])[0][0]
             sub_freqs = sub_freqs.iloc[:lim]
-            freq_dict = {label[2]: freq for label, freq in
-                         sub_freqs.iteritems()}
-            title += str(freq_dict)
-            wc.generate_from_frequencies(freq_dict)
-            ax.imshow(wc)
-            ax.set_axis_off()
+            max_freq = sub_freqs.max()
+            for label, freq in sub_freqs.iteritems():
+                condition = label[2]
+                if condition == 'clicDaudio':
+                    condition = 'Raudioclick'
+                if condition == 'clicGaudio':
+                    condition = 'Laudioclick'
+                if condition == 'clicGaudio':
+                    condition = 'Lvideoclick'
+                if condition == 'clicDvideo':
+                    condition = 'Rvideoclick'
+                if condition == 'calculaudio':
+                    condition = 'audiocalculation'
+                if condition == 'calculvideo':
+                    condition = 'videocalculation'
+                if condition == 'damier_V':
+                    condition = 'V_checkerboard'
+                if condition == 'damier_H':
+                    condition = 'H_checkerboard'
+                freq_dict[condition] = freq / max_freq
+        title = str(freq_dict)
+        wc.generate_from_frequencies(freq_dict)
+        ax.imshow(wc)
+        ax.set_axis_off()
         ax = plt.subplot(gs[0])
         plot_stat_map(img, figure=fig, axes=ax, threshold=vmax / 3,
-                      colorbar=True)
+                      colorbar=False)
         plt.savefig(target)
         plt.close(fig)
     return {'src': src, 'title': title, 'freq': repr(freq_dict)}
@@ -150,20 +210,25 @@ def compare():
     # Load model
     # y =X_full W_g D^-1 W_e W_s
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
-    unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
-                      'contrast')
+    unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
 
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
 
-    artifact_dir = {'latent': join(get_data_dirs()[0], 'pipeline', 'contrast',
-                                   'prediction_hierarchical', 'latent'),
-                    'no_latent': join(get_data_dirs()[0], 'pipeline',
-                                      'contrast',
-                                      'prediction_hierarchical', 'no_latent')}
+    artifact_dir = {
+        'latent_multi': join(get_data_dirs()[0], 'pipeline', 'contrast',
+                             'prediction_hierarchical_introspect',
+                             'latent'),
+        'no_latent': join(get_data_dirs()[0], 'pipeline',
+                          'contrast',
+                          'prediction_hierarchical_introspect',
+                          'no_latent_single'),
+        'latent_single': join(get_data_dirs()[0], 'pipeline', 'contrast',
+                              'prediction_hierarchical_introspect',
+                              'latent_single')}
 
     analysis_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
-                        'prediction_hierarchical', 'compare')
+                        'final', 'compare')
     assets_dir = join(analysis_dir, 'assets')
 
     if not os.path.exists(assets_dir):
@@ -179,27 +244,23 @@ def compare():
     proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
                                                                scale_bases=True, )
 
-    lbin = load(join(artifact_dir['latent'], 'lbin.pkl'))
-    labels = lbin.classes_
-
-    label_index = []
-    for label in labels:
-        label_index.append(label.split('__'))
-    label_index = pd.MultiIndex.from_tuples(
-        label_index, names=('dataset', 'task', 'condition'))
-
     print('Load model')
     classification_vectors_nii = {}
-    for latent in [True, False]:
+    for exp in ['no_latent', 'latent_single', 'latent_multi']:
         # Expected shape (?, 336)
-        this_artifact_dir = artifact_dir['latent' if latent else 'no_latent']
-        lbin = load(join(this_artifact_dir, 'lbin.pkl'))
+        this_artifact_dir = artifact_dir[exp]
+        label_index = []
+        lbin = load(join(artifact_dir[exp], 'lbin.pkl'))
         labels = lbin.classes_
+        for label in labels:
+            label_index.append(label.split('__'))
+        label_index = pd.MultiIndex.from_tuples(
+            label_index, names=('dataset', 'task', 'condition'))
         model = load_model(join(this_artifact_dir, 'model.keras'),
                            custom_objects={'HierarchicalLabelMasking':
                                                HierarchicalLabelMasking,
                                            'PartialSoftmax': PartialSoftmax})
-        if latent:
+        if exp != 'no_latent':
             weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
             latent_proj = proj.dot(weight_latent)
         else:
@@ -216,43 +277,37 @@ def compare():
         classification_vectors = pd.DataFrame(data=classification_vectors,
                                               index=label_index)
         classification_vectors.sort_index(inplace=True)
-        datasets = label_index.get_level_values('dataset').unique().values
+        datasets = classification_vectors.index.get_level_values(
+            'dataset').unique().values
         for dataset in datasets:
             mean = np.mean(classification_vectors.loc[dataset], axis=0).values
             classification_vectors.loc[dataset] = classification_vectors.loc[
                                                       dataset].values - mean
         # We can translate classification vectors
-        classification_vectors_nii[latent] = masker.inverse_transform(
+        classification_vectors_nii[exp] = masker.inverse_transform(
             classification_vectors.values)
+        classification_vectors_nii[exp].to_filename(join(analysis_dir,
+                                                         '%s.nii.gz' % exp))
 
-    X = []
-    keys = []
-    for dataset in datasets:
-        this_X = load(join(unmask_dir, dataset, 'imgs.pkl'))
-        if dataset in ['archi', 'brainomics']:
-            this_X = this_X.drop(['effects_of_interest'],
-                                 level='contrast', )
-        subjects = this_X.index.get_level_values('subject'). \
-            unique().values.tolist()
-        subjects = subjects[:1]
-        this_X = this_X.loc[idx[subjects]]
-        X.append(this_X)
-        keys.append(dataset)
-    X = pd.concat(X, keys=keys, names=['dataset'])
-    samples = X.groupby(level=['dataset', 'task', 'contrast']).first()
-    samples = samples.reindex(classification_vectors.index)
-    samples = masker.inverse_transform(samples.values)
-    classification_vectors_nii['sample'] = samples
+    lbin = load(join(artifact_dir['latent_single'], 'lbin.pkl'))
+    labels = lbin.classes_
+    label_index = []
+    for label in labels:
+        label_index.append(label.split('__'))
+    label_index = pd.MultiIndex.from_tuples(
+        label_index, names=('dataset', 'task', 'condition'))
+    for i, value in enumerate(label_index.values):
+        print(i, value)
     # Display
     print('Plotting')
-    Parallel(n_jobs=2, verbose=10)(
+    Parallel(n_jobs=10, verbose=10)(
         delayed(plot_both_classification_vector)(
             classification_vectors_nii, label_index, assets_dir,
             i, overwrite=True)
-        for i in range(label_index.shape[0]))
+        for i in range(30))
 
 
-def run(overwrite=False):
+def run(overwrite=True):
     # Load model
     # y =X_full W_g D^-1 W_e W_s
     memory = Memory(cachedir=get_cache_dirs()[0], verbose=2)
@@ -260,20 +315,17 @@ def run(overwrite=False):
     dictionary_penalty = 1e-4
     n_components_list = [16, 64, 256]
 
-    latent = True
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
-                        'prediction_hierarchical',
-                        'None' if latent else 'no_latent')
+                        'prediction_hierarchical_full', 'latent')
 
     analysis_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
-                        'prediction_hierarchical', 'analysis' if latent else
-                        'analysis_no_latent')
+                        'prediction_hierarchical_full', 'analysis')
     assets_dir = join(analysis_dir, 'assets')
 
     if not os.path.exists(assets_dir):
         os.makedirs(assets_dir)
 
-    n_components = 30
+    n_components = 200
     n_vectors = 76
 
     # HTML output
@@ -302,8 +354,7 @@ def run(overwrite=False):
                                            HierarchicalLabelMasking,
                                        'PartialSoftmax': PartialSoftmax})
     # standard_scaler = load(join(artifact_dir, 'standard_scaler.pkl'))
-    if latent:
-        weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
+    weight_latent = model.get_layer('latent').get_weights()[0]  # W_e
     # Shape (336, 50)
 
     weight_supervised = {}
@@ -325,80 +376,80 @@ def run(overwrite=False):
         label_index, names=('dataset', 'task', 'condition'))
     # Shape (200000, 336)
 
-    print('Prediction')
-    for i in range(3):
-        prediction = pd.read_csv(
-            join(artifact_dir, 'prediction_depth_%i.csv' % i))
-        prediction = prediction.set_index(
-            ['fold', 'dataset', 'subject', 'task', 'contrast', ])
-        match = prediction['true_label'] == prediction['predicted_label']
-        prediction = prediction.assign(match=match)
-        prediction.sort_index(inplace=True)
-        train_conf = confusion_matrix(prediction.loc['train', 'true_label'],
-                                      prediction.loc[
-                                          'train', 'predicted_label'],
-                                      labels=labels)
-        test_conf = confusion_matrix(prediction.loc['test', 'true_label'],
-                                     prediction.loc['test', 'predicted_label'],
-                                     labels=labels)
-        plt.figure()
-        plot_confusion_matrix(train_conf, labels)
-        plt.savefig(join(analysis_dir, 'train_conf_depth_%i.png' % i))
-        plot_confusion_matrix(test_conf, labels)
-        plt.savefig(join(analysis_dir, 'test_conf_depth_%i.png' % i))
-
-    print('Forward analysis')
-    proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
-                                                               scale_bases=True,
-                                                               )
-    if latent:
-        latent_proj = proj.dot(weight_latent)
-    else:
-        latent_proj = proj
-    for depth in [1]:
-        classification_vectors = latent_proj.dot(weight_supervised[depth]).T
-        classification_vectors = pd.DataFrame(data=classification_vectors,
-                                              index=label_index)
-        mean = classification_vectors.groupby(level='dataset').transform(
-            'mean')
-        # We can translate classification vectors
-        # classification_vectors -= mean
-        np.save(join(analysis_dir, 'classification'),
-                classification_vectors)
-        np.save(join(analysis_dir, 'weight_supervised_depth_%i' % depth),
-                weight_supervised[depth])
-        classification_vectors_nii = masker.inverse_transform(
-            classification_vectors)
-        classification_vectors_nii.to_filename(
-            join(analysis_dir,
-                 'classification_vectors_depth_%i.nii.gz' % depth))
-        # Display
-        print('Plotting')
-        this_classification_array = \
-            Parallel(n_jobs=2, verbose=10)(
-                delayed(plot_classification_vector)(
-                    classification_vectors_nii, label_index, assets_dir,
-                    depth, i, overwrite=overwrite)
-                for i in range(n_vectors))
-        classification_array.append(this_classification_array)
-
-        gram = classification_vectors.dot(classification_vectors.T).values
-        np.save(join(analysis_dir, 'gram'), gram)
-        fig = plt.figure()
-        plot_confusion_matrix(gram, labels)
-        gram_src = 'gram_depth_%i.png' % depth
-        gram = {'src': gram_src, 'title': 'Gram at depth %i' % depth}
-        gram_array.append(gram)
-        fig.savefig(join(assets_dir, gram_src))
-        plt.close(fig)
-    classification_array = classification_array[0]
+    # print('Prediction')
+    # for i in range(3):
+    #     prediction = pd.read_csv(
+    #         join(artifact_dir, 'prediction_depth_%i.csv' % i))
+    #     prediction = prediction.set_index(
+    #         ['fold', 'dataset', 'subject', 'task', 'contrast', ])
+    #     match = prediction['true_label'] == prediction['predicted_label']
+    #     prediction = prediction.assign(match=match)
+    #     prediction.sort_index(inplace=True)
+    #     train_conf = confusion_matrix(prediction.loc['train', 'true_label'],
+    #                                   prediction.loc[
+    #                                       'train', 'predicted_label'],
+    #                                   labels=labels)
+    #     test_conf = confusion_matrix(prediction.loc['test', 'true_label'],
+    #                                  prediction.loc['test', 'predicted_label'],
+    #                                  labels=labels)
+    #     plt.figure()
+    #     plot_confusion_matrix(train_conf, labels)
+    #     plt.savefig(join(analysis_dir, 'train_conf_depth_%i.png' % i))
+    #     plot_confusion_matrix(test_conf, labels)
+    #     plt.savefig(join(analysis_dir, 'test_conf_depth_%i.png' % i))
+    #
+    # print('Forward analysis')
+    # proj, inv_proj, rec = memory.cache(make_projection_matrix)(components,
+    #                                                            scale_bases=True,
+    #                                                            )
+    # if latent:
+    #     latent_proj = proj.dot(weight_latent)
+    # else:
+    #     latent_proj = proj
+    # for depth in [1]:
+    #     classification_vectors = latent_proj.dot(weight_supervised[depth]).T
+    #     classification_vectors = pd.DataFrame(data=classification_vectors,
+    #                                           index=label_index)
+    #     mean = classification_vectors.groupby(level='dataset').transform(
+    #         'mean')
+    #     # We can translate classification vectors
+    #     # classification_vectors -= mean
+    #     np.save(join(analysis_dir, 'classification'),
+    #             classification_vectors)
+    #     np.save(join(analysis_dir, 'weight_supervised_depth_%i' % depth),
+    #             weight_supervised[depth])
+    #     classification_vectors_nii = masker.inverse_transform(
+    #         classification_vectors)
+    #     classification_vectors_nii.to_filename(
+    #         join(analysis_dir,
+    #              'classification_vectors_depth_%i.nii.gz' % depth))
+    #     # Display
+    #     print('Plotting')
+    #     this_classification_array = \
+    #         Parallel(n_jobs=2, verbose=10)(
+    #             delayed(plot_classification_vector)(
+    #                 classification_vectors_nii, label_index, assets_dir,
+    #                 depth, i, overwrite=overwrite)
+    #             for i in range(n_vectors))
+    #     classification_array.append(this_classification_array)
+    #
+    #     gram = classification_vectors.dot(classification_vectors.T).values
+    #     np.save(join(analysis_dir, 'gram'), gram)
+    #     fig = plt.figure()
+    #     plot_confusion_matrix(gram, labels)
+    #     gram_src = 'gram_depth_%i.png' % depth
+    #     gram = {'src': gram_src, 'title': 'Gram at depth %i' % depth}
+    #     gram_array.append(gram)
+    #     fig.savefig(join(assets_dir, gram_src))
+    #     plt.close(fig)
+    # classification_array = classification_array[0]
 
     print('Backward analysis')
     # Backward
     weight_supervised = weight_supervised[1]  # Dataset level
     n_labels = weight_supervised.shape[1]
     weight_latent, r = np.linalg.qr(weight_latent)
-    weight_supervised = r.dot(weight_supervised)
+    # weight_supervised = r.dot(weight_supervised)
 
     # ICA
     sample_weight = X.iloc[:, 0].groupby(level=['dataset']).aggregate('count')
@@ -412,7 +463,7 @@ def run(overwrite=False):
     X = X.values
     X = X.dot(weight_latent)
 
-    kmeans = MiniBatchKMeans(n_clusters=76)
+    kmeans = MiniBatchKMeans(n_clusters=200, random_state=0)
     kmeans.fit(X)
     VT = kmeans.cluster_centers_[:n_components]
 
@@ -430,12 +481,10 @@ def run(overwrite=False):
                          index=label_index).groupby(
         level='dataset').count().values[:, 0]
     idx = 0
-    chance_level = np.ones(n_labels)
     for c in count:
         print(c)
         labels = np.ones((model_input.shape[0], 1)) * idx
         freqs += model.predict([model_input, labels])[1]
-        chance_level[idx:idx + c] = 1 / c
         idx += c
     freqs = pd.DataFrame(data=freqs.T, index=label_index)
     # Save
@@ -508,4 +557,4 @@ def plot_gram_matrix():
 
 
 if __name__ == '__main__':
-    compare()
+    run()
