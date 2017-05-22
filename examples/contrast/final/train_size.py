@@ -97,7 +97,7 @@ def plot():
              'transfer': 'Multi-dataset classification',
              'no_transfer': 'Single dataset classification'}
     flatui = get_cmap('Vega10').colors
-    flatui = flatui[2:]
+    flatui = flatui[3:]
     for i, dataset in enumerate(datasets):
         data = res.loc[dataset]
         ax = axes[i]

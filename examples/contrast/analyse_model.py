@@ -1,4 +1,5 @@
 import os
+from math import sqrt
 from os.path import join
 
 import matplotlib
@@ -121,6 +122,7 @@ def convert_tuple_to_rgb(x):
     b = int(x[2] * 256)
     return 'rgb(%i,%i,%o)' % (r, g, b)
 
+
 def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
                        overwrite=False):
     img = index_img(latent_imgs_nii, i)
@@ -150,13 +152,14 @@ def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
                 return convert_tuple_to_rgb(flatui[0])
             elif (word in freqs.loc['archi'].index.get_level_values(
                     'condition').unique().values or
-                          word in ['Raudioclick', 'Laudioclick',
-                                   'Lvideoclick', 'Rvideoclick',
+                          word in ['R_buttonpress_audio_cue', 'L_buttonpress_audio_cue',
+                                   'R_buttonpress_video_cue', 'L_buttonpress_video_cue',
                                    'audiocalculation', 'videocalculation',
-                                   'V_checkerboard', 'H_checkerboard']):
+                                   'V_checkerboard', 'H_checkerboard',
+                                   'face_gender']):
                 return convert_tuple_to_rgb(flatui[1])
             elif word in freqs.loc['camcan'].index.get_level_values(
-                    'condition').unique().values:
+                    'condition').unique().values or word in ['VideoOnly', 'AudioOnly']:
                 return convert_tuple_to_rgb(flatui[2])
             elif word in freqs.loc['brainomics'].index.get_level_values(
                     'condition').unique().values:
@@ -178,22 +181,28 @@ def plot_latent_vector(latent_imgs_nii, freqs, assets_dir, i,
             for label, freq in sub_freqs.iteritems():
                 condition = label[2]
                 if condition == 'clicDaudio':
-                    condition = 'Raudioclick'
+                    condition = 'R_buttonpress_audio_cue'
                 if condition == 'clicGaudio':
-                    condition = 'Laudioclick'
-                if condition == 'clicGaudio':
-                    condition = 'Lvideoclick'
+                    condition = 'L_buttonpress_audio_cue'
                 if condition == 'clicDvideo':
-                    condition = 'Rvideoclick'
+                    condition = 'R_buttonpress_video_cue'
+                if condition == 'clicGvideo':
+                    condition = 'L_buttonpress_video_cue'
                 if condition == 'calculaudio':
                     condition = 'audiocalculation'
                 if condition == 'calculvideo':
                     condition = 'videocalculation'
+                if condition == 'face_sex':
+                    condition = 'face_gender'
                 if condition == 'damier_V':
                     condition = 'V_checkerboard'
                 if condition == 'damier_H':
                     condition = 'H_checkerboard'
-                freq_dict[condition] = freq / max_freq
+                if condition == 'VidOnly':
+                    condition = 'VideoOnly'
+                if condition == 'AudOnly':
+                    condition = 'AudioOnly'
+                freq_dict[condition] = freq / max_freq / pow(len(condition), .05)
         title = str(freq_dict)
         wc.generate_from_frequencies(freq_dict)
         ax.imshow(wc)

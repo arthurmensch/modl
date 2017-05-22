@@ -134,7 +134,7 @@ def config():
                       'contrast')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'test')
-    datasets = ['archi']
+    datasets = ['archi', 'hcp']
     test_size = dict(hcp=0.1, archi=0.5, la5c=0.5, brainomics=0.5,
                      camcan=.5,
                      human_voice=0.5)
@@ -149,7 +149,7 @@ def config():
                       human_voice=None)
     validation = True
     geometric_reduction = True
-    alpha = 1e-1
+    alpha = 0
     latent_dim = 75
     activation = 'linear'
     source = 'hcp_rs_concat'
@@ -160,7 +160,7 @@ def config():
     batch_size = 256
     per_dataset_std = False
     joint_training = True
-    epochs = 20
+    epochs = 50
     depth_weight = [0., 1., 0.]
     n_jobs = 2
     verbose = 2
@@ -370,7 +370,7 @@ def train_model(alpha,
     np.save(join(artifact_dir, 'adversaries'), adversaries)
     np.save(join(artifact_dir, 'classes'), lbin.classes_)
 
-    if no_geometric or latent_dim is None:
+    if not geometric_reduction or latent_dim is None:
         # alphas = np.logspace(-5, 1, 7)
         model = LogisticRegression(solver='sag',
                                    C=1 / (X_train.shape[0] * alpha),

@@ -25,7 +25,7 @@ predict_contrast_multi_exp.observers.append(observer)
 
 @predict_contrast_multi_exp.config
 def config():
-    n_jobs = 36
+    n_jobs = 10
     n_seeds = 10
     seed = 2
 
@@ -48,7 +48,7 @@ def single_run(config_updates, _id, master_id):
         alpha = 1e-5
         validation = False
         mix_batch = False
-        verbose = 0
+        verbose = 1
         train_size = dict(hcp=None, archi=30, la5c=50, brainomics=30,
                           camcan=100,
                           human_voice=None)
@@ -75,7 +75,7 @@ def run(n_seeds, n_jobs, _run, _seed):
                             'latent_dim': None,
                             'dropout_input': 0.,
                             'dropout_latent': 0.,
-                            'epochs': 1000,
+                            'epochs': 50,
                             'steps_per_epoch': None,
                             'batch_size': 300,
                             'alpha': alpha,
