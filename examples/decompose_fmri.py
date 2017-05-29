@@ -1,8 +1,11 @@
 # Author: Arthur Mensch
 # License: BSD
-import time
 
-from modl.input_data.fmri.monkey import monkey_patch_nifti_image
+import matplotlib as mpl
+mpl.use('Qt5Agg')
+
+from nilearn.datasets import fetch_atlas_smith_2009
+from modl.input_data.fmri.fixes import monkey_patch_nifti_image
 
 monkey_patch_nifti_image()
 
@@ -11,7 +14,6 @@ from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
 from modl.datasets import fetch_adhd
-from modl.datasets.fmri import load_atlas_init
 from modl.decomposition.fmri import fMRIDictFact, rfMRIDictionaryScorer
 from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
@@ -29,7 +31,7 @@ def main():
     n_jobs = 2
     smoothing_fwhm = 6
 
-    dict_init = load_atlas_init('smith', n_components=n_components)
+    dict_init = fetch_atlas_smith_2009().rsn20
 
     dataset = fetch_adhd(n_subjects=40)
     data = dataset.rest.values
