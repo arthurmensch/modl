@@ -10,6 +10,7 @@ from sklearn.externals.joblib import Memory
 from nilearn._utils.compat import _basestring
 import numpy as np
 
+
 class BaseNilearnEstimator(BaseEstimator):
     def __init__(self,
                  mask=None, smoothing_fwhm=None,

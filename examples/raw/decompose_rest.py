@@ -181,7 +181,7 @@ def compute_decomposition(alpha, batch_size, learning_rate,
                           train_subjects=None,
                           test_subjects=None,
                           ):
-    artifact_dir = join(get_data_dirs()[0], 'pipeline', 'components',
+    artifact_dir = join(get_data_dirs()[0], 'pipeline', 'raw',
                         source, str(n_components), str(alpha))
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
@@ -232,11 +232,11 @@ def compute_decomposition(alpha, batch_size, learning_rate,
     _run.info['iter'] = callback.iter
     _run.info['final_score'] = final_score
 
-    print('Write components artifacts')
+    print('Write raw artifacts')
     safe_to_filename(dict_fact.components_img_,
-                     join(artifact_dir, 'components.nii.gz'))
-    _run.add_artifact(join(artifact_dir, 'components.nii.gz'),
-                      name='components.nii.gz')
+                     join(artifact_dir, 'raw.nii.gz'))
+    _run.add_artifact(join(artifact_dir, 'raw.nii.gz'),
+                      name='raw.nii.gz')
 
     safe_to_filename(dict_fact.mask_img_,
                      join(artifact_dir, 'mask_img.nii.gz'))
@@ -245,10 +245,10 @@ def compute_decomposition(alpha, batch_size, learning_rate,
 
     fig = plt.figure()
     display_maps(fig, dict_fact.components_img_)
-    plt.savefig(join(artifact_dir, 'components.png'))
+    plt.savefig(join(artifact_dir, 'raw.png'))
     plt.close(fig)
-    _run.add_artifact(join(artifact_dir, 'components.png'),
-                      name='components.png')
+    _run.add_artifact(join(artifact_dir, 'raw.png'),
+                      name='raw.png')
     fig, ax = plt.subplots(1, 1)
     ax.plot(callback.time, callback.score, marker='o')
     plt.savefig(join(artifact_dir, 'learning_curve.png'))

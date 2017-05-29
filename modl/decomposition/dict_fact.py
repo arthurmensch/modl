@@ -199,7 +199,7 @@ class DictFact(CodingMixin, BaseEstimator):
         n_epochs: int
             Number of epochs to perform over data
         n_components: int
-            Number of components in the dictionary
+            Number of raw in the dictionary
         batch_size: int
             Size of mini-batches to use
         code_pos: boolean,

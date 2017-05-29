@@ -60,7 +60,7 @@ def main():
                              )
     dict_fact.fit(train_imgs, confounds=train_confounds)
 
-    dict_fact.components_img_.to_filename('components.nii.gz')
+    dict_fact.components_img_.to_filename('raw.nii.gz')
     fig = plt.figure()
     display_maps(fig, dict_fact.components_img_)
     fig, ax = plt.subplots(1, 1)

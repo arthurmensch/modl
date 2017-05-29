@@ -94,7 +94,7 @@ class fMRICoderMixin(BaseNilearnEstimator, CacheMixin, TransformerMixin):
 
     def score(self, imgs, confounds=None):
         """
-        Score the images on the learning spatial components, based on the
+        Score the images on the learning spatial raw, based on the
         objective function value that is minimized by the algorithm. Lower
         means better fit.
 
@@ -170,13 +170,13 @@ class fMRIDictFact(fMRICoderMixin):
     Parameters
     ----------
     n_components: int
-        Number of components to extract
+        Number of raw to extract
 
     n_epochs: int
         number of time to cycle over images
 
     alpha: float
-        Penalty to apply. The larger, the sparser the components will be in
+        Penalty to apply. The larger, the sparser the raw will be in
         space
 
     dict_init: Niimg-like or None
@@ -207,7 +207,7 @@ class fMRIDictFact(fMRICoderMixin):
         parameters.
 
     n_components: int
-        Number of components to extract
+        Number of raw to extract
 
     smoothing_fwhm: float, optional
         If smoothing_fwhm is not None, it gives the size in millimeters of the
@@ -325,11 +325,11 @@ class fMRIDictFact(fMRICoderMixin):
         -------
         self
         """
-        # Base logic for components estimators
+        # Base logic for raw estimators
         if imgs is None:
             raise ValueError('imgs is None, use fMRICoder instead')
 
-        # Fit mask + components
+        # Fit mask + raw
         fMRICoderMixin.fit(self, imgs, confounds=confounds)
 
         self.components_ = self._cache(_compute_components,
@@ -436,7 +436,7 @@ def _compute_components(masker,
     masker._check_fitted()
     dict_init = _check_dict_init(dict_init, mask_img=masker.mask_img_,
                                  n_components=n_components)
-    # dict_init might have fewer components than asked for
+    # dict_init might have fewer raw than asked for
     if dict_init is not None:
         n_components = dict_init.shape[0]
     random_state = check_random_state(random_state)
@@ -457,7 +457,7 @@ def _compute_components(masker,
     n_voxels = np.sum(check_niimg(masker.mask_img_).get_data() != 0)
 
     if verbose:
-        print("Learning components")
+        print("Learning raw")
     dict_fact = DictFact(n_components=n_components,
                          code_alpha=alpha,
                          code_l1_ratio=0,
