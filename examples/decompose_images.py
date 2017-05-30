@@ -109,11 +109,11 @@ def decompose_run(batch_size,
     fig = plt.figure()
     patches = dict_fact.components_
     plot_patches(fig, patches)
-    fig.suptitle('Dictionary raw')
-    plt.savefig('raw.png')
+    fig.suptitle('Dictionary pipelining')
+    plt.savefig('pipelining.png')
     plt.close(fig)
-    _run.add_artifact('raw.png')
-    os.unlink('raw.png')
+    _run.add_artifact('pipelining.png')
+    os.unlink('pipelining.png')
 
     fig, ax = plt.subplots(1, 1)
     ax.plot(cb.time, cb.score, marker='o')

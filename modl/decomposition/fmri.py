@@ -94,7 +94,7 @@ class fMRICoderMixin(BaseNilearnEstimator, CacheMixin, TransformerMixin):
 
     def score(self, imgs, confounds=None):
         """
-        Score the images on the learning spatial raw, based on the
+        Score the images on the learning spatial pipelining, based on the
         objective function value that is minimized by the algorithm. Lower
         means better fit.
 
@@ -170,13 +170,13 @@ class fMRIDictFact(fMRICoderMixin):
     Parameters
     ----------
     n_components: int
-        Number of raw to extract
+        Number of pipelining to extract
 
     n_epochs: int
         number of time to cycle over images
 
     alpha: float
-        Penalty to apply. The larger, the sparser the raw will be in
+        Penalty to apply. The larger, the sparser the pipelining will be in
         space
 
     dict_init: Niimg-like or None
@@ -207,7 +207,7 @@ class fMRIDictFact(fMRICoderMixin):
         parameters.
 
     n_components: int
-        Number of raw to extract
+        Number of pipelining to extract
 
     smoothing_fwhm: float, optional
         If smoothing_fwhm is not None, it gives the size in millimeters of the
@@ -277,7 +277,7 @@ class fMRIDictFact(fMRICoderMixin):
                  low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
                  mask_strategy='background', mask_args=None,
-                 memory=Memory(cachedir=None), memory_level=2,
+                 memory=Memory(cachedir=None), memory_level=0,
                  n_jobs=1, verbose=0,
                  callback=None):
         fMRICoderMixin.__init__(self, n_components=n_components,
@@ -325,11 +325,11 @@ class fMRIDictFact(fMRICoderMixin):
         -------
         self
         """
-        # Base logic for raw estimators
+        # Base logic for pipelining estimators
         if imgs is None:
             raise ValueError('imgs is None, use fMRICoder instead')
 
-        # Fit mask + raw
+        # Fit mask + pipelining
         fMRICoderMixin.fit(self, imgs, confounds=confounds)
 
         self.components_ = self._cache(_compute_components,
@@ -436,7 +436,7 @@ def _compute_components(masker,
     masker._check_fitted()
     dict_init = _check_dict_init(dict_init, mask_img=masker.mask_img_,
                                  n_components=n_components)
-    # dict_init might have fewer raw than asked for
+    # dict_init might have fewer pipelining than asked for
     if dict_init is not None:
         n_components = dict_init.shape[0]
     random_state = check_random_state(random_state)
@@ -457,7 +457,7 @@ def _compute_components(masker,
     n_voxels = np.sum(check_niimg(masker.mask_img_).get_data() != 0)
 
     if verbose:
-        print("Learning raw")
+        print("Learning...")
     dict_fact = DictFact(n_components=n_components,
                          code_alpha=alpha,
                          code_l1_ratio=0,

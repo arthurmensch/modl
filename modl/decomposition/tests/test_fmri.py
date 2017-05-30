@@ -116,7 +116,7 @@ def test_dict_fact(method, memory):
 
 def test_component_sign():
     # Regression test
-    # We should have a heuristic that flips the sign of raw in
+    # We should have a heuristic that flips the sign of pipelining in
     # DictLearning to have more positive values than negative values, for
     # instance by making sure that the largest value is positive.
 

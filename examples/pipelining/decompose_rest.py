@@ -1,7 +1,13 @@
 # Author: Arthur Mensch
 # License: BSD
+import os
+
+from os.path import join
 
 import matplotlib as mpl
+
+from modl.input_data.fmri.rest import get_raw_rest_data
+
 mpl.use('Qt5Agg')
 
 from nilearn.datasets import fetch_atlas_smith_2009
@@ -10,14 +16,11 @@ from modl.input_data.fmri.fixes import monkey_patch_nifti_image
 monkey_patch_nifti_image()
 
 import matplotlib.pyplot as plt
-from sklearn.externals.joblib import Memory
 from sklearn.model_selection import train_test_split
 
-from modl.datasets import fetch_adhd
 from modl.decomposition.fmri import fMRIDictFact, rfMRIDictionaryScorer
 from modl.plotting.fmri import display_maps
-from modl.utils.system import get_cache_dirs
-
+from modl.utils.system import get_output_dir
 
 n_components = 20
 batch_size = 200
@@ -32,21 +35,18 @@ smoothing_fwhm = 6
 
 dict_init = fetch_atlas_smith_2009().rsn20
 
-dataset = fetch_adhd(n_subjects=40)
-data = dataset.rest.values
-train_data, test_data = train_test_split(data, test_size=1, random_state=0)
-train_imgs, train_confounds = zip(*train_data)
-test_imgs, test_confounds = zip(*test_data)
-mask = dataset.mask
-memory = Memory(cachedir=get_cache_dirs()[0],
-                verbose=2)
+artifact_dir = join(get_output_dir(), 'unmask', 'adhd')
 
-cb = rfMRIDictionaryScorer(test_imgs, test_confounds=test_confounds)
+masker, data = get_raw_rest_data(artifact_dir)
+
+train_imgs, test_imgs = train_test_split(data, test_size=1, random_state=0)
+train_imgs = train_imgs['filename'].values
+test_imgs = test_imgs['filename'].values
+
+cb = rfMRIDictionaryScorer(test_imgs)
 dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                          method=method,
-                         mask=mask,
-                         memory=memory,
-                         memory_level=2,
+                         mask=masker,
                          verbose=verbose,
                          n_epochs=n_epochs,
                          n_jobs=n_jobs,
@@ -59,8 +59,12 @@ dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                          alpha=alpha,
                          callback=cb,
                          )
-dict_fact.fit(train_imgs, confounds=train_confounds)
+dict_fact.fit(train_imgs)
+output_dir = join(get_output_dir(), 'components', 'adhd')
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
+dict_fact.components_img_.to_filename(join(output_dir, 'components.nii.gz'))
 fig = plt.figure()
 display_maps(fig, dict_fact.components_img_)
 fig, ax = plt.subplots(1, 1)
