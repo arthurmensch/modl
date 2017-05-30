@@ -66,9 +66,8 @@ def get_output_dir(data_dir=None):
     This function retrieves the datasets directories using the following
     priority :
     1. the keyword argument data_dir
-    2. the global environment variable MODL_SHARED_DATA
-    3. the user environment variable MODL_DATA
-    4. modl_data in the user home folder
+    2. the global environment variable OUTPUT_MODL_DIR
+    4. output/modl in the user home folder
     """
 
     paths = []
