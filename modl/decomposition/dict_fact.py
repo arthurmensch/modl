@@ -1,24 +1,20 @@
+import atexit
 from concurrent.futures import ThreadPoolExecutor
 from math import log, ceil
 from tempfile import TemporaryFile
 
-import atexit
-
 import numpy as np
 import scipy
-from sklearn.externals.joblib import Parallel
-from sklearn.externals.joblib import delayed
-from sklearn.utils.validation import check_is_fitted
-
-from modl.utils.randomkit import RandomState
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils import check_array, check_random_state, gen_batches
+from sklearn.utils.validation import check_is_fitted
 
 from modl.utils import get_sub_slice
+from modl.utils.randomkit import RandomState
+from modl.utils.randomkit import Sampler
 from .dict_fact_fast import _enet_regression_multi_gram, \
     _enet_regression_single_gram, _update_G_average, _batch_weight
 from ..utils.math.enet import enet_norm, enet_projection, enet_scale
-from modl.utils.randomkit import Sampler
 
 MAX_INT = np.iinfo(np.int64).max
 
@@ -30,17 +26,13 @@ class CodingMixin(TransformerMixin):
                            code_l1_ratio=1,
                            tol=1e-2,
                            max_iter=100,
-                           comp_l1_ratio=0,
                            code_pos=False,
-                           comp_pos=False,
                            random_state=None,
                            n_threads=1
                            ):
         self.n_components = n_components
-        self.comp_l1_ratio = comp_l1_ratio
         self.code_l1_ratio = code_l1_ratio
         self.code_alpha = code_alpha
-        self.comp_pos = comp_pos
         self.code_pos = code_pos
         self.random_state = random_state
         self.tol = tol
@@ -264,15 +256,16 @@ class DictFact(CodingMixin, BaseEstimator):
         self.dict_init = dict_init
 
         self._set_coding_params(n_components,
-                                comp_l1_ratio=comp_l1_ratio,
                                 code_l1_ratio=code_l1_ratio,
                                 code_alpha=code_alpha,
-                                comp_pos=comp_pos,
                                 code_pos=code_pos,
                                 random_state=random_state,
                                 tol=tol,
                                 max_iter=max_iter,
                                 n_threads=n_threads)
+
+        self.comp_l1_ratio = comp_l1_ratio
+        self.comp_pos = comp_pos
 
         self.n_epochs = n_epochs
 
@@ -695,17 +688,13 @@ class Coder(CodingMixin, BaseEstimator):
                  code_l1_ratio=1,
                  tol=1e-2,
                  max_iter=100,
-                 comp_l1_ratio=0,
                  code_pos=False,
-                 comp_pos=False,
                  random_state=None,
                  n_threads=1
                  ):
         self._set_coding_params(dictionary.shape[0],
-                                comp_l1_ratio=comp_l1_ratio,
                                 code_l1_ratio=code_l1_ratio,
                                 code_alpha=code_alpha,
-                                comp_pos=comp_pos,
                                 code_pos=code_pos,
                                 random_state=random_state,
                                 tol=tol,

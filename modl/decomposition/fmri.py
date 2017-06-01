@@ -89,7 +89,6 @@ class fMRICoderMixin(BaseNilearnEstimator, CacheMixin, TransformerMixin):
             self.coder_ = Coder(dictionary=self.components_,
                                 code_alpha=self.alpha,
                                 code_l1_ratio=0,
-                                comp_l1_ratio=1,
                                 n_threads=self.n_jobs).fit()
 
     def score(self, imgs, confounds=None):
@@ -354,7 +353,6 @@ class fMRIDictFact(fMRICoderMixin):
         self.coder_ = Coder(dictionary=self.components_,
                             code_alpha=self.alpha,
                             code_l1_ratio=0,
-                            comp_l1_ratio=1,
                             n_threads=self.n_jobs).fit()
         return self
 
