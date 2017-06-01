@@ -488,7 +488,7 @@ class DictFact(CodingMixin, BaseEstimator):
     def _single_batch_fit(self, X, sample_indices):
         """Fit a single batch X: compute code, update statistics, update the
         dictionary"""
-        if (self.verbose and self.verbose_iter_
+        if ( self.verbose and self.verbose_iter_
             and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
