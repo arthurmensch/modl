@@ -1,10 +1,9 @@
 Cython>=0.25
 numpy>=1.11
 scipy>=0.18
-matplotlib>=2.0.0b3
+matplotlib>=1.5
 pytest>=3.0.1
 nibabel>=0.2.1
 nilearn>=0.2.6
 scikit_learn>=0.18
 scikit-image>=0.12.3
-sacred>=0.6.10
