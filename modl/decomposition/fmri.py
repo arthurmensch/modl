@@ -10,14 +10,13 @@ from __future__ import division
 import itertools
 import time
 import warnings
-from math import log, sqrt
+from math import sqrt
 
 import numpy as np
 from nibabel.filebasedimages import ImageFileError
 from nilearn._utils import CacheMixin
 from nilearn._utils import check_niimg
 from nilearn.input_data import NiftiMasker
-from nilearn._utils.compat import _basestring
 from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
@@ -44,7 +43,7 @@ class fMRICoderMixin(BaseNilearnEstimator, CacheMixin, TransformerMixin):
                  transform_batch_size=None,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
-                low_pass=None, high_pass=None, t_r=None,
+                 low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
                  mask_strategy='background', mask_args=None,
                  memory=Memory(cachedir=None),
@@ -271,6 +270,8 @@ class fMRIDictFact(fMRICoderMixin):
                  reduction=1,
                  learning_rate=1,
                  positive=False,
+                 code_l1_ratio=0.,
+                 comp_l1_ratio=1.,
                  transform_batch_size=None,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -279,7 +280,10 @@ class fMRIDictFact(fMRICoderMixin):
                  mask_strategy='background', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=0,
                  n_jobs=1, verbose=0,
-                 callback=None):
+                 callback=None,
+                 dict_structure="enet",
+                 dict_structure_params={},
+                 bcd_n_iter=1):
         fMRICoderMixin.__init__(self, n_components=n_components,
                                 alpha=alpha,
                                 dict_init=dict_init,
@@ -304,9 +308,25 @@ class fMRIDictFact(fMRICoderMixin):
         self.reduction = reduction
         self.method = method
         self.positive = positive
+        self.comp_l1_ratio = comp_l1_ratio
+        self.code_l1_ratio = code_l1_ratio
         self.learning_rate = learning_rate
         self.random_state = random_state
         self.callback = callback
+
+        self.dict_structure = dict_structure
+        self.dict_structure_params = dict_structure_params
+        self.bcd_n_iter = bcd_n_iter
+
+    def _pre_fit(self, imgs=None, y=None, confounds=None):
+        # Base logic for pipelining estimators
+        if imgs is None:
+            raise ValueError('imgs is None, use fMRICoder instead')
+
+        # Fit mask + pipelining
+        fMRICoderMixin.fit(self, imgs, confounds=confounds)
+
+        return self
 
     def fit(self, imgs=None, y=None, confounds=None):
         """Compute the mask and the dictionary maps across subjects
@@ -326,21 +346,17 @@ class fMRIDictFact(fMRICoderMixin):
         -------
         self
         """
-        # Base logic for pipelining estimators
-        if imgs is None:
-            raise ValueError('imgs is None, use fMRICoder instead')
-
-        # Fit mask + pipelining
-        fMRICoderMixin.fit(self, imgs, confounds=confounds)
-
-        self.components_ = self._cache(_compute_components,
-                                       func_memory_level=1,
-                                       ignore=['n_jobs',
-                                               'verbose'])(
+        self._pre_fit(imgs=imgs, y=None, confounds=confounds)
+        calc = self._cache(_compute_components, func_memory_level=1,
+                           ignore=['n_jobs', 'verbose'])
+        self.components_ = calc(
             self.masker_, imgs,
             confounds=confounds,
             dict_init=self.components_,
             alpha=self.alpha,
+            comp_pos=self.positive,
+            comp_l1_ratio=self.comp_l1_ratio,
+            code_l1_ratio=self.code_l1_ratio,
             reduction=self.reduction,
             learning_rate=self.learning_rate,
             n_components=self.n_components,
@@ -351,7 +367,14 @@ class fMRIDictFact(fMRICoderMixin):
             verbose=self.verbose,
             random_state=self.random_state,
             callback=self.callback,
-            n_jobs=self.n_jobs)
+            n_jobs=self.n_jobs,
+            dict_structure=self.dict_structure,
+            dict_structure_params=self.dict_structure_params,
+            bcd_n_iter=self.bcd_n_iter)
+        self._post_fit()
+        return self
+
+    def _post_fit(self):
         self.components_img_ = self.masker_.inverse_transform(self.components_)
         self.coder_ = Coder(dictionary=self.components_,
                             code_alpha=self.alpha,
@@ -417,6 +440,8 @@ def _compute_components(masker,
                         confounds=None,
                         dict_init=None,
                         alpha=1,
+                        code_l1_ratio=0.,
+                        comp_l1_ratio=1.,
                         positive=False,
                         reduction=1,
                         learning_rate=1,
@@ -427,7 +452,10 @@ def _compute_components(masker,
                         verbose=0,
                         random_state=None,
                         callback=None,
-                        n_jobs=1):
+                        n_jobs=1,
+                        dict_structure="enet",
+                        dict_structure_params={},
+                        bcd_n_iter=1):
     methods = {'masked': {'G_agg': 'masked', 'Dx_agg': 'masked'},
                'dictionary only': {'G_agg': 'full', 'Dx_agg': 'full'},
                'gram': {'G_agg': 'masked', 'Dx_agg': 'masked'},
@@ -462,8 +490,8 @@ def _compute_components(masker,
         print("Learning...")
     dict_fact = DictFact(n_components=n_components,
                          code_alpha=alpha,
-                         code_l1_ratio=0,
-                         comp_l1_ratio=1,
+                         code_l1_ratio=code_l1_ratio,
+                         comp_l1_ratio=comp_l1_ratio,
                          comp_pos=positive,
                          reduction=reduction,
                          Dx_agg=Dx_agg,
@@ -472,7 +500,10 @@ def _compute_components(masker,
                          batch_size=batch_size,
                          random_state=random_state,
                          n_threads=n_jobs,
-                         verbose=0)
+                         verbose=0,
+                         dict_structure=dict_structure,
+                         dict_structure_params=dict_structure_params,
+                         bcd_n_iter=bcd_n_iter)
     dict_fact.prepare(n_samples=n_samples, n_features=n_voxels,
                       X=dict_init, dtype=dtype)
     if n_records > 0:

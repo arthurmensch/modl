@@ -58,15 +58,16 @@ def test_dict_mf_reconstruction(solver):
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=5,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
-                       random_state=rng_global, reduction=1)
+                       random_state=rng_global, reduction=1,
+                       dict_structure_params=dict(l1_ratio=0.))
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.dot(dict_mf.components_)
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
     assert (rel_error < 0.02)
+
 
 @pytest.mark.parametrize("solver", solvers)
 def test_dict_mf_reconstruction_reduction(solver):
@@ -76,10 +77,10 @@ def test_dict_mf_reconstruction_reduction(solver):
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=2,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
-                       random_state=rng_global, reduction=2)
+                       random_state=rng_global, reduction=2,
+                       dict_structure_params=dict(l1_ratio=0.))
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.dot(dict_mf.components_)
@@ -95,10 +96,10 @@ def test_dict_mf_reconstruction_reproductible(solver):
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=2,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
-                       random_state=0, reduction=2)
+                       random_state=0, reduction=2,
+                       dict_structure_params=dict(l1_ratio=0))
     dict_mf.fit(X)
     D1 = dict_mf.components_.copy()
     P1 = dict_mf.transform(X)
@@ -120,11 +121,11 @@ def test_dict_mf_reconstruction_reduction_batch(solver):
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=2,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
                        random_state=rng_global, reduction=2,
-                       batch_size=10)
+                       batch_size=10,
+                       dict_structure_params=dict(l1_ratio=0))
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.dot(dict_mf.components_)
@@ -138,12 +139,11 @@ def test_dict_mf_reconstruction_sparse_dict(solver):
     rng = check_random_state(0)
     dict_init = Q  + rng.randn(*Q.shape) * 0.2
     dict_mf = DictFact(n_components=4, code_alpha=1e-2, n_epochs=2,
-                       code_l1_ratio=0,
-                       comp_l1_ratio=1,
                        dict_init=dict_init,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
-                       random_state=rng_global)
+                       random_state=rng_global,
+                       dict_structure_params=dict(l1_ratio=1.))
     dict_mf.fit(X)
     Q_rec = dict_mf.components_
     Q_rec /= np.sqrt(np.sum(Q_rec ** 2, axis=1))[:, np.newaxis]

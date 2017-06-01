@@ -1,7 +1,8 @@
 import atexit
 from concurrent.futures import ThreadPoolExecutor
-from math import log, ceil
+from math import log, ceil, sqrt
 from tempfile import TemporaryFile
+from copy import deepcopy
 
 import numpy as np
 import scipy
@@ -14,7 +15,8 @@ from modl.utils.randomkit import RandomState
 from modl.utils.randomkit import Sampler
 from .dict_fact_fast import _enet_regression_multi_gram, \
     _enet_regression_single_gram, _update_G_average, _batch_weight
-from ..utils.math.enet import enet_norm, enet_projection, enet_scale
+from ..utils.math.enet import enet_norm, enet_scale
+from .proximal import _atomic_prox
 
 MAX_INT = np.iinfo(np.int64).max
 
@@ -133,7 +135,6 @@ class DictFact(CodingMixin, BaseEstimator):
                  dict_init=None,
                  code_alpha=1,
                  code_l1_ratio=1,
-                 comp_l1_ratio=0,
                  tol=1e-2,
                  max_iter=100,
                  code_pos=False,
@@ -147,6 +148,9 @@ class DictFact(CodingMixin, BaseEstimator):
                  n_threads=1,
                  rand_size=True,
                  replacement=True,
+                 dict_structure="enet",
+                 dict_structure_params={},
+                 bcd_n_iter=1
                  ):
         """
         Estimator to perform matrix factorization by streaming samples and
@@ -264,7 +268,6 @@ class DictFact(CodingMixin, BaseEstimator):
                                 max_iter=max_iter,
                                 n_threads=n_threads)
 
-        self.comp_l1_ratio = comp_l1_ratio
         self.comp_pos = comp_pos
 
         self.n_epochs = n_epochs
@@ -276,6 +279,10 @@ class DictFact(CodingMixin, BaseEstimator):
 
         self.rand_size = rand_size
         self.replacement = replacement
+
+        self.dict_structure = dict_structure
+        self.dict_structure_params = dict_structure_params
+        self.bcd_n_iter = bcd_n_iter
 
     def fit(self, X):
         """
@@ -448,9 +455,8 @@ class DictFact(CodingMixin, BaseEstimator):
             self.components_[self.components_ <= 0] = \
                 - self.components_[self.components_ <= 0]
         for i in range(self.n_components):
-            enet_scale(self.components_[i],
-                       l1_ratio=self.comp_l1_ratio,
-                       radius=1)
+            comp_l1_ratio = self.dict_structure_params.get("l1_ratio", 0.)
+            enet_scale(self.components_[i], l1_ratio=comp_l1_ratio, radius=1)
 
         self.code_ = np.ones((n_samples, self.n_components), dtype=dtype)
 
@@ -489,7 +495,10 @@ class DictFact(CodingMixin, BaseEstimator):
         if X.flags['WRITEABLE'] is False:
             X = X.copy()
 
-        subset = self.feature_sampler_.yield_subset(self.reduction)
+        if self.reduction > 1.:
+            subset = self.feature_sampler_.yield_subset(self.reduction)
+        else:
+            subset = np.arange(self.feature_sampler_.range)
         batch_size = X.shape[0]
 
         self.n_iter_ += batch_size
@@ -644,29 +653,52 @@ class DictFact(CodingMixin, BaseEstimator):
             self.G_ -= components_subset.dot(components_subset.T)
 
         gradient_subset -= self.C_.dot(components_subset)
+        params = deepcopy(self.dict_structure_params)
+        if "l1_ratio" in params:
+            l1_ratio = params.pop("l1_ratio")
+        else:
+            l1_ratio = 0.
+        if "weight" in params:
+            weight = params.pop("weight")
+        else:
+            weight = 1.
+        delta_dict = np.inf
+        for bcd_iter in range(self.bcd_n_iter):
+            if self.verbose and self.bcd_n_iter > 1:
+                print("[BCD] iter %02i/%02i: rel. change in dict = %g" % (
+                    bcd_iter + 1, self.bcd_n_iter, delta_dict))
+            old_dict = components_subset.copy()
+            order = self.random_state.permutation(n_components)
+            for idx, k in enumerate(order):
+                if self.verbose:
+                    print("  (%s) updating component %02i/%02i" % (
+                        self.dict_structure, idx + 1, n_components))
+                comp_norm = None
+                if self.dict_structure == "enet":
+                    subset_norm = enet_norm(components_subset[k],
+                                            l1_ratio)
+                    self.comp_norm_[k] += subset_norm
+                    comp_norm = self.comp_norm_[k]
+                gradient_subset = ger(1.0, self.C_[k], components_subset[k],
+                                      a=gradient_subset, overwrite_a=True)
+                if self.C_[k, k] > 1e-20:
+                    components_subset[k] = gradient_subset[k] / self.C_[k, k]
+                # Else do not update
+                components_subset[k] = _atomic_prox(
+                    components_subset[k], which=self.dict_structure,
+                    weight=weight / self.C_[k, k], norm=comp_norm,
+                    output=atom_temp, **params)
+                if self.dict_structure == "enet":
+                    subset_norm = enet_norm(components_subset[k],
+                                            l1_ratio)
+                    self.comp_norm_[k] -= subset_norm
+                gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
+                                      a=gradient_subset, overwrite_a=True)
 
-        order = self.random_state.permutation(n_components)
-        for k in order:
-            subset_norm = enet_norm(components_subset[k],
-                                    self.comp_l1_ratio)
-            self.comp_norm_[k] += subset_norm
-            gradient_subset = ger(1.0, self.C_[k], components_subset[k],
-                                  a=gradient_subset, overwrite_a=True)
-            if self.C_[k, k] > 1e-20:
-                components_subset[k] = gradient_subset[k] / self.C_[k, k]
-            # Else do not update
-            if self.comp_pos:
-                components_subset[components_subset < 0] = 0
-            enet_projection(components_subset[k],
-                            atom_temp,
-                            self.comp_norm_[k], self.comp_l1_ratio)
-            components_subset[k] = atom_temp
-            subset_norm = enet_norm(components_subset[k],
-                                    self.comp_l1_ratio)
-            self.comp_norm_[k] -= subset_norm
-            gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
-                                  a=gradient_subset, overwrite_a=True)
-
+            if self.bcd_n_iter > 1:
+                delta_dict = np.sum((components_subset - old_dict) ** 2)
+                delta_dict /= np.sum(old_dict ** 2)
+                delta_dict = sqrt(delta_dict)
         self.components_[:, subset] = components_subset
 
         if self.G_agg == 'full':
