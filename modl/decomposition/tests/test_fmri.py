@@ -1,7 +1,6 @@
 import nibabel
 import numpy as np
 import pytest
-from nilearn._utils.testing import assert_less_equal
 from nilearn.image import iter_img
 from nilearn.input_data import MultiNiftiMasker
 from sklearn.externals.joblib import Memory
@@ -58,7 +57,7 @@ def _make_test_data(n_subjects=8, noisy=False):
     if noisy:  # Creating noisy non positive data
         components[rng.randn(*components.shape) > .8] *= -5.
         for component in components:
-            assert_less_equal(component.max(), -component.min())  # Goal met ?
+            assert(component.max() <= -component.min())  # Goal met ?
 
     # Create a "multi-subject" dataset
     data = _make_data_from_components(components, n_subjects=n_subjects)
@@ -129,7 +128,7 @@ def test_component_sign():
     dict_fact.fit(data)
     for mp in iter_img(dict_fact.components_img_):
         mp = mp.get_data()
-        assert_less_equal(np.sum(mp[mp <= 0]), np.sum(mp[mp > 0]))
+        assert(np.sum(mp[mp <= 0]) <= np.sum(mp[mp > 0]))
 
 def test_verbose():
     pass
