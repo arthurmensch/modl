@@ -1,10 +1,9 @@
-# Author: Mathieu Blondel
+# Author: Mathieu Blondel, Arthur Mensch
 # From spira
 # License: BSD
 import os
 
-import joblib
-import sklearn.externals.joblib as skjoblib
+from sklearn.externals.joblib import load
 from modl.utils.recsys.cross_validation import train_test_split
 
 from modl.datasets import get_data_dirs
@@ -27,16 +26,16 @@ def load_movielens(version):
         raise ValueError("Dowload dataset using 'make download-movielens%s' at"
                          " project root." % version)
 
-    X = skjoblib.load(path)
+    X = load(path)
     return X
 
 
 def load_netflix():
     data_home = get_data_dirs()[0]
     path = os.path.join(data_home, "nf_prize", "X_tr.pkl")
-    X_tr = joblib.load(path)
+    X_tr = load(path)
     path = os.path.join(data_home, "nf_prize", "X_te.pkl")
-    X_te = joblib.load(path)
+    X_te = load(path)
     return X_tr, X_te
 
 
