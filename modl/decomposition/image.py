@@ -1,11 +1,11 @@
 from math import sqrt
 
-from modl.preprocessing.image import scale_patches
+from modl.feature_extraction.image import LazyCleanPatchExtractor
+from modl.input_data.image import scale_patches
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_random_state, gen_batches
 
 from .dict_fact import DictFact
-from .feature_extraction.image import LazyCleanPatchExtractor
 
 
 class ImageDictFact(BaseEstimator):

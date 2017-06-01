@@ -1,14 +1,12 @@
 from math import sqrt
 
 import numpy as np
-import pytest
 import scipy.sparse as sp
+from modl.decomposition.recsys import RecsysDictFact, compute_biases
+from modl.utils.recsys.cross_validation import train_test_split
 from numpy.testing import assert_almost_equal
 from numpy.testing import assert_array_almost_equal
 from sklearn.utils import check_array
-
-from modl.utils.recsys.cross_validation import train_test_split
-from modl.recsys import RecsysDictFact, compute_biases
 
 
 def test_dict_completion():

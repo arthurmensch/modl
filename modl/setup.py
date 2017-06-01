@@ -9,24 +9,12 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('modl', parent_package, top_path)
 
-    extensions = [
-        Extension('modl.dict_fact_fast',
-                  sources=['modl/dict_fact_fast.pyx'],
-                  include_dirs=[numpy.get_include()],
-                  ),
-        Extension('modl.recsys_fast',
-                  sources=['modl/recsys_fast.pyx'],
-                  include_dirs=[numpy.get_include()],
-                  ),
-    ]
-    config.ext_modules += extensions
-
-    config.add_subpackage('tests')
     config.add_subpackage('utils')
     config.add_subpackage('datasets')
     config.add_subpackage('plotting')
     config.add_subpackage('feature_extraction')
-    config.add_subpackage('preprocessing')
+    config.add_subpackage('decomposition')
+    config.add_subpackage('input_data')
 
     config.ext_modules = cythonize(config.ext_modules, nthreads=4)
 

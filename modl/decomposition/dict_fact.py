@@ -3,43 +3,156 @@ from math import log, ceil
 from tempfile import TemporaryFile
 
 import atexit
+
 import numpy as np
 import scipy
-from .utils.randomkit import RandomState
-from sklearn.base import BaseEstimator
+from sklearn.externals.joblib import Parallel
+from sklearn.externals.joblib import delayed
+from sklearn.utils.validation import check_is_fitted
+
+from modl.utils.randomkit import RandomState
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils import check_array, check_random_state, gen_batches
 
-from .utils import get_sub_slice
+from modl.utils import get_sub_slice
 from .dict_fact_fast import _enet_regression_multi_gram, \
     _enet_regression_single_gram, _update_G_average, _batch_weight
-from .utils.math.enet import enet_norm, enet_projection, enet_scale
-from .utils.randomkit import Sampler
+from ..utils.math.enet import enet_norm, enet_projection, enet_scale
+from modl.utils.randomkit import Sampler
 
 MAX_INT = np.iinfo(np.int64).max
 
 
-class DictFact(BaseEstimator):
+class CodingMixin(TransformerMixin):
+    def _set_coding_params(self,
+                           n_components,
+                           code_alpha=1,
+                           code_l1_ratio=1,
+                           tol=1e-2,
+                           max_iter=100,
+                           comp_l1_ratio=0,
+                           code_pos=False,
+                           comp_pos=False,
+                           random_state=None,
+                           n_threads=1
+                           ):
+        self.n_components = n_components
+        self.comp_l1_ratio = comp_l1_ratio
+        self.code_l1_ratio = code_l1_ratio
+        self.code_alpha = code_alpha
+        self.comp_pos = comp_pos
+        self.code_pos = code_pos
+        self.random_state = random_state
+        self.tol = tol
+        self.max_iter = max_iter
+
+        self.n_threads = n_threads
+
+        if self.n_threads > 1:
+            self._pool = ThreadPoolExecutor(n_threads)
+
+    def transform(self, X):
+        """
+        Compute the codes associated to input matrix X, decomposing it onto
+        the dictionary
+
+        Parameters
+        ----------
+        X: ndarray, shape = (n_samples, n_features)
+
+        Returns
+        -------
+        code: ndarray, shape = (n_samples, n_components)
+        """
+        check_is_fitted(self, 'components_')
+
+        dtype = self.components_.dtype
+        X = check_array(X, order='C', dtype=dtype.type)
+        if X.flags['WRITEABLE'] is False:
+            X = X.copy()
+        n_samples, n_features = X.shape
+        if not hasattr(self, 'G_agg') or self.G_agg != 'full':
+            G = self.components_.dot(self.components_.T)
+        else:
+            G = self.G_
+        Dx = X.dot(self.components_.T)
+        code = np.ones((n_samples, self.n_components), dtype=dtype)
+        sample_indices = np.arange(n_samples)
+        size_job = ceil(n_samples / self.n_threads)
+        batches = list(gen_batches(n_samples, size_job))
+
+        par_func = lambda batch: _enet_regression_single_gram(
+            G, Dx[batch], X[batch], code,
+            get_sub_slice(sample_indices, batch),
+            self.code_l1_ratio, self.code_alpha, self.code_pos,
+            self.tol, self.max_iter)
+        if self.n_threads > 1:
+            res = self._pool.map(par_func, batches)
+            _ = list(res)
+        else:
+            _enet_regression_single_gram(
+                G, Dx, X, code,
+                sample_indices,
+                self.code_l1_ratio, self.code_alpha, self.code_pos,
+                self.tol, self.max_iter)
+
+        return code
+
+    def score(self, X):
+        """
+        Objective function value on test data X
+
+        Parameters
+        ----------
+        X: ndarray, shape=(n_samples, n_features)
+            Input matrix
+        Returns
+        -------
+        score: float, positive
+        """
+        check_is_fitted(self, 'components_')
+
+        code = self.transform(X)
+        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
+        norm1_code = np.sum(np.abs(code))
+        norm2_code = np.sum(code ** 2)
+        regul = self.code_alpha * (norm1_code * self.code_l1_ratio
+                                   + (1 - self.code_l1_ratio) * norm2_code / 2)
+        return (loss + regul) / X.shape[0]
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state.pop('_pool', None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        if self.n_threads > 1:
+            self._pool = ThreadPoolExecutor(self.n_threads)
+
+
+class DictFact(CodingMixin, BaseEstimator):
     def __init__(self,
                  reduction=1,
                  learning_rate=1,
                  sample_learning_rate=0.76,
                  Dx_agg='masked',
                  G_agg='masked',
+                 dict_init=None,
                  code_alpha=1,
                  code_l1_ratio=1,
-                 dict_init=None,
-                 n_epochs=1,
-                 n_components=10,
-                 batch_size=10,
+                 comp_l1_ratio=0,
+                 tol=1e-2,
+                 max_iter=100,
                  code_pos=False,
                  comp_pos=False,
                  random_state=None,
-                 comp_l1_ratio=0,
+                 n_epochs=1,
+                 n_components=10,
+                 batch_size=10,
                  verbose=0,
                  callback=None,
                  n_threads=1,
-                 tol=1e-2,
-                 max_iter=100,
                  rand_size=True,
                  replacement=True,
                  ):
@@ -86,7 +199,7 @@ class DictFact(BaseEstimator):
         n_epochs: int
             Number of epochs to perform over data
         n_components: int
-            Number of components in the dictionary
+            Number of pipelining in the dictionary
         batch_size: int
             Size of mini-batches to use
         code_pos: boolean,
@@ -146,27 +259,27 @@ class DictFact(BaseEstimator):
         self.sample_learning_rate = sample_learning_rate
         self.Dx_agg = Dx_agg
         self.G_agg = G_agg
-        self.code_l1_ratio = code_l1_ratio
-        self.code_alpha = code_alpha
         self.reduction = reduction
-        self.comp_l1_ratio = comp_l1_ratio
-
-        self.comp_pos = comp_pos
-        self.code_pos = code_pos
-
-        self.n_components = n_components
-        self.n_epochs = n_epochs
 
         self.dict_init = dict_init
-        self.random_state = random_state
+
+        self._set_coding_params(n_components,
+                                comp_l1_ratio=comp_l1_ratio,
+                                code_l1_ratio=code_l1_ratio,
+                                code_alpha=code_alpha,
+                                comp_pos=comp_pos,
+                                code_pos=code_pos,
+                                random_state=random_state,
+                                tol=tol,
+                                max_iter=max_iter,
+                                n_threads=n_threads)
+
+        self.n_epochs = n_epochs
 
         self.verbose = verbose
         self.callback = callback
 
         self.n_threads = n_threads
-
-        self.tol = tol
-        self.max_iter = max_iter
 
         self.rand_size = rand_size
         self.replacement = replacement
@@ -329,10 +442,10 @@ class DictFact(BaseEstimator):
         self.random_state = check_random_state(self.random_state)
         if X is None:
             self.components_ = np.empty((self.n_components,
-                                                       n_features),
+                                         n_features),
                                         dtype=dtype)
             self.components_[:, :] = self.random_state.randn(self.n_components,
-                                                       n_features)
+                                                             n_features)
         else:
             random_idx = self.random_state.permutation(this_n_samples)[
                          :self.n_components]
@@ -366,69 +479,7 @@ class DictFact(BaseEstimator):
             self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
                                               base=10) - 1) * self.batch_size
             self.verbose_iter_ = self.verbose_iter_.tolist()
-        if self.n_threads > 1:
-            self.pool_ = ThreadPoolExecutor(self.n_threads)
         return self
-
-    def transform(self, X):
-        """
-        Compute the codes associated to input matrix X, decomposing it onto
-        the dictionary
-
-        Parameters
-        ----------
-        X: ndarray, shape = (n_samples, n_features)
-
-        Returns
-        -------
-        code: ndarray, shape = (n_samples, n_components)
-        """
-        dtype = self.components_.dtype
-        X = check_array(X, order='C', dtype=dtype.type)
-        n_samples, n_features = X.shape
-        if self.G_agg != 'full':
-            G = self.components_.dot(self.components_.T)
-        else:
-            G = self.G_
-        Dx = X.dot(self.components_.T)
-        code = np.ones((n_samples, self.n_components), dtype=dtype)
-        sample_indices = np.arange(n_samples)
-        if self.n_threads > 1:
-            size_job = ceil(n_samples / self.n_threads)
-            batches = list(gen_batches(n_samples, size_job))
-            par_func = lambda batch: _enet_regression_single_gram(
-                G, Dx[batch], X[batch], code,
-                get_sub_slice(sample_indices, batch),
-                self.code_l1_ratio, self.code_alpha, self.code_pos,
-                self.tol, self.max_iter)
-            res = self.pool_.map(par_func, batches)
-            _ = list(res)
-        else:
-            _enet_regression_single_gram(
-                G, Dx, X, code, sample_indices,
-                self.code_l1_ratio, self.code_alpha,
-                self.code_pos, self.tol, self.max_iter)
-        return code
-
-    def score(self, X):
-        """
-        Objective function value on test data X
-
-        Parameters
-        ----------
-        X: ndarray, shape=(n_samples, n_features)
-            Input matrix
-        Returns
-        -------
-        score: float, positive
-        """
-        code = self.transform(X)
-        loss = np.sum((X - code.dot(self.components_)) ** 2) / 2
-        norm1_code = np.sum(np.abs(code))
-        norm2_code = np.sum(code ** 2)
-        regul = self.code_alpha * (norm1_code * self.code_l1_ratio
-                                   + (1 - self.code_l1_ratio) * norm2_code / 2)
-        return (loss + regul) / X.shape[0]
 
     def _callback(self):
         if self.callback is not None:
@@ -437,11 +488,13 @@ class DictFact(BaseEstimator):
     def _single_batch_fit(self, X, sample_indices):
         """Fit a single batch X: compute code, update statistics, update the
         dictionary"""
-        if (self.verbose and self.verbose_iter_
-                and self.n_iter_ >= self.verbose_iter_[0]):
+        if ( self.verbose and self.verbose_iter_
+            and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
             self._callback()
+        if X.flags['WRITEABLE'] is False:
+            X = X.copy()
 
         subset = self.feature_sampler_.yield_subset(self.reduction)
         batch_size = X.shape[0]
@@ -474,9 +527,9 @@ class DictFact(BaseEstimator):
     def _update_stat_and_dict_parallel(self, subset, X, this_code, w):
         """For multi-threading"""
         self.gradient_[:, subset] = self.B_[:, subset]
-        dict_thread = self.pool_.submit(self._update_stat_partial_and_dict,
+        dict_thread = self._pool.submit(self._update_stat_partial_and_dict,
                                         subset, X, this_code, w)
-        B_thread = self.pool_.submit(self._update_B, X,
+        B_thread = self._pool.submit(self._update_B, X,
                                      this_code, w)
         dict_thread.result()
         B_thread.result()
@@ -540,8 +593,8 @@ class DictFact(BaseEstimator):
                         G_average[batch],
                         G,
                         w_sample[batch],
-                        )
-                    res = self.pool_.map(par_func, batches)
+                    )
+                    res = self._pool.map(par_func, batches)
                     _ = list(res)
                 else:
                     _update_G_average(G_average, G, w_sample)
@@ -561,7 +614,7 @@ class DictFact(BaseEstimator):
                     get_sub_slice(sample_indices, batch),
                     self.code_l1_ratio, self.code_alpha, self.code_pos,
                     self.tol, self.max_iter)
-            res = self.pool_.map(par_func, batches)
+            res = self._pool.map(par_func, batches)
             _ = list(res)
         else:
             if self.G_agg == 'average':
@@ -634,3 +687,31 @@ class DictFact(BaseEstimator):
          interrupted/completed"""
         if hasattr(self, 'G_average_mmap_'):
             self.G_average_mmap_.close()
+
+
+class Coder(CodingMixin, BaseEstimator):
+    def __init__(self, dictionary,
+                 code_alpha=1,
+                 code_l1_ratio=1,
+                 tol=1e-2,
+                 max_iter=100,
+                 comp_l1_ratio=0,
+                 code_pos=False,
+                 comp_pos=False,
+                 random_state=None,
+                 n_threads=1
+                 ):
+        self._set_coding_params(dictionary.shape[0],
+                                comp_l1_ratio=comp_l1_ratio,
+                                code_l1_ratio=code_l1_ratio,
+                                code_alpha=code_alpha,
+                                comp_pos=comp_pos,
+                                code_pos=code_pos,
+                                random_state=random_state,
+                                tol=tol,
+                                max_iter=max_iter,
+                                n_threads=n_threads)
+        self.components_ = dictionary
+
+    def fit(self, X=None):
+        return self

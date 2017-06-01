@@ -8,9 +8,9 @@ from cython cimport view
 import numpy as np
 
 cdef class Sampler(object):
-    def __cinit__(self, long range, bint rand_size,
-                  bint replacement,
-                  unsigned long random_seed):
+    def __init__(self, range, rand_size,
+                  replacement,
+                  random_seed):
         """
 
         Parameters
@@ -27,10 +27,10 @@ cdef class Sampler(object):
         -------
 
         """
-        self.range = range
-        self.rand_size = rand_size
-        self.replacement = replacement
-        self.random_state = RandomState(seed=random_seed)
+        self.range = <long> range
+        self.rand_size = <bint> rand_size
+        self.replacement = <bint> replacement
+        self.random_state = RandomState(seed=<unsigned long> random_seed)
 
         self.box = self.random_state.permutation(self.range)
         self.temp = view.array((self.range, ), sizeof(long), format='l')

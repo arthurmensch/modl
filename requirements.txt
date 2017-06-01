@@ -1,4 +1,4 @@
-Cython>=0.24.1
+Cython>=0.25
 numpy>=1.11
 scipy>=0.18
 matplotlib>=2.0.0b3

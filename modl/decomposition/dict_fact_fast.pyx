@@ -11,7 +11,7 @@ cdef int ONE = 1
 
 from cython cimport floating
 
-from scipy.linalg.cython_blas cimport saxpy, daxpy, sdot, ddot, sasum, dasum
+from scipy.linalg.cython_blas cimport saxpy, daxpy, sdot, ddot, sasum, dasum, dgemv, sgemv
 from scipy.linalg.cython_lapack cimport dposv, sposv
 
 from libc.math cimport pow, fabs
@@ -29,6 +29,7 @@ ctypedef floating (*DOT)(int* N, floating* X, int* incX, floating* Y,
 ctypedef void (*AXPY)(int* N, floating* alpha, floating* X, int* incX,
                       floating* Y, int* incY) nogil
 ctypedef floating (*ASUM)(int* N, floating* X, int* incX) nogil
+
 
 def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
                                 floating[:, ::1] X,
@@ -62,17 +63,22 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
     cdef floating* G_ptr = <floating*> &G[0, 0, 0]
     cdef floating* code_ptr = <floating*> &code[0, 0]
     cdef POSV posv
+    cdef str format
+
 
     cdef floating[:] this_code
     cdef floating[::1] this_Dx
     cdef floating[:] this_X
     cdef floating[:, ::1] this_G
+    cdef floating[:] H
+    cdef floating[:] XtA
 
     if floating is float:
         posv = sposv
+        format = 'f'
     else:
         posv = dposv
-
+        format = 'd'
 
     if l1_ratio == 0:
         for ii in range(batch_size):
@@ -88,18 +94,23 @@ def _enet_regression_multi_gram(floating[:, :, ::1] G, floating[:, ::1] Dx,
             for j in range(n_components):
                 G[ii, j, j] -= alpha
     else:
-        for ii in range(batch_size):
-            i = indices[ii]
-            this_G = G[ii, :, :]
-            this_Dx = Dx[ii, :]
-            this_X = X[ii, :]
-            this_code = code[i, :]
-            enet_coordinate_descent_gram(
-                this_code,
-                alpha * l1_ratio,
-                alpha * (1 - l1_ratio),
-                this_G, this_Dx, this_X, max_iter, tol,
-                positive)
+        H = view.array((n_components, ), sizeof(floating),
+                       format=format, mode='c')
+        XtA = view.array((n_components, ), sizeof(floating),
+                         format=format, mode='c')
+        with nogil:
+            for ii in range(batch_size):
+                i = indices[ii]
+                this_G = G[ii, :, :]
+                this_Dx = Dx[ii, :]
+                this_X = X[ii, :]
+                this_code = code[i, :]
+                enet_coordinate_descent_gram(
+                    this_code,
+                    alpha * l1_ratio,
+                    alpha * (1 - l1_ratio),
+                    this_G, this_Dx, this_X, H, XtA, max_iter, tol,
+                    positive)
     return np.asarray(code)
 
 def _batch_weight(long count, long batch_size,
@@ -151,12 +162,16 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
     cdef floating[:, ::1] G_copy
     cdef floating[:, ::1] code_copy
 
+    cdef floating[:] H
+    cdef floating[:] XtA
+
     if floating is float:
         posv = sposv
         format = 'f'
     else:
         posv = dposv
         format = 'd'
+
     if l1_ratio == 0:
         # Make it thread-safe
         G_copy = view.array((n_components, n_components),
@@ -182,17 +197,22 @@ def _enet_regression_single_gram(floating[:, ::1] G, floating[:, ::1] Dx,
             i = indices[ii]
             code[i, :] = Dx[ii, :]
     else:
-        for ii in range(batch_size):
-            i = indices[ii]
-            this_Dx = Dx[ii, :]
-            this_X = X[ii, :]
-            this_code = code[i, :]
-            enet_coordinate_descent_gram(
-                this_code,
-                alpha * l1_ratio,
-                alpha * (1 - l1_ratio),
-                G, this_Dx, this_X, max_iter, tol,
-                positive)
+        H = view.array((n_components, ), sizeof(floating),
+                   format=format, mode='c')
+        XtA = view.array((n_components, ), sizeof(floating),
+                     format=format, mode='c')
+        with nogil:
+            for ii in range(batch_size):
+                i = indices[ii]
+                this_Dx = Dx[ii, :]
+                this_X = X[ii, :]
+                this_code = code[i, :]
+                enet_coordinate_descent_gram(
+                    this_code,
+                    alpha * l1_ratio,
+                    alpha * (1 - l1_ratio),
+                    G, this_Dx, this_X, H, XtA, max_iter, tol,
+                    positive)
     return np.asarray(code)
 
 def _update_G_average(floating[:, :, ::1] G_average,
@@ -252,7 +272,9 @@ cdef void enet_coordinate_descent_gram(floating[:] w, floating alpha, floating b
                                  floating[:, ::1] Q,
                                  floating[::1] q,
                                  floating[:] y,
-                                 int max_iter, floating tol, bint positive):
+                                 floating[:] H,
+                                 floating[:] XtA,
+                                 int max_iter, floating tol, bint positive) nogil:
     """Cython version of the coordinate descent algorithm
         for Elastic-Net regression
 
@@ -271,24 +293,21 @@ cdef void enet_coordinate_descent_gram(floating[:] w, floating alpha, floating b
     cdef ASUM asum
 
     if floating is float:
-        dtype = np.float32
         dot = sdot
         axpy = saxpy
         asum = sasum
+        gemv = sgemv
     else:
-        dtype = np.float64
         dot = ddot
         axpy = daxpy
         asum = dasum
+        gemv = dgemv
 
     # get the data information into easy vars
     cdef int n_samples = y.shape[0]
     cdef int n_features = Q.shape[0]
 
-    # initial value "Q w" which will be kept of up to date in the iterations
-    cdef floating[:] H = np.dot(Q, w)
 
-    cdef floating[:] XtA = np.zeros(n_features, dtype=dtype)
     cdef floating tmp
     cdef floating w_ii, mw_ii
     cdef floating d_w_max
@@ -303,89 +322,107 @@ cdef void enet_coordinate_descent_gram(floating[:] w, floating alpha, floating b
     cdef int n_iter = 0
     cdef int f_iter
 
-    cdef floating y_norm2 = np.dot(y, y)
     cdef floating* w_ptr = <floating*>&w[0]
     cdef floating* Q_ptr = &Q[0, 0]
     cdef floating* q_ptr = <floating*>&q[0]
     cdef floating* H_ptr = &H[0]
     cdef floating* XtA_ptr = &XtA[0]
+    cdef floating one = 1
+    cdef floating zero = 0
+
+    cdef floating y_norm2
+
+    y_norm2 = dot(&n_samples, &y[0], &ONE, &y[0], &ONE)
+
     tol = tol * y_norm2
 
-    with nogil:
-        for n_iter in range(max_iter):
-            w_max = 0.0
-            d_w_max = 0.0
-            for f_iter in range(n_features):  # Loop over coordinates
-                ii = f_iter
+    # initial value "Q w" which will be kept of up to date in the iterations
+    # H = np.dot(Q, w)
+    gemv(&NTRANS,
+      &n_features, &n_features,
+      &one,
+      Q_ptr, &n_features,
+      w_ptr, &ONE,
+      &zero,
+      H_ptr, &ONE
+      )
 
-                if Q[ii, ii] == 0.0:
-                    continue
+    XtA[:] = 0
 
-                w_ii = w[ii]  # Store previous value
-                if w_ii != 0.0:
-                    # H -= w_ii * Q[ii]
-                    mw_ii = -w[ii]
-                    axpy(&n_features, &mw_ii, Q_ptr + ii * n_features, &ONE,
-                         H_ptr, &ONE)
+    for n_iter in range(max_iter):
+        w_max = 0.0
+        d_w_max = 0.0
+        for f_iter in range(n_features):  # Loop over coordinates
+            ii = f_iter
 
-                tmp = q[ii] - H[ii]
+            if Q[ii, ii] == 0.0:
+                continue
 
-                if positive and tmp < 0:
-                    w[ii] = 0.0
-                else:
-                    w[ii] = fsign(tmp) * fmax(fabs(tmp) - alpha, 0) \
-                        / (Q[ii, ii] + beta)
+            w_ii = w[ii]  # Store previous value
+            if w_ii != 0.0:
+                # H -= w_ii * Q[ii]
+                mw_ii = -w[ii]
+                axpy(&n_features, &mw_ii, Q_ptr + ii * n_features, &ONE,
+                     H_ptr, &ONE)
 
-                if w[ii] != 0.0:
-                    # H +=  w[ii] * Q[ii] # Update H = X.T X w
-                    axpy(&n_features, &w[ii], Q_ptr + ii * n_features, &ONE,
-                         H_ptr, &ONE)
+            tmp = q[ii] - H[ii]
 
-                # update the maximum absolute coefficient update
-                d_w_ii = fabs(w[ii] - w_ii)
-                if d_w_ii > d_w_max:
-                    d_w_max = d_w_ii
+            if positive and tmp < 0:
+                w[ii] = 0.0
+            else:
+                w[ii] = fsign(tmp) * fmax(fabs(tmp) - alpha, 0) \
+                    / (Q[ii, ii] + beta)
 
-                if fabs(w[ii]) > w_max:
-                    w_max = fabs(w[ii])
+            if w[ii] != 0.0:
+                # H +=  w[ii] * Q[ii] # Update H = X.T X w
+                axpy(&n_features, &w[ii], Q_ptr + ii * n_features, &ONE,
+                     H_ptr, &ONE)
 
-            if w_max == 0.0 or d_w_max / w_max < d_w_tol or n_iter == max_iter - 1:
-                # the biggest coordinate update of this iteration was smaller than
-                # the tolerance: check the duality gap as ultimate stopping
-                # criterion
+            # update the maximum absolute coefficient update
+            d_w_ii = fabs(w[ii] - w_ii)
+            if d_w_ii > d_w_max:
+                d_w_max = d_w_ii
 
-                # q_dot_w = np.dot(w, q)
-                q_dot_w = dot(&n_features, w_ptr, &ONE, q_ptr, &ONE)
+            if fabs(w[ii]) > w_max:
+                w_max = fabs(w[ii])
 
-                for ii in range(n_features):
-                    XtA[ii] = q[ii] - H[ii] - beta * w[ii]
-                if positive:
-                    dual_norm_XtA = max(n_features, XtA_ptr)
-                else:
-                    dual_norm_XtA = abs_max(n_features, XtA_ptr)
+        if w_max == 0.0 or d_w_max / w_max < d_w_tol or n_iter == max_iter - 1:
+            # the biggest coordinate update of this iteration was smaller than
+            # the tolerance: check the duality gap as ultimate stopping
+            # criterion
 
-                # temp = np.sum(w * H)
-                tmp = 0.0
-                for ii in range(n_features):
-                    tmp += w[ii] * H[ii]
-                R_norm2 = y_norm2 + tmp - 2.0 * q_dot_w
+            # q_dot_w = np.dot(w, q)
+            q_dot_w = dot(&n_features, w_ptr, &ONE, q_ptr, &ONE)
 
-                # w_norm2 = np.dot(w, w)
-                w_norm2 = dot(&n_features, &w[0], &ONE, &w[0], &ONE)
+            for ii in range(n_features):
+                XtA[ii] = q[ii] - H[ii] - beta * w[ii]
+            if positive:
+                dual_norm_XtA = max(n_features, XtA_ptr)
+            else:
+                dual_norm_XtA = abs_max(n_features, XtA_ptr)
 
-                if (dual_norm_XtA > alpha):
-                    const = alpha / dual_norm_XtA
-                    A_norm2 = R_norm2 * (const ** 2)
-                    gap = 0.5 * (R_norm2 + A_norm2)
-                else:
-                    const = 1.0
-                    gap = R_norm2
+            # temp = np.sum(w * H)
+            tmp = 0.0
+            for ii in range(n_features):
+                tmp += w[ii] * H[ii]
+            R_norm2 = y_norm2 + tmp - 2.0 * q_dot_w
 
-                # The call to dasum is equivalent to the L1 norm of w
-                gap += (alpha * asum(&n_features, &w[0], &ONE) -
-                        const * y_norm2 +  const * q_dot_w +
-                        0.5 * beta * (1 + const ** 2) * w_norm2)
+            # w_norm2 = np.dot(w, w)
+            w_norm2 = dot(&n_features, &w[0], &ONE, &w[0], &ONE)
 
-                if gap < tol:
-                    # return if we reached desired tolerance
-                    break
+            if (dual_norm_XtA > alpha):
+                const = alpha / dual_norm_XtA
+                A_norm2 = R_norm2 * (const ** 2)
+                gap = 0.5 * (R_norm2 + A_norm2)
+            else:
+                const = 1.0
+                gap = R_norm2
+
+            # The call to dasum is equivalent to the L1 norm of w
+            gap += (alpha * asum(&n_features, &w[0], &ONE) -
+                    const * y_norm2 +  const * q_dot_w +
+                    0.5 * beta * (1 + const ** 2) * w_norm2)
+
+            if gap < tol:
+                # return if we reached desired tolerance
+                break

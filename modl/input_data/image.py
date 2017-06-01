@@ -1,5 +1,4 @@
 import numpy as np
-from .image_fast import clean_mask
 from math import sqrt
 
 def scale_patches(X, with_mean=True, with_std=True, channel_wise=True, copy=True):
@@ -22,3 +21,6 @@ def scale_patches(X, with_mean=True, with_std=True, channel_wise=True, copy=True
             std[std == 0] = 1
             X /= std[:, np.newaxis, np.newaxis, np.newaxis]
     return X
+
+from .image_fast import clean_mask
+from .image_fast import fill

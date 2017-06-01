@@ -1,47 +1,15 @@
 # Author: Arthur Mensch
 # License: BSD
 import time
+import matplotlib
+matplotlib.use('Qt5Agg')
 
 import matplotlib.pyplot as plt
-from modl.feature_extraction.image import LazyCleanPatchExtractor
-from modl.image import ImageDictFact
-from sacred import Experiment
-from sacred.ingredient import Ingredient
 
 from modl.datasets.image import load_image
+from modl.decomposition.image import ImageDictFact
+from modl.feature_extraction.image import LazyCleanPatchExtractor
 from modl.plotting.image import plot_patches
-
-data_ing = Ingredient('data')
-decompose_ex = Experiment('decompose_images', ingredients=[data_ing])
-
-
-@decompose_ex.config
-def config():
-    batch_size = 400
-    learning_rate = 0.92
-    reduction = 10
-    alpha = 0.08
-    n_epochs = 10
-    n_components = 50
-    test_size = 4000
-    max_patches = 10000
-    patch_size = (16, 16)
-    n_threads = 2
-    verbose = 20
-    method = 'average'
-    setting = 'dictionary learning'
-
-
-@data_ing.config
-def config():
-    source = 'lisboa'
-    gray = False
-    scale = 1
-
-
-@data_ing.capture
-def load_data(source, scale, gray):
-    return load_image(source, scale=scale, gray=gray)
 
 
 class DictionaryScorer:
@@ -62,58 +30,60 @@ class DictionaryScorer:
         self.score.append(score)
         self.iter.append(dict_fact.n_iter_)
 
+batch_size = 400
+learning_rate = 0.92
+reduction = 10
+alpha = 0.08
+n_epochs = 10
+n_components = 50
+test_size = 4000
+max_patches = 10000
+patch_size = (16, 16)
+n_threads = 3
+verbose = 20
+method = 'gram'
+setting = 'dictionary learning'
+source = 'lisboa'
+gray = False
+scale = 1
 
-@decompose_ex.automain
-def decompose_run(batch_size,
-                  learning_rate,
-                  reduction,
-                  n_components,
-                  n_epochs,
-                  patch_size,
-                  test_size,
-                  alpha,
-                  setting,
-                  n_threads,
-                  verbose,
-                  max_patches,
-                  method,
-                  _seed,
-                  ):
-    print('Loading data')
-    image = load_data()
-    print('Done')
-    width, height, n_channel = image.shape
-    patch_extractor = LazyCleanPatchExtractor(patch_size=patch_size,
-                                              max_patches=test_size,
-                                              random_state=_seed)
-    test_data = patch_extractor.transform(image[:, :height // 2, :])
-    cb = DictionaryScorer(test_data)
-    dict_fact = ImageDictFact(method=method,
-                              setting=setting,
-                              alpha=alpha,
-                              n_epochs=n_epochs,
-                              random_state=_seed,
-                              n_components=n_components,
-                              learning_rate=learning_rate,
-                              max_patches=max_patches,
-                              batch_size=batch_size,
-                              patch_size=patch_size,
-                              reduction=reduction,
-                              callback=cb,
-                              verbose=verbose,
-                              n_threads=n_threads,
-                              )
-    dict_fact.fit(image[:, height // 2:, :])
+print('Loading data')
+image = load_image(source, scale=scale, gray=gray)
+print('Done')
+width, height, n_channel = image.shape
+patch_extractor = LazyCleanPatchExtractor(patch_size=patch_size,
+                                          max_patches=test_size,
+                                          random_state=1)
+test_data = patch_extractor.transform(image[:, :height // 2, :])
+cb = DictionaryScorer(test_data)
+dict_fact = ImageDictFact(method=method,
+                          setting=setting,
+                          alpha=alpha,
+                          n_epochs=n_epochs,
+                          random_state=1,
+                          n_components=n_components,
+                          learning_rate=learning_rate,
+                          max_patches=max_patches,
+                          batch_size=batch_size,
+                          patch_size=patch_size,
+                          reduction=reduction,
+                          callback=cb,
+                          verbose=verbose,
+                          n_threads=n_threads,
+                          )
+dict_fact.fit(image[:, height // 2:, :])
+score = dict_fact.score(test_data)
 
-    fig = plt.figure()
-    patches = dict_fact.components_
-    plot_patches(fig, patches)
-    fig.suptitle('Dictionary components')
+fig = plt.figure()
+patches = dict_fact.components_
+plot_patches(fig, patches)
+fig.suptitle('Dictionary')
 
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.time, cb.score, marker='o')
-    ax.legend()
-    ax.set_xscale('log')
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Test objective value')
-    plt.show()
+fig, ax = plt.subplots(1, 1)
+ax.plot(cb.time, cb.score, marker='o')
+ax.legend()
+ax.set_xscale('log')
+ax.set_xlabel('Time (s)')
+ax.set_ylabel('Test objective value')
+
+plt.show()

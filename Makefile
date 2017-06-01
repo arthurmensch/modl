@@ -27,7 +27,7 @@ clean:
 # Tests
 #
 test:
-	$(PYTEST) --pyargs modl
+	$(PYTEST) modl
 
 test-coverage:
 	rm -rf coverage .coverage
@@ -41,12 +41,11 @@ test-coverage:
 datadir:
 	mkdir -p $(DATADIR)
 
-download-data: datadir
-	./misc/download.sh http://www.amensch.fr/data/modl_data.tar.bz2
-	tar xvfj modl_data.tar.bz2
-	mv -f modl_data/* $(DATADIR)
-	rmdir modl_data
-	rm modl_data.tar.bz2
+download-images: datadir
+	./misc/download.sh http://www.amensch.fr/data/images.tar.bz2
+	tar xvfj images.tar.bz2
+	mv -f images $(DATADIR)
+	rm images.tar.bz2
 
 download-movielens: datadir download-movielens100k download-movielens1m download-movielens10m
 

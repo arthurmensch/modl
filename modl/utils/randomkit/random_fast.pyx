@@ -54,6 +54,9 @@ cdef class RandomState:
         self.initial_seed = seed
         self.seed(seed)
 
+    def __reduce__(self):
+        return RandomState, (self.initial_seed,)
+
     def __dealloc__(self):
         if self.internal_state != NULL:
             stdlib.free(self.internal_state)

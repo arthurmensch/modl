@@ -10,7 +10,7 @@ cdef extern from "randomkit.h":
 cdef class RandomState:
 
     cdef rk_state *internal_state
-    cdef object initial_seed
+    cdef public object initial_seed
     cpdef long randint(self, unsigned long high)
     cpdef binomial(self, int n, double p)
     cpdef long[:] permutation(self, long size)

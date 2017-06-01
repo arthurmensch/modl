@@ -6,7 +6,7 @@ from nilearn.image import iter_img
 from nilearn.input_data import MultiNiftiMasker
 from sklearn.externals.joblib import Memory
 
-from modl import fMRIDictFact
+from modl.decomposition import fMRIDictFact
 from modl.utils.system import get_cache_dirs
 
 methods = ['masked', 'average', 'gram', 'reducing ratio', 'dictionary only']
@@ -95,7 +95,7 @@ def test_dict_fact(method, memory):
                              reduction=2,
                              smoothing_fwhm=0., n_epochs=2, alpha=1)
     dict_fact.fit(data)
-    maps = np.rollaxis(dict_fact.components_.get_data(), 3, 0)
+    maps = np.rollaxis(dict_fact.components_img_.get_data(), 3, 0)
     components = np.rollaxis(components.get_data(), 3, 0)
     maps = maps.reshape((maps.shape[0], -1))
     components = components.reshape((components.shape[0], -1))
@@ -116,7 +116,7 @@ def test_dict_fact(method, memory):
 
 def test_component_sign():
     # Regression test
-    # We should have a heuristic that flips the sign of components in
+    # We should have a heuristic that flips the sign of pipelining in
     # DictLearning to have more positive values than negative values, for
     # instance by making sure that the largest value is positive.
 
@@ -127,7 +127,7 @@ def test_component_sign():
                              mask=mask_img,
                              smoothing_fwhm=0.)
     dict_fact.fit(data)
-    for mp in iter_img(dict_fact.components_):
+    for mp in iter_img(dict_fact.components_img_):
         mp = mp.get_data()
         assert_less_equal(np.sum(mp[mp <= 0]), np.sum(mp[mp > 0]))
 

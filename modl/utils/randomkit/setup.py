@@ -17,11 +17,13 @@ def configuration(parent_package='', top_path=None):
                                      'modl/utils/randomkit/randomkit.c',
                                      'modl/utils/randomkit/distributions.c',
                                      ],
+                            language="c++",
                             include_dirs=[numpy.get_include(),
                                           'modl/utils/randomkit'],
                             ),
                   Extension('modl.utils.randomkit.sampler',
                             sources=['modl/utils/randomkit/sampler.pyx'],
+                            language="c++",
                             include_dirs=[numpy.get_include()]
                             )]
     config.ext_modules += extensions

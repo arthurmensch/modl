@@ -7,7 +7,7 @@ import joblib
 import sklearn.externals.joblib as skjoblib
 from modl.utils.recsys.cross_validation import train_test_split
 
-from modl.utils.system import get_data_dirs
+from modl.datasets import get_data_dirs
 
 
 def load_movielens(version):
@@ -32,7 +32,7 @@ def load_movielens(version):
 
 
 def load_netflix():
-    data_home = get_data_home()
+    data_home = get_data_dirs()[0]
     path = os.path.join(data_home, "nf_prize", "X_tr.pkl")
     X_tr = joblib.load(path)
     path = os.path.join(data_home, "nf_prize", "X_te.pkl")

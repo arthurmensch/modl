@@ -2,12 +2,11 @@
 
 import numpy as np
 import pytest
-from numpy.testing import assert_array_equal
-from sklearn.utils import check_random_state
-from sklearn.linear_model import cd_fast
+from modl.decomposition.dict_fact import DictFact
 from numpy import linalg
-
-from modl.dict_fact import DictFact
+from numpy.testing import assert_array_equal
+from sklearn.linear_model import cd_fast
+from sklearn.utils import check_random_state
 
 rng_global = 0
 

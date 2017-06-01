@@ -22,7 +22,7 @@ class RecsysDictFact(BaseEstimator):
     alpha: float,
         Regularization of the code (ridge penalty)
     n_components: int,
-        Number of components for the dictionary
+        Number of pipelining for the dictionary
     n_epochs:
         Number of epochs to perform over data
     learning_rate: float in [0.5, 1],
@@ -39,7 +39,7 @@ class RecsysDictFact(BaseEstimator):
     callback: callable,
         Function to be called when printing information
     detrend: boolean,
-        Perform matrix decomposition on centered data, and predict data
+        Perform matrix pipelining on centered data, and predict data
          accordingly
     crop: 2-uple or None,
         Bounds of matrix values, useful at prediction time

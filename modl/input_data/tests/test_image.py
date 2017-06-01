@@ -1,10 +1,9 @@
 import numpy as np
-from modl.preprocessing.image_fast import clean_mask, fill
+from modl.input_data.image import scale_patches
+from modl.input_data.image_fast import clean_mask, fill
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.utils import check_random_state
-
-from modl.preprocessing.image import scale_patches
 
 
 def test_scale_patches():
