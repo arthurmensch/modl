@@ -34,6 +34,8 @@ cd $HOME
 py.test --pyargs modl
 ```
 
+*This package is only tested with Python 3.5 !*
+
 ## Core code
 
 The package essentially provides three estimators:
