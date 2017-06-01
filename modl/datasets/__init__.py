@@ -1,5 +1,4 @@
 import os
-from os.path import join
 
 
 def get_data_dirs(data_dir=None):
@@ -49,4 +48,3 @@ def get_data_dirs(data_dir=None):
     return paths
 
 from .adhd import fetch_adhd
-from .hcp import fetch_hcp

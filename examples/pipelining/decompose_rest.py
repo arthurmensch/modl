@@ -1,17 +1,12 @@
 # Author: Arthur Mensch
 # License: BSD
 import os
-
 from os.path import join
 
-import matplotlib as mpl
-
-from modl.input_data.fmri.rest import get_raw_rest_data
-
-mpl.use('Qt5Agg')
-
 from nilearn.datasets import fetch_atlas_smith_2009
+
 from modl.input_data.fmri.fixes import monkey_patch_nifti_image
+from modl.input_data.fmri.rest import get_raw_rest_data
 
 monkey_patch_nifti_image()
 
@@ -30,17 +25,17 @@ reduction = 10
 alpha = 1e-3
 n_epochs = 1
 verbose = 15
-n_jobs = 2
+n_jobs = 5
 smoothing_fwhm = 6
 
 dict_init = fetch_atlas_smith_2009().rsn20
 
-artifact_dir = join(get_output_dir(), 'unmask', 'adhd')
+artifact_dir = join(get_output_dir(), 'unmasked', 'hcp')
 
 masker, data = get_raw_rest_data(artifact_dir)
 
 train_imgs, test_imgs = train_test_split(data, test_size=1, random_state=0)
-train_imgs = train_imgs['filename'].values
+train_imgs = train_imgs['filename'].values[:40]
 test_imgs = test_imgs['filename'].values
 
 cb = rfMRIDictionaryScorer(test_imgs)
@@ -60,13 +55,15 @@ dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                          callback=cb,
                          )
 dict_fact.fit(train_imgs)
-output_dir = join(get_output_dir(), 'components', 'adhd')
+output_dir = join(get_output_dir(), 'components', 'hcp')
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 dict_fact.components_img_.to_filename(join(output_dir, 'components.nii.gz'))
 fig = plt.figure()
 display_maps(fig, dict_fact.components_img_)
+plt.savefig(join(output_dir, 'components.png'))
+
 fig, ax = plt.subplots(1, 1)
 ax.plot(cb.time, cb.score, marker='o')
-plt.show()
+plt.savefig(join(output_dir, 'score.png'))
