@@ -10,14 +10,14 @@ from __future__ import division
 import itertools
 import time
 import warnings
-from math import log, sqrt, ceil
+from math import log, sqrt
 
-import nibabel
 import numpy as np
 from nibabel.filebasedimages import ImageFileError
 from nilearn._utils import CacheMixin
 from nilearn._utils import check_niimg
 from nilearn.input_data import NiftiMasker
+from nilearn._utils.compat import _basestring
 from sklearn.base import TransformerMixin
 from sklearn.externals.joblib import Memory
 from sklearn.externals.joblib import Parallel
@@ -44,7 +44,7 @@ class fMRICoderMixin(BaseNilearnEstimator, CacheMixin, TransformerMixin):
                  transform_batch_size=None,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
-                 low_pass=None, high_pass=None, t_r=None,
+                low_pass=None, high_pass=None, t_r=None,
                  target_affine=None, target_shape=None,
                  mask_strategy='background', mask_args=None,
                  memory=Memory(cachedir=None),
@@ -476,11 +476,6 @@ def _compute_components(masker,
     dict_fact.prepare(n_samples=n_samples, n_features=n_voxels,
                       X=dict_init, dtype=dtype)
     if n_records > 0:
-        if verbose:
-            log_lim = log(n_records * n_epochs, 10)
-            verbose_iter_ = np.logspace(0, log_lim, verbose,
-                                        base=10) - 1
-            verbose_iter_ = verbose_iter_.tolist()
         current_n_records = 0
         for i in range(n_epochs):
             if verbose:
@@ -493,12 +488,10 @@ def _compute_components(masker,
                 dict_fact.set_params(reduction=reduction)
             record_list = random_state.permutation(n_records)
             for record in record_list:
-                if (verbose and verbose_iter_ and
-                            current_n_records >= verbose_iter_[0]):
+                if verbose:
                     print('Record %i' % current_n_records)
                     if callback is not None:
                         callback(masker, dict_fact)
-                    verbose_iter_ = verbose_iter_[1:]
 
                 # IO bounded
                 img, these_confounds = data_list[record]
@@ -538,7 +531,7 @@ def _lazy_scan(imgs):
             img = check_niimg(img)
             this_n_samples = img.shape[3]
             dtype = img.get_data_dtype()
-        except ImageFileError:
+        except (ImageFileError, TypeError):
             img = np.load(img, mmap_mode='r')
             this_n_samples = img.shape[0]
             dtype = img.dtype
