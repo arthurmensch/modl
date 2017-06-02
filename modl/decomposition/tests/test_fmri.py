@@ -92,8 +92,7 @@ def test_dict_fact(method, memory):
                              dict_init=init,
                              method=method,
                              reduction=2,
-                             smoothing_fwhm=0., n_epochs=2, alpha=1,
-                             dict_structure_params=dict(l1_ratio=1.))
+                             smoothing_fwhm=0., n_epochs=2, alpha=1)
     dict_fact.fit(data)
     maps = np.rollaxis(dict_fact.components_img_.get_data(), 3, 0)
     components = np.rollaxis(components.get_data(), 3, 0)

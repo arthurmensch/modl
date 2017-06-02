@@ -135,10 +135,11 @@ class DictFact(CodingMixin, BaseEstimator):
                  dict_init=None,
                  code_alpha=1,
                  code_l1_ratio=1,
+                 comp_pos=False,
+                 comp_l1_ratio=1.,
                  tol=1e-2,
                  max_iter=100,
                  code_pos=False,
-                 comp_pos=False,
                  random_state=None,
                  n_epochs=1,
                  n_components=10,
@@ -150,7 +151,8 @@ class DictFact(CodingMixin, BaseEstimator):
                  replacement=True,
                  dict_structure="enet",
                  dict_structure_params={},
-                 bcd_n_iter=1
+                 bcd_n_iter=1,
+                 feature_sampling=True
                  ):
         """
         Estimator to perform matrix factorization by streaming samples and
@@ -257,6 +259,9 @@ class DictFact(CodingMixin, BaseEstimator):
         self.G_agg = G_agg
         self.reduction = reduction
 
+        self.comp_pos = comp_pos
+        self.comp_l1_ratio = comp_l1_ratio
+
         self.dict_init = dict_init
 
         self._set_coding_params(n_components,
@@ -267,8 +272,6 @@ class DictFact(CodingMixin, BaseEstimator):
                                 tol=tol,
                                 max_iter=max_iter,
                                 n_threads=n_threads)
-
-        self.comp_pos = comp_pos
 
         self.n_epochs = n_epochs
 
@@ -283,6 +286,7 @@ class DictFact(CodingMixin, BaseEstimator):
         self.dict_structure = dict_structure
         self.dict_structure_params = dict_structure_params
         self.bcd_n_iter = bcd_n_iter
+        self.feature_sampling = feature_sampling
 
     def fit(self, X):
         """
@@ -451,12 +455,13 @@ class DictFact(CodingMixin, BaseEstimator):
                          :self.n_components]
             self.components_ = check_array(X[random_idx], dtype=dtype.type,
                                            copy=True)
-        if self.comp_pos:
-            self.components_[self.components_ <= 0] = \
-                - self.components_[self.components_ <= 0]
-        for i in range(self.n_components):
-            comp_l1_ratio = self.dict_structure_params.get("l1_ratio", 0.)
-            enet_scale(self.components_[i], l1_ratio=comp_l1_ratio, radius=1)
+        if self.dict_structure == "enet":
+            if self.comp_pos:
+                neg = self.components_ <= 0
+                self.components_[neg] = -self.components_[neg]
+            for i in range(self.n_components):
+                enet_scale(self.components_[i], l1_ratio=self.comp_l1_ratio,
+                           radius=1)
 
         self.code_ = np.ones((n_samples, self.n_components), dtype=dtype)
 
@@ -495,7 +500,7 @@ class DictFact(CodingMixin, BaseEstimator):
         if X.flags['WRITEABLE'] is False:
             X = X.copy()
 
-        if self.reduction > 1.:
+        if self.feature_sampling and self.reduction > 1.:
             subset = self.feature_sampler_.yield_subset(self.reduction)
         else:
             subset = np.arange(self.feature_sampler_.range)
@@ -596,8 +601,7 @@ class DictFact(CodingMixin, BaseEstimator):
                         G,
                         w_sample[batch],
                     )
-                    res = self._pool.map(par_func, batches)
-                    _ = list(res)
+                    res = list(self._pool.map(par_func, batches))
                 else:
                     _update_G_average(G_average, G, w_sample)
                 self.G_average_[sample_indices] = G_average
@@ -617,7 +621,7 @@ class DictFact(CodingMixin, BaseEstimator):
                     self.code_l1_ratio, self.code_alpha, self.code_pos,
                     self.tol, self.max_iter)
             res = self._pool.map(par_func, batches)
-            _ = list(res)
+            list(res)
         else:
             if self.G_agg == 'average':
                 _enet_regression_multi_gram(
@@ -654,12 +658,8 @@ class DictFact(CodingMixin, BaseEstimator):
 
         gradient_subset -= self.C_.dot(components_subset)
         params = deepcopy(self.dict_structure_params)
-        if "l1_ratio" in params:
-            l1_ratio = params.pop("l1_ratio")
-        else:
-            l1_ratio = 0.
-        if "weight" in params:
-            weight = params.pop("weight")
+        if "alpha" in params:
+            weight = params.pop("alpha")
         else:
             weight = 1.
         delta_dict = np.inf
@@ -676,7 +676,7 @@ class DictFact(CodingMixin, BaseEstimator):
                 comp_norm = None
                 if self.dict_structure == "enet":
                     subset_norm = enet_norm(components_subset[k],
-                                            l1_ratio)
+                                            self.comp_l1_ratio)
                     self.comp_norm_[k] += subset_norm
                     comp_norm = self.comp_norm_[k]
                 gradient_subset = ger(1.0, self.C_[k], components_subset[k],
@@ -684,13 +684,15 @@ class DictFact(CodingMixin, BaseEstimator):
                 if self.C_[k, k] > 1e-20:
                     components_subset[k] = gradient_subset[k] / self.C_[k, k]
                 # Else do not update
+                this_weight = weight / self.C_[k, k]
                 components_subset[k] = _atomic_prox(
                     components_subset[k], which=self.dict_structure,
-                    weight=weight / self.C_[k, k], norm=comp_norm,
-                    output=atom_temp, **params)
+                    weight=this_weight, norm=comp_norm,
+                    output=atom_temp, pos=self.comp_pos,
+                    l1_ratio=self.comp_l1_ratio, **params)
                 if self.dict_structure == "enet":
                     subset_norm = enet_norm(components_subset[k],
-                                            l1_ratio)
+                                            self.comp_l1_ratio)
                     self.comp_norm_[k] -= subset_norm
                 gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
                                       a=gradient_subset, overwrite_a=True)

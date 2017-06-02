@@ -283,7 +283,8 @@ class fMRIDictFact(fMRICoderMixin):
                  callback=None,
                  dict_structure="enet",
                  dict_structure_params={},
-                 bcd_n_iter=1):
+                 bcd_n_iter=1,
+                 feature_sampling=True):
         fMRICoderMixin.__init__(self, n_components=n_components,
                                 alpha=alpha,
                                 dict_init=dict_init,
@@ -317,6 +318,7 @@ class fMRIDictFact(fMRICoderMixin):
         self.dict_structure = dict_structure
         self.dict_structure_params = dict_structure_params
         self.bcd_n_iter = bcd_n_iter
+        self.feature_sampling = feature_sampling
 
     def _pre_fit(self, imgs=None, y=None, confounds=None):
         # Base logic for pipelining estimators
@@ -347,30 +349,30 @@ class fMRIDictFact(fMRICoderMixin):
         self
         """
         self._pre_fit(imgs=imgs, y=None, confounds=confounds)
-        calc = self._cache(_compute_components, func_memory_level=1,
-                           ignore=['n_jobs', 'verbose'])
-        self.components_ = calc(
-            self.masker_, imgs,
-            confounds=confounds,
-            dict_init=self.components_,
-            alpha=self.alpha,
-            comp_pos=self.positive,
-            comp_l1_ratio=self.comp_l1_ratio,
-            code_l1_ratio=self.code_l1_ratio,
-            reduction=self.reduction,
-            learning_rate=self.learning_rate,
-            n_components=self.n_components,
-            batch_size=self.batch_size,
-            positive=self.positive,
-            n_epochs=self.n_epochs,
-            method=self.method,
-            verbose=self.verbose,
-            random_state=self.random_state,
-            callback=self.callback,
-            n_jobs=self.n_jobs,
-            dict_structure=self.dict_structure,
-            dict_structure_params=self.dict_structure_params,
-            bcd_n_iter=self.bcd_n_iter)
+        self.components_ = self._cache(
+            _compute_components, func_memory_level=1,
+            ignore=['n_jobs', 'verbose'])(
+                self.masker_, imgs,
+                confounds=confounds,
+                dict_init=self.components_,
+                alpha=self.alpha,
+                positive=self.positive,
+                comp_l1_ratio=self.comp_l1_ratio,
+                code_l1_ratio=self.code_l1_ratio,
+                reduction=self.reduction,
+                learning_rate=self.learning_rate,
+                n_components=self.n_components,
+                batch_size=self.batch_size,
+                n_epochs=self.n_epochs,
+                method=self.method,
+                verbose=self.verbose,
+                random_state=self.random_state,
+                callback=self.callback,
+                n_jobs=self.n_jobs,
+                dict_structure=self.dict_structure,
+                dict_structure_params=self.dict_structure_params,
+                bcd_n_iter=self.bcd_n_iter,
+                feature_sampling=self.feature_sampling)
         self._post_fit()
         return self
 
@@ -415,7 +417,7 @@ class fMRICoder(fMRICoderMixin):
                                 memory=memory,
                                 memory_level=memory_level,
                                 n_jobs=n_jobs,
-                                verbose=verbose)
+                    verbose=verbose)
 
 
 def _check_dict_init(dict_init, mask_img, n_components=None):
@@ -449,13 +451,14 @@ def _compute_components(masker,
                         batch_size=20,
                         n_epochs=1,
                         method='masked',
-                        verbose=0,
+                        verbose=1,
                         random_state=None,
                         callback=None,
                         n_jobs=1,
                         dict_structure="enet",
                         dict_structure_params={},
-                        bcd_n_iter=1):
+                        bcd_n_iter=1,
+                        feature_sampling=True):
     methods = {'masked': {'G_agg': 'masked', 'Dx_agg': 'masked'},
                'dictionary only': {'G_agg': 'full', 'Dx_agg': 'full'},
                'gram': {'G_agg': 'masked', 'Dx_agg': 'masked'},
@@ -500,12 +503,14 @@ def _compute_components(masker,
                          batch_size=batch_size,
                          random_state=random_state,
                          n_threads=n_jobs,
-                         verbose=0,
+                         verbose=verbose,
                          dict_structure=dict_structure,
                          dict_structure_params=dict_structure_params,
-                         bcd_n_iter=bcd_n_iter)
+                         bcd_n_iter=bcd_n_iter,
+                         feature_sampling=feature_sampling)
     dict_fact.prepare(n_samples=n_samples, n_features=n_voxels,
                       X=dict_init, dtype=dtype)
+
     if n_records > 0:
         current_n_records = 0
         for i in range(n_epochs):
@@ -536,6 +541,10 @@ def _compute_components(masker,
                     indices_list[record], indices_list[record + 1])
                 sample_indices = sample_indices[permutation]
                 masked_data = masked_data[permutation]
+
+                masked_data = masked_data[::reduction]
+                sample_indices = sample_indices[::reduction]
+
                 dict_fact.partial_fit(masked_data,
                                       sample_indices=sample_indices)
                 current_n_records += 1
@@ -581,30 +590,58 @@ def _score_img(coder, masker, img, confounds):
     return coder.score(data)
 
 
+def _compute_score(dict_fact, data, scorer="ev"):
+    if scorer == "loss":
+        return dict_fact.score(data)
+    elif scorer == "ev":
+        from sklearn.metrics import explained_variance_score
+        codes = dict_fact.transform(data)
+        data_recon = codes.dot(dict_fact.components_)
+        ev = []
+        for x, x_recon in zip(data, data_recon):
+            ev.append(explained_variance_score(x, x_recon))
+        return np.mean(ev)
+
+
 class rfMRIDictionaryScorer:
     """Base callback to compute test score"""
 
-    def __init__(self, test_imgs, test_confounds=None):
+    def __init__(self, test_imgs, test_confounds=None, masker=None, n_jobs=1,
+                 scorer="loss", reduction=1):
         self.start_time = time.perf_counter()
         self.test_imgs = test_imgs
+        self.n_jobs = n_jobs
+        self.scorer = scorer
+        self.masker = masker
         if test_confounds is None:
             test_confounds = itertools.repeat(None)
         self.test_confounds = test_confounds
+        self.reduction = reduction
+
+    def _prepare(self, masker=None):
+        if masker is not None:
+            self.masker = masker
+        self.test_data_ = self.masker.transform(self.test_imgs,
+                                                confounds=self.test_confounds)
+        self.test_data_ = [data[::self.reduction] for data in self.test_data_]
+        self.len_imgs_ = np.array([data.shape[0] for data in self.test_data_])
         self.test_time = 0
         self.score = []
         self.iter = []
         self.time = []
+        return self
 
     def __call__(self, masker, dict_fact):
+        if not hasattr(self, "test_data_"):
+            self._prepare(masker=masker)
+
         test_time = time.perf_counter()
-        if not hasattr(self, 'data'):
-            self.data = masker.transform(self.test_imgs,
-                                         confounds=self.test_confounds)
-        scores = np.array([dict_fact.score(data) for data in self.data])
-        len_imgs = np.array([data.shape[0] for data in self.data])
-        score = np.sum(scores * len_imgs) / np.sum(len_imgs)
+        scores = Parallel(n_jobs=self.n_jobs)(delayed(_compute_score)(
+            dict_fact, data) for data in self.test_data_)
+        score = np.sum(scores * self.len_imgs_) / np.sum(self.len_imgs_)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
-        self.score.append(score)
+        self.score.append(scores)
         self.time.append(this_time)
         self.iter.append(dict_fact.n_iter_)
+        print(score)
