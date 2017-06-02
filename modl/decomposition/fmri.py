@@ -270,6 +270,7 @@ class fMRIDictFact(fMRICoderMixin):
                  batch_size=20,
                  reduction=1,
                  learning_rate=1,
+                 positive=False,
                  transform_batch_size=None,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -302,6 +303,7 @@ class fMRIDictFact(fMRICoderMixin):
         self.batch_size = batch_size
         self.reduction = reduction
         self.method = method
+        self.positive = positive
         self.learning_rate = learning_rate
         self.random_state = random_state
         self.callback = callback
@@ -343,6 +345,7 @@ class fMRIDictFact(fMRICoderMixin):
             learning_rate=self.learning_rate,
             n_components=self.n_components,
             batch_size=self.batch_size,
+            positive=self.positive,
             n_epochs=self.n_epochs,
             method=self.method,
             verbose=self.verbose,
@@ -414,6 +417,7 @@ def _compute_components(masker,
                         confounds=None,
                         dict_init=None,
                         alpha=1,
+                        positive=False,
                         reduction=1,
                         learning_rate=1,
                         n_components=20,
@@ -460,7 +464,7 @@ def _compute_components(masker,
                          code_alpha=alpha,
                          code_l1_ratio=0,
                          comp_l1_ratio=1,
-                         comp_pos=True,
+                         comp_pos=positive,
                          reduction=reduction,
                          Dx_agg=Dx_agg,
                          G_agg=G_agg,
