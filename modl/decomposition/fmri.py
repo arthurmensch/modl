@@ -262,6 +262,7 @@ class fMRIDictFact(fMRICoderMixin):
 
     def __init__(self,
                  method='masked',
+                 optimizing_method='variational',
                  n_components=20,
                  n_epochs=1,
                  alpha=0.1,
@@ -305,6 +306,7 @@ class fMRIDictFact(fMRICoderMixin):
         self.method = method
         self.positive = positive
         self.learning_rate = learning_rate
+        self.optimizing_method = optimizing_method
         self.random_state = random_state
         self.callback = callback
 
@@ -344,6 +346,7 @@ class fMRIDictFact(fMRICoderMixin):
             reduction=self.reduction,
             learning_rate=self.learning_rate,
             n_components=self.n_components,
+            optimizing_method=self.optimizing_method,
             batch_size=self.batch_size,
             positive=self.positive,
             n_epochs=self.n_epochs,
@@ -416,6 +419,7 @@ def _compute_components(masker,
                         imgs,
                         confounds=None,
                         dict_init=None,
+                        optimizing_method='variational',
                         alpha=1,
                         positive=False,
                         reduction=1,
@@ -467,6 +471,7 @@ def _compute_components(masker,
                          comp_pos=positive,
                          reduction=reduction,
                          Dx_agg=Dx_agg,
+                         method=optimizing_method,
                          G_agg=G_agg,
                          learning_rate=learning_rate,
                          batch_size=batch_size,

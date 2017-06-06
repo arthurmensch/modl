@@ -130,6 +130,7 @@ class DictFact(CodingMixin, BaseEstimator):
                  sample_learning_rate=0.76,
                  Dx_agg='masked',
                  G_agg='masked',
+                 method='variational',
                  dict_init=None,
                  code_alpha=1,
                  code_l1_ratio=1,
@@ -266,6 +267,8 @@ class DictFact(CodingMixin, BaseEstimator):
 
         self.comp_l1_ratio = comp_l1_ratio
         self.comp_pos = comp_pos
+
+        self.method = method
 
         self.n_epochs = n_epochs
 
@@ -481,7 +484,7 @@ class DictFact(CodingMixin, BaseEstimator):
     def _single_batch_fit(self, X, sample_indices):
         """Fit a single batch X: compute code, update statistics, update the
         dictionary"""
-        if ( self.verbose and self.verbose_iter_
+        if (self.verbose and self.verbose_iter_
             and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
@@ -533,22 +536,31 @@ class DictFact(CodingMixin, BaseEstimator):
         # Gradient update
         batch_size = X.shape[0]
         X_subset = X[:, subset]
-        self.gradient_[:, subset] *= 1 - w
-        self.gradient_[:, subset] += w * code.T.dot(X_subset) / batch_size
+        if self.method == 'variational':
+            self.gradient_[:, subset] *= 1 - w
+            self.gradient_[:, subset] += w * code.T.dot(X_subset) / batch_size
+        else:
+            self.gradient_[:, subset] = w * code.T.dot(X_subset) / batch_size
 
         self._update_dict(subset)
 
     def _update_B(self, X, code, w):
         """Update B statistics (for updating D)"""
         batch_size = X.shape[0]
-        self.B_ *= 1 - w
-        self.B_ += w * code.T.dot(X) / batch_size
+        if self.method == 'variational':
+            self.B_ *= 1 - w
+            self.B_ += w * code.T.dot(X) / batch_size
+        else:
+            self.B_ = w * code.T.dot(X) / batch_size
 
     def _update_C(self, this_code, w):
         """Update C statistics (for updating D)"""
         batch_size = this_code.shape[0]
-        self.C_ *= 1 - w
-        self.C_ += w * this_code.T.dot(this_code) / batch_size
+        if self.method == 'variational':
+            self.C_ *= 1 - w
+            self.C_ += w * this_code.T.dot(this_code) / batch_size
+        else:
+            self.C_ = w * this_code.T.dot(this_code) / batch_size
 
     def _compute_code(self, X, sample_indices,
                       w_sample, subset):
@@ -646,27 +658,43 @@ class DictFact(CodingMixin, BaseEstimator):
         gradient_subset -= self.C_.dot(components_subset)
 
         order = self.random_state.permutation(n_components)
-        for k in order:
-            subset_norm = enet_norm(components_subset[k],
-                                    self.comp_l1_ratio)
-            self.comp_norm_[k] += subset_norm
-            gradient_subset = ger(1.0, self.C_[k], components_subset[k],
-                                  a=gradient_subset, overwrite_a=True)
-            if self.C_[k, k] > 1e-20:
-                components_subset[k] = gradient_subset[k] / self.C_[k, k]
-            # Else do not update
-            if self.comp_pos:
-                components_subset[components_subset < 0] = 0
-            enet_projection(components_subset[k],
-                            atom_temp,
-                            self.comp_norm_[k], self.comp_l1_ratio)
-            components_subset[k] = atom_temp
-            subset_norm = enet_norm(components_subset[k],
-                                    self.comp_l1_ratio)
-            self.comp_norm_[k] -= subset_norm
-            gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
-                                  a=gradient_subset, overwrite_a=True)
 
+        if self.method == 'variational':
+            for k in order:
+                subset_norm = enet_norm(components_subset[k],
+                                        self.comp_l1_ratio)
+                self.comp_norm_[k] += subset_norm
+                gradient_subset = ger(1.0, self.C_[k], components_subset[k],
+                                      a=gradient_subset, overwrite_a=True)
+                if self.C_[k, k] > 1e-20:
+                    components_subset[k] = gradient_subset[k] / self.C_[k, k]
+                # Else do not update
+                if self.comp_pos:
+                    components_subset[components_subset < 0] = 0
+                enet_projection(components_subset[k],
+                                atom_temp,
+                                self.comp_norm_[k], self.comp_l1_ratio)
+                components_subset[k] = atom_temp
+                subset_norm = enet_norm(components_subset[k],
+                                        self.comp_l1_ratio)
+                self.comp_norm_[k] -= subset_norm
+                gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
+                                      a=gradient_subset, overwrite_a=True)
+        else:
+            step_size = 1 / (np.diagonal(self.C_))
+            for k in order:
+                subset_norm = enet_norm(components_subset[k],
+                                        self.comp_l1_ratio)
+                self.comp_norm_[k] += subset_norm
+            components_subset -= step_size[:, np.newaxis] * gradient_subset
+            for k in range(self.n_components):
+                enet_projection(components_subset[k],
+                                atom_temp,
+                                self.comp_norm_[k], self.comp_l1_ratio)
+                components_subset[k] = atom_temp
+                subset_norm = enet_norm(components_subset[k],
+                                        self.comp_l1_ratio)
+                self.comp_norm_[k] -= subset_norm
         self.components_[:, subset] = components_subset
 
         if self.G_agg == 'full':
