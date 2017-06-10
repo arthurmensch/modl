@@ -90,7 +90,7 @@ class MultiRawMasker(MultiNiftiMasker):
         # to MultiNiftiMasker (could handle hybrid imgs_list but we do not
         #  need it for the moment)
         for imgs in imgs_list:
-            if isinstance(imgs, str):
+            if isinstance(imgs, basestring):
                 name, ext = os.path.splitext(imgs)
                 if ext != '.npy':
                     raw = False

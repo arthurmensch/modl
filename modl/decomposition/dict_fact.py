@@ -11,14 +11,12 @@ from sklearn.utils import check_array, check_random_state, gen_batches
 from sklearn.utils.validation import check_is_fitted
 
 from modl.utils import get_sub_slice
-from modl.utils.randomkit import RandomState
-from modl.utils.randomkit import Sampler
 from .dict_fact_fast import _enet_regression_multi_gram, \
     _enet_regression_single_gram, _update_G_average, _batch_weight
 from ..utils.math.enet import enet_norm, enet_scale
 from .proximal import _atomic_prox
 
-MAX_INT = np.iinfo(np.int64).max
+MAX_INT = 2 ** 10 - 1  # np.iinfo(np.int64).max
 
 
 class CodingMixin(TransformerMixin):
@@ -311,7 +309,7 @@ class DictFact(CodingMixin, BaseEstimator):
         # Main loop
         for _ in range(self.n_epochs):
             self.partial_fit(X)
-            permutation = self.shuffle()
+            permutation = self.random_state.permutation(len(X))
             X = X[permutation]
         return self
 
@@ -331,7 +329,6 @@ class DictFact(CodingMixin, BaseEstimator):
         self
         """
         X = check_array(X, dtype=[np.float32, np.float64], order='C')
-
         n_samples, n_features = X.shape
         batches = gen_batches(n_samples, self.batch_size)
 
@@ -360,27 +357,6 @@ class DictFact(CodingMixin, BaseEstimator):
                 self.G_ = self.components_.dot(self.components_.T)
             self.G_agg = 'full'
         BaseEstimator.set_params(self, **params)
-
-    def shuffle(self):
-        """
-        Shuffle regression statistics, code_,
-        G_average_ and Dx_average_ and return the permutation used
-
-        Returns
-        -------
-        permutation: ndarray, shape = (n_samples)
-            Permutation used in shuffling regression statistics
-        """
-
-        random_seed = self.random_state.randint(MAX_INT)
-        random_state = RandomState(random_seed)
-        list = [self.code_]
-        if self.G_agg == 'average':
-            list.append(self.G_average_)
-        list.append(self.Dx_average_)
-        perm = random_state.shuffle_with_trace(list)
-        self.labels_ = self.labels_[perm]
-        return perm
 
     def prepare(self, n_samples=None, n_features=None,
                 dtype=None, X=None):
@@ -476,8 +452,6 @@ class DictFact(CodingMixin, BaseEstimator):
         self.sample_n_iter_ = np.zeros(n_samples, dtype='int')
         self.random_state = check_random_state(self.random_state)
         random_seed = self.random_state.randint(MAX_INT)
-        self.feature_sampler_ = Sampler(n_features, self.rand_size,
-                                        self.replacement, random_seed)
         if self.verbose:
             log_lim = log(n_samples * self.n_epochs / self.batch_size, 10)
             self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
@@ -492,6 +466,7 @@ class DictFact(CodingMixin, BaseEstimator):
     def _single_batch_fit(self, X, sample_indices):
         """Fit a single batch X: compute code, update statistics, update the
         dictionary"""
+        batch_size, n_features = X.shape
         if ( self.verbose and self.verbose_iter_
             and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
@@ -501,10 +476,14 @@ class DictFact(CodingMixin, BaseEstimator):
             X = X.copy()
 
         if self.feature_sampling and self.reduction > 1.:
-            subset = self.feature_sampler_.yield_subset(self.reduction)
+            if self.rand_size:
+                len_subset = self.random_state.binomial(n_features,
+                                                        1. / self.reduction)
+            else:
+                len_subset = len(n_features / self.reduction)
+            subset = self.random_state.choice(n_features, len_subset)
         else:
-            subset = np.arange(self.feature_sampler_.range)
-        batch_size = X.shape[0]
+            subset = np.arange(n_features)
 
         self.n_iter_ += batch_size
         self.sample_n_iter_[sample_indices] += 1

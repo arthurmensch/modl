@@ -349,6 +349,7 @@ class fMRIDictFact(fMRICoderMixin):
         self
         """
         self._pre_fit(imgs=imgs, y=None, confounds=confounds)
+        # self.dict_fact_ =
         self.components_ = self._cache(
             _compute_components, func_memory_level=1,
             ignore=['n_jobs', 'verbose'])(
@@ -373,6 +374,7 @@ class fMRIDictFact(fMRICoderMixin):
                 dict_structure_params=self.dict_structure_params,
                 bcd_n_iter=self.bcd_n_iter,
                 feature_sampling=self.feature_sampling)
+        # self.components_ = self.dict_fact_.components_
         self._post_fit()
         return self
 
@@ -420,21 +422,30 @@ class fMRICoder(fMRICoderMixin):
                     verbose=verbose)
 
 
-def _check_dict_init(dict_init, mask_img, n_components=None):
+def _check_dict_init(dict_init, mask_img, n_components=None, X=None,
+                     random_state=None):
+    from sklearn.decomposition import randomized_svd
+    from nilearn.masking import apply_mask
     if dict_init is not None:
         if isinstance(dict_init, np.ndarray):
             assert (dict_init.shape[1] == mask_img.get_data().sum())
             components = dict_init
         else:
-            masker = NiftiMasker(smoothing_fwhm=0,
-                                 mask_img=mask_img).fit()
-            components = masker.transform(dict_init)
+            components = apply_mask(dict_init, mask_img)
         if n_components is not None:
             return components[:n_components]
         else:
             return components
+    elif X is not None:
+        _, sigma, dict_init = randomized_svd(X, n_components,
+                                             random_state=random_state)
+        dict_init = sigma[:, np.newaxis] * dict_init
+        r = len(dict_init)
+        if n_components <= r:
+            dict_init = dict_init[:n_components, :]
+        return dict_init
     else:
-        return None
+        return dict_init
 
 
 def _compute_components(masker,
@@ -467,8 +478,6 @@ def _compute_components(masker,
                'reducing ratio': {'G_agg': 'masked', 'Dx_agg': 'masked'}}
 
     masker._check_fitted()
-    dict_init = _check_dict_init(dict_init, mask_img=masker.mask_img_,
-                                 n_components=n_components)
     # dict_init might have fewer pipelining than asked for
     if dict_init is not None:
         n_components = dict_init.shape[0]
@@ -488,6 +497,11 @@ def _compute_components(masker,
     indices_list[1:] = np.cumsum(n_samples_list)
     n_samples = indices_list[-1] + 1
     n_voxels = np.sum(check_niimg(masker.mask_img_).get_data() != 0)
+
+    dict_init = _check_dict_init(
+        dict_init, mask_img=masker.mask_img_, n_components=n_components,
+        # X=masker.transform(*data_list[0]),
+        random_state=random_state)
 
     if verbose:
         print("Learning...")
@@ -548,6 +562,8 @@ def _compute_components(masker,
                 dict_fact.partial_fit(masked_data,
                                       sample_indices=sample_indices)
                 current_n_records += 1
+    # dict_fact.components_ = _flip(dict_fact.components_)
+    # return dict_fact
     components = _flip(dict_fact.components_)
     return components
 
