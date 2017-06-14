@@ -10,9 +10,8 @@ from __future__ import division
 import itertools
 import time
 import warnings
-from math import log, sqrt, ceil
+from math import sqrt
 
-import nibabel
 import numpy as np
 from nibabel.filebasedimages import ImageFileError
 from nilearn._utils import CacheMixin
@@ -271,6 +270,8 @@ class fMRIDictFact(fMRICoderMixin):
                  reduction=1,
                  learning_rate=1,
                  positive=False,
+                 code_l1_ratio=0.,
+                 comp_l1_ratio=1.,
                  transform_batch_size=None,
                  mask=None, smoothing_fwhm=None,
                  standardize=True, detrend=True,
@@ -279,7 +280,11 @@ class fMRIDictFact(fMRICoderMixin):
                  mask_strategy='background', mask_args=None,
                  memory=Memory(cachedir=None), memory_level=0,
                  n_jobs=1, verbose=0,
-                 callback=None):
+                 callback=None,
+                 dict_structure="enet",
+                 dict_structure_params={},
+                 bcd_n_iter=1,
+                 feature_sampling=True):
         fMRICoderMixin.__init__(self, n_components=n_components,
                                 alpha=alpha,
                                 dict_init=dict_init,
@@ -304,9 +309,26 @@ class fMRIDictFact(fMRICoderMixin):
         self.reduction = reduction
         self.method = method
         self.positive = positive
+        self.comp_l1_ratio = comp_l1_ratio
+        self.code_l1_ratio = code_l1_ratio
         self.learning_rate = learning_rate
         self.random_state = random_state
         self.callback = callback
+
+        self.dict_structure = dict_structure
+        self.dict_structure_params = dict_structure_params
+        self.bcd_n_iter = bcd_n_iter
+        self.feature_sampling = feature_sampling
+
+    def _pre_fit(self, imgs=None, y=None, confounds=None):
+        # Base logic for pipelining estimators
+        if imgs is None:
+            raise ValueError('imgs is None, use fMRICoder instead')
+
+        # Fit mask + pipelining
+        fMRICoderMixin.fit(self, imgs, confounds=confounds)
+
+        return self
 
     def fit(self, imgs=None, y=None, confounds=None):
         """Compute the mask and the dictionary maps across subjects
@@ -326,32 +348,37 @@ class fMRIDictFact(fMRICoderMixin):
         -------
         self
         """
-        # Base logic for pipelining estimators
-        if imgs is None:
-            raise ValueError('imgs is None, use fMRICoder instead')
+        self._pre_fit(imgs=imgs, y=None, confounds=confounds)
+        # self.dict_fact_ =
+        self.components_ = self._cache(
+            _compute_components, func_memory_level=1,
+            ignore=['n_jobs', 'verbose'])(
+                self.masker_, imgs,
+                confounds=confounds,
+                dict_init=self.components_,
+                alpha=self.alpha,
+                positive=self.positive,
+                comp_l1_ratio=self.comp_l1_ratio,
+                code_l1_ratio=self.code_l1_ratio,
+                reduction=self.reduction,
+                learning_rate=self.learning_rate,
+                n_components=self.n_components,
+                batch_size=self.batch_size,
+                n_epochs=self.n_epochs,
+                method=self.method,
+                verbose=self.verbose,
+                random_state=self.random_state,
+                callback=self.callback,
+                n_jobs=self.n_jobs,
+                dict_structure=self.dict_structure,
+                dict_structure_params=self.dict_structure_params,
+                bcd_n_iter=self.bcd_n_iter,
+                feature_sampling=self.feature_sampling)
+        # self.components_ = self.dict_fact_.components_
+        self._post_fit()
+        return self
 
-        # Fit mask + pipelining
-        fMRICoderMixin.fit(self, imgs, confounds=confounds)
-
-        self.components_ = self._cache(_compute_components,
-                                       func_memory_level=1,
-                                       ignore=['n_jobs',
-                                               'verbose'])(
-            self.masker_, imgs,
-            confounds=confounds,
-            dict_init=self.components_,
-            alpha=self.alpha,
-            reduction=self.reduction,
-            learning_rate=self.learning_rate,
-            n_components=self.n_components,
-            batch_size=self.batch_size,
-            positive=self.positive,
-            n_epochs=self.n_epochs,
-            method=self.method,
-            verbose=self.verbose,
-            random_state=self.random_state,
-            callback=self.callback,
-            n_jobs=self.n_jobs)
+    def _post_fit(self):
         self.components_img_ = self.masker_.inverse_transform(self.components_)
         self.coder_ = Coder(dictionary=self.components_,
                             code_alpha=self.alpha,
@@ -392,24 +419,33 @@ class fMRICoder(fMRICoderMixin):
                                 memory=memory,
                                 memory_level=memory_level,
                                 n_jobs=n_jobs,
-                                verbose=verbose)
+                    verbose=verbose)
 
 
-def _check_dict_init(dict_init, mask_img, n_components=None):
+def _check_dict_init(dict_init, mask_img, n_components=None, X=None,
+                     random_state=None):
+    from sklearn.decomposition import randomized_svd
+    from nilearn.masking import apply_mask
     if dict_init is not None:
         if isinstance(dict_init, np.ndarray):
             assert (dict_init.shape[1] == mask_img.get_data().sum())
             components = dict_init
         else:
-            masker = NiftiMasker(smoothing_fwhm=0,
-                                 mask_img=mask_img).fit()
-            components = masker.transform(dict_init)
+            components = apply_mask(dict_init, mask_img)
         if n_components is not None:
             return components[:n_components]
         else:
             return components
+    elif X is not None:
+        _, sigma, dict_init = randomized_svd(X, n_components,
+                                             random_state=random_state)
+        dict_init = sigma[:, np.newaxis] * dict_init
+        r = len(dict_init)
+        if n_components <= r:
+            dict_init = dict_init[:n_components, :]
+        return dict_init
     else:
-        return None
+        return dict_init
 
 
 def _compute_components(masker,
@@ -417,6 +453,8 @@ def _compute_components(masker,
                         confounds=None,
                         dict_init=None,
                         alpha=1,
+                        code_l1_ratio=0.,
+                        comp_l1_ratio=1.,
                         positive=False,
                         reduction=1,
                         learning_rate=1,
@@ -424,10 +462,14 @@ def _compute_components(masker,
                         batch_size=20,
                         n_epochs=1,
                         method='masked',
-                        verbose=0,
+                        verbose=1,
                         random_state=None,
                         callback=None,
-                        n_jobs=1):
+                        n_jobs=1,
+                        dict_structure="enet",
+                        dict_structure_params={},
+                        bcd_n_iter=1,
+                        feature_sampling=True):
     methods = {'masked': {'G_agg': 'masked', 'Dx_agg': 'masked'},
                'dictionary only': {'G_agg': 'full', 'Dx_agg': 'full'},
                'gram': {'G_agg': 'masked', 'Dx_agg': 'masked'},
@@ -436,8 +478,6 @@ def _compute_components(masker,
                'reducing ratio': {'G_agg': 'masked', 'Dx_agg': 'masked'}}
 
     masker._check_fitted()
-    dict_init = _check_dict_init(dict_init, mask_img=masker.mask_img_,
-                                 n_components=n_components)
     # dict_init might have fewer pipelining than asked for
     if dict_init is not None:
         n_components = dict_init.shape[0]
@@ -458,12 +498,17 @@ def _compute_components(masker,
     n_samples = indices_list[-1] + 1
     n_voxels = np.sum(check_niimg(masker.mask_img_).get_data() != 0)
 
+    dict_init = _check_dict_init(
+        dict_init, mask_img=masker.mask_img_, n_components=n_components,
+        # X=masker.transform(*data_list[0]),
+        random_state=random_state)
+
     if verbose:
         print("Learning...")
     dict_fact = DictFact(n_components=n_components,
                          code_alpha=alpha,
-                         code_l1_ratio=0,
-                         comp_l1_ratio=1,
+                         code_l1_ratio=code_l1_ratio,
+                         comp_l1_ratio=comp_l1_ratio,
                          comp_pos=positive,
                          reduction=reduction,
                          Dx_agg=Dx_agg,
@@ -472,15 +517,15 @@ def _compute_components(masker,
                          batch_size=batch_size,
                          random_state=random_state,
                          n_threads=n_jobs,
-                         verbose=0)
+                         verbose=verbose,
+                         dict_structure=dict_structure,
+                         dict_structure_params=dict_structure_params,
+                         bcd_n_iter=bcd_n_iter,
+                         feature_sampling=feature_sampling)
     dict_fact.prepare(n_samples=n_samples, n_features=n_voxels,
                       X=dict_init, dtype=dtype)
+
     if n_records > 0:
-        if verbose:
-            log_lim = log(n_records * n_epochs, 10)
-            verbose_iter_ = np.logspace(0, log_lim, verbose,
-                                        base=10) - 1
-            verbose_iter_ = verbose_iter_.tolist()
         current_n_records = 0
         for i in range(n_epochs):
             if verbose:
@@ -493,12 +538,10 @@ def _compute_components(masker,
                 dict_fact.set_params(reduction=reduction)
             record_list = random_state.permutation(n_records)
             for record in record_list:
-                if (verbose and verbose_iter_ and
-                            current_n_records >= verbose_iter_[0]):
+                if verbose:
                     print('Record %i' % current_n_records)
                     if callback is not None:
                         callback(masker, dict_fact)
-                    verbose_iter_ = verbose_iter_[1:]
 
                 # IO bounded
                 img, these_confounds = data_list[record]
@@ -512,9 +555,15 @@ def _compute_components(masker,
                     indices_list[record], indices_list[record + 1])
                 sample_indices = sample_indices[permutation]
                 masked_data = masked_data[permutation]
+
+                masked_data = masked_data[::reduction]
+                sample_indices = sample_indices[::reduction]
+
                 dict_fact.partial_fit(masked_data,
                                       sample_indices=sample_indices)
                 current_n_records += 1
+    # dict_fact.components_ = _flip(dict_fact.components_)
+    # return dict_fact
     components = _flip(dict_fact.components_)
     return components
 
@@ -538,7 +587,7 @@ def _lazy_scan(imgs):
             img = check_niimg(img)
             this_n_samples = img.shape[3]
             dtype = img.get_data_dtype()
-        except ImageFileError:
+        except (ImageFileError, TypeError):
             img = np.load(img, mmap_mode='r')
             this_n_samples = img.shape[0]
             dtype = img.dtype
@@ -557,30 +606,58 @@ def _score_img(coder, masker, img, confounds):
     return coder.score(data)
 
 
+def _compute_score(dict_fact, data, scorer="ev"):
+    if scorer == "loss":
+        return dict_fact.score(data)
+    elif scorer == "ev":
+        from sklearn.metrics import explained_variance_score
+        codes = dict_fact.transform(data)
+        data_recon = codes.dot(dict_fact.components_)
+        ev = []
+        for x, x_recon in zip(data, data_recon):
+            ev.append(explained_variance_score(x, x_recon))
+        return np.mean(ev)
+
+
 class rfMRIDictionaryScorer:
     """Base callback to compute test score"""
 
-    def __init__(self, test_imgs, test_confounds=None):
+    def __init__(self, test_imgs, test_confounds=None, masker=None, n_jobs=1,
+                 scorer="loss", reduction=1):
         self.start_time = time.perf_counter()
         self.test_imgs = test_imgs
+        self.n_jobs = n_jobs
+        self.scorer = scorer
+        self.masker = masker
         if test_confounds is None:
             test_confounds = itertools.repeat(None)
         self.test_confounds = test_confounds
+        self.reduction = reduction
+
+    def _prepare(self, masker=None):
+        if masker is not None:
+            self.masker = masker
+        self.test_data_ = self.masker.transform(self.test_imgs,
+                                                confounds=self.test_confounds)
+        self.test_data_ = [data[::self.reduction] for data in self.test_data_]
+        self.len_imgs_ = np.array([data.shape[0] for data in self.test_data_])
         self.test_time = 0
         self.score = []
         self.iter = []
         self.time = []
+        return self
 
     def __call__(self, masker, dict_fact):
+        if not hasattr(self, "test_data_"):
+            self._prepare(masker=masker)
+
         test_time = time.perf_counter()
-        if not hasattr(self, 'data'):
-            self.data = masker.transform(self.test_imgs,
-                                         confounds=self.test_confounds)
-        scores = np.array([dict_fact.score(data) for data in self.data])
-        len_imgs = np.array([data.shape[0] for data in self.data])
-        score = np.sum(scores * len_imgs) / np.sum(len_imgs)
+        scores = Parallel(n_jobs=self.n_jobs)(delayed(_compute_score)(
+            dict_fact, data) for data in self.test_data_)
+        score = np.sum(scores * self.len_imgs_) / np.sum(self.len_imgs_)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
-        self.score.append(score)
+        self.score.append(scores)
         self.time.append(this_time)
         self.iter.append(dict_fact.n_iter_)
+        print(score)

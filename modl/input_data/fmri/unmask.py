@@ -56,7 +56,7 @@ class MultiRawMasker(MultiNiftiMasker):
         return data
 
     def transform_imgs(self, imgs_list, confounds=None, copy=True, n_jobs=1,
-                       mmap_mode=None):
+                       mmap_mode="r"):
         """Prepare multi subject data in parallel
 
         Parameters
@@ -90,7 +90,7 @@ class MultiRawMasker(MultiNiftiMasker):
         # to MultiNiftiMasker (could handle hybrid imgs_list but we do not
         #  need it for the moment)
         for imgs in imgs_list:
-            if isinstance(imgs, str):
+            if isinstance(imgs, basestring):
                 name, ext = os.path.splitext(imgs)
                 if ext != '.npy':
                     raw = False
@@ -99,9 +99,8 @@ class MultiRawMasker(MultiNiftiMasker):
                 raw = False
                 break
         if raw:
-            data = Parallel(n_jobs=n_jobs)(delayed(np.load)(imgs,
-                                                            mmap_mode=mmap_mode)
-                                           for imgs in imgs_list)
+            data = Parallel(n_jobs=n_jobs)(delayed(np.load)(
+                imgs, mmap_mode=mmap_mode) for imgs in imgs_list)
             return data
         else:
             return MultiNiftiMasker.transform_imgs(self, imgs_list,
@@ -109,7 +108,7 @@ class MultiRawMasker(MultiNiftiMasker):
                                                    copy=copy,
                                                    n_jobs=n_jobs, )
 
-    def transform(self, imgs, confounds=None, mmap_mode=None):
+    def transform(self, imgs, confounds=None, mmap_mode="r"):
         """ Apply mask, spatial and temporal preprocessing
 
         Parameters
@@ -128,10 +127,7 @@ class MultiRawMasker(MultiNiftiMasker):
             preprocessed images
         """
         self._check_fitted()
-        if not hasattr(imgs, '__iter__') \
-                or isinstance(imgs, _basestring):
+        if not hasattr(imgs, '__iter__') or isinstance(imgs, _basestring):
             return self.transform_single_imgs(imgs, mmap_mode=mmap_mode)
         return self.transform_imgs(imgs, confounds, n_jobs=self.n_jobs,
                                    mmap_mode=mmap_mode)
-
-

@@ -77,6 +77,8 @@ def _make_test_data(n_subjects=8, noisy=False):
 @pytest.mark.parametrize("memory", memories)
 def test_dict_fact(method, memory):
     if memory:
+        if method == "average":
+            pytest.skip()
         memory = Memory(cachedir=get_cache_dirs()[0])
         memory_level = 2
     else:

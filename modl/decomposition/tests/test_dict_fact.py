@@ -11,6 +11,8 @@ from sklearn.utils import check_random_state
 rng_global = 0
 
 solvers = ['masked', 'gram', 'average', 'full']
+dict_structures = ["enet", "enet variational"]
+comp_l1_ratios = [0., .5, 1.]
 
 solver_dict = {
     'masked': {'Dx_agg': 'masked', 'G_agg': 'masked'},
@@ -53,20 +55,26 @@ def generate_synthetic(n_samples=200,
 
 
 @pytest.mark.parametrize("solver", solvers)
-def test_dict_mf_reconstruction(solver):
+@pytest.mark.parametrize("dict_structure", dict_structures)
+@pytest.mark.parametrize("comp_l1_ratio", comp_l1_ratios)
+def test_dict_mf_reconstruction(solver, dict_structure,
+                                comp_l1_ratio):
     X, Q = generate_synthetic()
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=5,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
-                       random_state=rng_global, reduction=1)
+                       random_state=rng_global, reduction=1,
+                       comp_l1_ratio=comp_l1_ratio,
+                       dict_structure=dict_structure,
+                       dict_structure_params=dict(alpha=.01))
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.dot(dict_mf.components_)
     rel_error = np.sum((X - Y) ** 2) / np.sum(X ** 2)
     assert (rel_error < 0.02)
+
 
 @pytest.mark.parametrize("solver", solvers)
 def test_dict_mf_reconstruction_reduction(solver):
@@ -76,7 +84,6 @@ def test_dict_mf_reconstruction_reduction(solver):
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=2,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
                        random_state=rng_global, reduction=2)
@@ -88,17 +95,22 @@ def test_dict_mf_reconstruction_reduction(solver):
 
 
 @pytest.mark.parametrize("solver", solvers)
-def test_dict_mf_reconstruction_reproductible(solver):
+@pytest.mark.parametrize("dict_structure", dict_structures)
+@pytest.mark.parametrize("comp_l1_ratio", comp_l1_ratios)
+def test_dict_mf_reconstruction_reproductible(solver, dict_structure,
+                                              comp_l1_ratio):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=2,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
-                       random_state=0, reduction=2)
+                       random_state=0, reduction=2,
+                       comp_l1_ratio=comp_l1_ratio,
+                       dict_structure=dict_structure,
+                       dict_structure_params=dict(alpha=.01))
     dict_mf.fit(X)
     D1 = dict_mf.components_.copy()
     P1 = dict_mf.transform(X)
@@ -113,18 +125,23 @@ def test_dict_mf_reconstruction_reproductible(solver):
 
 
 @pytest.mark.parametrize("solver", solvers)
-def test_dict_mf_reconstruction_reduction_batch(solver):
+@pytest.mark.parametrize("dict_structure", dict_structures)
+@pytest.mark.parametrize("comp_l1_ratio", comp_l1_ratios)
+def test_dict_mf_reconstruction_reduction_batch(solver, dict_structure,
+                                                comp_l1_ratio):
     X, Q = generate_synthetic(n_features=20,
                               n_samples=400,
                               dictionary_rank=4)
     dict_mf = DictFact(n_components=4,
                        code_alpha=1e-4,
                        n_epochs=2,
-                       comp_l1_ratio=0,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
                        random_state=rng_global, reduction=2,
-                       batch_size=10)
+                       batch_size=10,
+                       comp_l1_ratio=comp_l1_ratio,
+                       dict_structure=dict_structure,
+                       dict_structure_params=dict(alpha=.01))
     dict_mf.fit(X)
     P = dict_mf.transform(X)
     Y = P.dot(dict_mf.components_)
@@ -138,8 +155,6 @@ def test_dict_mf_reconstruction_sparse_dict(solver):
     rng = check_random_state(0)
     dict_init = Q  + rng.randn(*Q.shape) * 0.2
     dict_mf = DictFact(n_components=4, code_alpha=1e-2, n_epochs=2,
-                       code_l1_ratio=0,
-                       comp_l1_ratio=1,
                        dict_init=dict_init,
                        G_agg=solver_dict[solver]['G_agg'],
                        Dx_agg=solver_dict[solver]['Dx_agg'],
