@@ -262,7 +262,8 @@ class fMRIDictFact(fMRICoderMixin):
 
     def __init__(self,
                  method='masked',
-                 optimizing_method='variational',
+                 optimizer='variational',
+                 step_size=1,
                  n_components=20,
                  n_epochs=1,
                  alpha=0.1,
@@ -304,9 +305,10 @@ class fMRIDictFact(fMRICoderMixin):
         self.batch_size = batch_size
         self.reduction = reduction
         self.method = method
+        self.step_size = step_size
         self.positive = positive
         self.learning_rate = learning_rate
-        self.optimizing_method = optimizing_method
+        self.optimizer = optimizer
         self.random_state = random_state
         self.callback = callback
 
@@ -340,13 +342,14 @@ class fMRIDictFact(fMRICoderMixin):
                                        ignore=['n_jobs',
                                                'verbose'])(
             self.masker_, imgs,
+            step_size=self.step_size,
             confounds=confounds,
             dict_init=self.components_,
             alpha=self.alpha,
             reduction=self.reduction,
             learning_rate=self.learning_rate,
             n_components=self.n_components,
-            optimizing_method=self.optimizing_method,
+            optimizer=self.optimizer,
             batch_size=self.batch_size,
             positive=self.positive,
             n_epochs=self.n_epochs,
@@ -417,9 +420,10 @@ def _check_dict_init(dict_init, mask_img, n_components=None):
 
 def _compute_components(masker,
                         imgs,
+                        step_size=1,
                         confounds=None,
                         dict_init=None,
-                        optimizing_method='variational',
+                        optimizer='variational',
                         alpha=1,
                         positive=False,
                         reduction=1,
@@ -471,7 +475,8 @@ def _compute_components(masker,
                          comp_pos=positive,
                          reduction=reduction,
                          Dx_agg=Dx_agg,
-                         method=optimizing_method,
+                         optimizer=optimizer,
+                         step_size=step_size,
                          G_agg=G_agg,
                          learning_rate=learning_rate,
                          batch_size=batch_size,

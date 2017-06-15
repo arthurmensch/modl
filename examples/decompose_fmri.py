@@ -20,19 +20,21 @@ from modl.utils.system import get_cache_dirs
 
 
 n_components = 20
-batch_size = 200
-learning_rate = 1
-method = 'dictionary only'
-reduction = 1
+batch_size = 50
+learning_rate = .92
+method = 'masked'
+optimizer = 'sgd'
+step_size = 0.01
+reduction = 3
 alpha = 1e-3
-n_epochs = 1
+n_epochs = 5
 verbose = 15
-n_jobs = 2
+n_jobs = 1
 smoothing_fwhm = 6
 
 dict_init = fetch_atlas_smith_2009().rsn20
 
-dataset = fetch_adhd(n_subjects=20)
+dataset = fetch_adhd(n_subjects=40)
 data = dataset.rest.values
 train_data, test_data = train_test_split(data, test_size=1, random_state=0)
 train_imgs, train_confounds = zip(*train_data)
@@ -44,7 +46,8 @@ memory = Memory(cachedir=get_cache_dirs()[0],
 cb = rfMRIDictionaryScorer(test_imgs, test_confounds=test_confounds)
 dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                          method=method,
-                         optimizing_method='sgd',
+                         optimizer='sgd',
+                         step_size=0.01,
                          mask=mask,
                          memory=memory,
                          memory_level=2,

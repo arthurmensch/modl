@@ -38,11 +38,11 @@ class Callback(object):
 
 random_state = 0
 
-mf = RecsysDictFact(n_components=50, alpha=1, beta=.1, verbose=5,
-                    batch_size=None, detrend=True,
+mf = RecsysDictFact(n_components=50, alpha=1, beta=.1, verbose=10,
+                    batch_size=10, detrend=True,
                     random_state=0,
                     learning_rate=.95,
-                    n_epochs=3)
+                    n_epochs=10)
 
 X = load_movielens('1m')
 X_tr, X_te = train_test_split(X, train_size=0.8,

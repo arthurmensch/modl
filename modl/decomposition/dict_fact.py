@@ -130,11 +130,12 @@ class DictFact(CodingMixin, BaseEstimator):
                  sample_learning_rate=0.76,
                  Dx_agg='masked',
                  G_agg='masked',
-                 method='variational',
+                 optimizer='variational',
                  dict_init=None,
                  code_alpha=1,
                  code_l1_ratio=1,
                  comp_l1_ratio=0,
+                 step_size=1,
                  tol=1e-2,
                  max_iter=100,
                  code_pos=False,
@@ -268,7 +269,8 @@ class DictFact(CodingMixin, BaseEstimator):
         self.comp_l1_ratio = comp_l1_ratio
         self.comp_pos = comp_pos
 
-        self.method = method
+        self.optimizer = optimizer
+        self.step_size = step_size
 
         self.n_epochs = n_epochs
 
@@ -336,7 +338,7 @@ class DictFact(CodingMixin, BaseEstimator):
     def set_params(self, **params):
         """Set the parameters of this estimator.
 
-        The method works on simple estimators as well as on nested objects
+        The optimizer works on simple estimators as well as on nested objects
         (such as pipelines). The latter have parameters of the form
         ``<component>__<parameter>`` so that it's possible to update each
         component of a nested object.
@@ -416,6 +418,8 @@ class DictFact(CodingMixin, BaseEstimator):
                 dtype = np.float64
             elif dtype not in [np.float32, np.float64]:
                 return ValueError('dtype should be float32 or float64')
+        if self.optimizer not in ['variational', 'sgd']:
+            return ValueError("optimizer should be 'variational' or 'sgd'")
 
         # Regression statistics
         if self.G_agg == 'average':
@@ -502,7 +506,6 @@ class DictFact(CodingMixin, BaseEstimator):
             astype(self.components_.dtype)
         w = _batch_weight(self.n_iter_, batch_size,
                           self.learning_rate, 0)
-
         self._compute_code(X, sample_indices, w_sample, subset)
 
         this_code = self.code_[sample_indices]
@@ -536,7 +539,7 @@ class DictFact(CodingMixin, BaseEstimator):
         # Gradient update
         batch_size = X.shape[0]
         X_subset = X[:, subset]
-        if self.method == 'variational':
+        if self.optimizer == 'variational':
             self.gradient_[:, subset] *= 1 - w
             self.gradient_[:, subset] += w * code.T.dot(X_subset) / batch_size
         else:
@@ -547,7 +550,7 @@ class DictFact(CodingMixin, BaseEstimator):
     def _update_B(self, X, code, w):
         """Update B statistics (for updating D)"""
         batch_size = X.shape[0]
-        if self.method == 'variational':
+        if self.optimizer == 'variational':
             self.B_ *= 1 - w
             self.B_ += w * code.T.dot(X) / batch_size
         else:
@@ -556,7 +559,7 @@ class DictFact(CodingMixin, BaseEstimator):
     def _update_C(self, this_code, w):
         """Update C statistics (for updating D)"""
         batch_size = this_code.shape[0]
-        if self.method == 'variational':
+        if self.optimizer == 'variational':
             self.C_ *= 1 - w
             self.C_ += w * this_code.T.dot(this_code) / batch_size
         else:
@@ -659,7 +662,7 @@ class DictFact(CodingMixin, BaseEstimator):
 
         order = self.random_state.permutation(n_components)
 
-        if self.method == 'variational':
+        if self.optimizer == 'variational':
             for k in order:
                 subset_norm = enet_norm(components_subset[k],
                                         self.comp_l1_ratio)
@@ -681,12 +684,12 @@ class DictFact(CodingMixin, BaseEstimator):
                 gradient_subset = ger(-1.0, self.C_[k], components_subset[k],
                                       a=gradient_subset, overwrite_a=True)
         else:
-            step_size = 1 / (np.diagonal(self.C_))
+            step_size = self.step_size / (np.diagonal(self.C_))
             for k in order:
                 subset_norm = enet_norm(components_subset[k],
                                         self.comp_l1_ratio)
                 self.comp_norm_[k] += subset_norm
-            components_subset -= step_size[:, np.newaxis] * gradient_subset
+            components_subset += step_size[:, np.newaxis] * gradient_subset
             for k in range(self.n_components):
                 enet_projection(components_subset[k],
                                 atom_temp,
