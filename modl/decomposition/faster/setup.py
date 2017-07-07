@@ -15,7 +15,7 @@ def configuration(parent_package='', top_path=None):
                   include_dirs=[numpy.get_include()],
                   ),
     ]
-    config.add_subpackage('randomkit')
+    config.add_subpackage('_utils')
 
     config.ext_modules += extensions
     config.ext_modules = cythonize(config.ext_modules, nthreads=4)

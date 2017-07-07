@@ -13,17 +13,13 @@ def configuration(parent_package='', top_path=None):
     if sys.platform == 'win32':
         libs.append('Advapi32')
 
-    extensions = [Extension('modl.decomposition.faster.randomkit.random_fast',
-                            sources=['modl/decomposition/faster/randomkit'
-                                     '/random_fast.pyx',
-                                     'modl/decomposition/faster/randomkit'
-                                     '/randomkit.c',
-                                     'modl/decomposition/faster/randomkit'
-                                     '/distributions.c',
+    extensions = [Extension('modl/_utils/randomkit/random_fast',
+                            sources=['modl/_utils/randomkit/random_fast.pyx',
+                                     'modl/_utils/randomkit/randomkit.c',
+                                     'modl/_utils/randomkit/distributions.c',
                                      ],
                             include_dirs=[numpy.get_include(),
-                                          'modl/decomposition/faster/'
-                                          'randomkit'],
+                                          'modl/_utils/randomkit'],
                             )]
     config.ext_modules += cythonize(extensions)
 
