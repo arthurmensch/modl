@@ -20,22 +20,23 @@ from modl.utils.system import get_output_dir
 from sacred import Experiment
 
 exp = Experiment('decompose_rest')
-base_artifact_dir = join(get_output_dir(), 'components', 'hcp')
+base_artifact_dir = join(get_output_dir(), 'components', 'adhd')
 exp.observers.append(FileStorageObserver.create(basedir=base_artifact_dir))
 
 @exp.config
 def config():
-    n_components = 20
-    batch_size = 200
+    n_components = 70
+    batch_size = 50
     learning_rate = 0.92
-    method = 'masked'
-    reduction = 10
+    method = 'dictionary only'
+    reduction = 1
     alpha = 1e-3
-    n_epochs = 1
+    n_epochs = 10
     verbose = 15
-    n_jobs = 5
-    smoothing_fwhm = 4
-    optimizer = 'variational'
+    n_jobs = 3
+    smoothing_fwhm = 6
+    optimizer = 'sgd'
+    step_size = 0.1
 
 
 @exp.automain
@@ -45,15 +46,17 @@ def compute_components(n_components,
                        method,
                        reduction,
                        alpha,
+                       smoothing_fwhm,
+                       step_size,
+                       n_jobs,
                        optimizer,
                        n_epochs,
                        verbose,
-                       n_jobs,
                        _run):
     artifact_dir = join(base_artifact_dir, str(_run._id), 'artifacts')
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
-    raw_res_dir = join(get_output_dir(), 'unmasked', 'hcp')
+    raw_res_dir = join(get_output_dir(), 'unmasked', 'adhd')
     masker, data = get_raw_rest_data(raw_res_dir)
 
     train_imgs, test_imgs = train_test_split(data, test_size=1, random_state=0)
@@ -69,9 +72,11 @@ def compute_components(n_components,
                              n_jobs=n_jobs,
                              random_state=1,
                              n_components=n_components,
+                             smoothing_fwhm=smoothing_fwhm,
                              learning_rate=learning_rate,
                              batch_size=batch_size,
                              reduction=reduction,
+                             step_size=step_size,
                              alpha=alpha,
                              callback=cb,
                              )
