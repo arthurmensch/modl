@@ -5,6 +5,7 @@ from distutils.extension import Extension
 
 from Cython.Build import cythonize
 
+
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
@@ -13,19 +14,27 @@ def configuration(parent_package='', top_path=None):
     if sys.platform == 'win32':
         libs.append('Advapi32')
 
-    extensions = [Extension('modl/_utils/randomkit/random_fast',
-                            sources=['modl/_utils/randomkit/random_fast.pyx',
-                                     'modl/_utils/randomkit/randomkit.c',
-                                     'modl/_utils/randomkit/distributions.c',
+    extensions = [Extension('modl.decomposition.faster._utils.'
+                            'randomkit.random_fast',
+                            sources=['modl/decomposition/faster/_utils'
+                                     '/randomkit/random_fast.pyx',
+                                     'modl/decomposition/faster/_utils'
+                                     '/randomkit/randomkit.c',
+                                     'modl/decomposition/faster/_utils'
+                                     '/randomkit/distributions.c',
                                      ],
                             include_dirs=[numpy.get_include(),
-                                          'modl/_utils/randomkit'],
+                                          'modl/decomposition/faster/_utils'
+                                          '/randomkit'],
                             )]
-    config.ext_modules += cythonize(extensions)
-
     config.add_subpackage('tests')
-    config.add_data_files('randomkit.h')
-    config.add_data_files('distributions.h')
+
+    config.ext_modules += extensions
+
+    config.add_data_files('modl/decomposition/faster/_utils'
+                          '/randomkit/randomkit.h')
+    config.add_data_files('modl/decomposition/faster/_utils'
+                          '/randomkit/distributions.h')
 
     return config
 

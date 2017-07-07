@@ -24,8 +24,6 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('tests')
     config.add_subpackage('faster')
 
-    config.ext_modules = cythonize(config.ext_modules, nthreads=4)
-
     return config
 
 

@@ -9,13 +9,9 @@
 J. Mairal, F. Bach, J. Ponce, G. Sapiro, 2009: Online dictionary learning
 for sparse coding (http://www.di.ens.fr/sierra/pdfs/icml09.pdf)
 """
-
-
 import cython
 
 from libc.math cimport sqrt, fabs
-
-from .enet_proj_fast cimport UINT32_t
 
 from cython cimport view
 

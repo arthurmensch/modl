@@ -12,13 +12,14 @@ def configuration(parent_package='', top_path=None):
     extensions = [
         Extension('modl.decomposition.faster.dict_fact_fast',
                   sources=['modl/decomposition/faster/dict_fact_fast.pyx'],
-                  include_dirs=[numpy.get_include()],
+                  include_dirs=[numpy.get_include(),
+                                'modl/decomposition/faster/_utils'
+                                '/randomkit'],
                   ),
     ]
-    config.add_subpackage('_utils')
-
     config.ext_modules += extensions
-    config.ext_modules = cythonize(config.ext_modules, nthreads=4)
+
+    config.add_subpackage('_utils')
 
     return config
 
