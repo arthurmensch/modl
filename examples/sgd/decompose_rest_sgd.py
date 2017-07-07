@@ -30,13 +30,13 @@ def config():
     learning_rate = 0.92
     method = 'dictionary only'
     reduction = 1
-    alpha = 1e-3
-    n_epochs = 10
+    alpha = 1e-4
+    n_epochs = 1
     verbose = 15
     n_jobs = 3
     smoothing_fwhm = 6
     optimizer = 'sgd'
-    step_size = 0.1
+    step_size = 1e-5
 
 
 @exp.automain
@@ -56,10 +56,10 @@ def compute_components(n_components,
     artifact_dir = join(base_artifact_dir, str(_run._id), 'artifacts')
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
-    raw_res_dir = join(get_output_dir(), 'unmasked', 'adhd')
+    raw_res_dir = join(get_output_dir(), 'unmask', 'adhd')
     masker, data = get_raw_rest_data(raw_res_dir)
 
-    train_imgs, test_imgs = train_test_split(data, test_size=1, random_state=0)
+    train_imgs, test_imgs = train_test_split(data, test_size=4, random_state=0)
     train_imgs = train_imgs['filename'].values
     test_imgs = test_imgs['filename'].values
 
