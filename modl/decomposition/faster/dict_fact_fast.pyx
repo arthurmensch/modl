@@ -19,9 +19,9 @@ from scipy.linalg.cython_blas cimport dgemm, dger, daxpy, ddot, dasum, dgemv
 from scipy.linalg.cython_lapack cimport dposv
 
 # noinspection PyUnresolvedReferences
-from ..utils.randomkit.random_fast cimport Sampler, RandomState
+from .randomkit.random_fast cimport Sampler, RandomState
 # noinspection PyUnresolvedReferences
-from ..utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, \
+from ._utils.enet_proj_fast cimport enet_projection_fast, enet_norm_fast, \
       enet_scale_fast, enet_scale_matrix_fast
 
 from tempfile import NamedTemporaryFile
