@@ -81,7 +81,7 @@ def our_hash(obj, hash_name='md5', coerce_mmap=False):
         -----------
         hash_name: 'md5' or 'sha1'
             Hashing algorithm used. sha1 is supposedly safer, but md5 is
-            faster.
+            _faster.
         coerce_mmap: boolean
             Make no difference between np.memmap and np.ndarray
     """

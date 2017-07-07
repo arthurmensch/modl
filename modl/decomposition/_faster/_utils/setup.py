@@ -9,8 +9,8 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('_utils', parent_package, top_path)
 
-    extensions = [Extension('modl.decomposition.faster._utils.enet_proj_fast',
-                            sources=['modl/decomposition/faster/_utils/'
+    extensions = [Extension('modl.decomposition._faster._utils.enet_proj_fast',
+                            sources=['modl/decomposition/_faster/_utils/'
                                      'enet_proj_fast.pyx'],
                             include_dirs=[numpy.get_include()],
                             ),

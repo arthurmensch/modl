@@ -4,7 +4,7 @@ from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 from sklearn.utils import check_random_state
 
-from modl._utils.enet_proj import enet_scale
+from ._utils.enet_proj import enet_scale
 from .dict_fact_fast import DictFactImpl
 
 from math import log

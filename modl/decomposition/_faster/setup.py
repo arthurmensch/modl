@@ -7,13 +7,13 @@ from Cython.Build import cythonize
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
-    config = Configuration('faster', parent_package, top_path)
+    config = Configuration('_faster', parent_package, top_path)
 
     extensions = [
-        Extension('modl.decomposition.faster.dict_fact_fast',
-                  sources=['modl/decomposition/faster/dict_fact_fast.pyx'],
+        Extension('modl.decomposition._faster.dict_fact_fast',
+                  sources=['modl/decomposition/_faster/dict_fact_fast.pyx'],
                   include_dirs=[numpy.get_include(),
-                                'modl/decomposition/faster/_utils'
+                                'modl/decomposition/_faster/_utils'
                                 '/randomkit'],
                   ),
     ]

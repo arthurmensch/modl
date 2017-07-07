@@ -56,7 +56,7 @@ create_new_conda_env() {
     # conda-based environment instead
     deactivate
 
-    # Use the miniconda installer for faster download / install of conda
+    # Use the miniconda installer for _faster download / install of conda
     # itself
     wget http://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh \
         -O miniconda.sh

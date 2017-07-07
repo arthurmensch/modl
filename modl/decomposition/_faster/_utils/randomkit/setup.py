@@ -14,26 +14,26 @@ def configuration(parent_package='', top_path=None):
     if sys.platform == 'win32':
         libs.append('Advapi32')
 
-    extensions = [Extension('modl.decomposition.faster._utils.'
+    extensions = [Extension('modl.decomposition._faster._utils.'
                             'randomkit.random_fast',
-                            sources=['modl/decomposition/faster/_utils'
+                            sources=['modl/decomposition/_faster/_utils'
                                      '/randomkit/random_fast.pyx',
-                                     'modl/decomposition/faster/_utils'
+                                     'modl/decomposition/_faster/_utils'
                                      '/randomkit/randomkit.c',
-                                     'modl/decomposition/faster/_utils'
+                                     'modl/decomposition/_faster/_utils'
                                      '/randomkit/distributions.c',
                                      ],
                             include_dirs=[numpy.get_include(),
-                                          'modl/decomposition/faster/_utils'
+                                          'modl/decomposition/_faster/_utils'
                                           '/randomkit'],
                             )]
     config.add_subpackage('tests')
 
     config.ext_modules += extensions
 
-    config.add_data_files('modl/decomposition/faster/_utils'
+    config.add_data_files('modl/decomposition/_faster/_utils'
                           '/randomkit/randomkit.h')
-    config.add_data_files('modl/decomposition/faster/_utils'
+    config.add_data_files('modl/decomposition/_faster/_utils'
                           '/randomkit/distributions.h')
 
     return config

@@ -10,9 +10,8 @@ from __future__ import division
 import itertools
 import time
 import warnings
-from math import log, sqrt, ceil
+from math import log, sqrt
 
-import nibabel
 import numpy as np
 from nibabel.filebasedimages import ImageFileError
 from nilearn._utils import CacheMixin
@@ -190,13 +189,13 @@ class fMRIDictFact(fMRICoderMixin):
         Number of 3D-image to use at each iteration
 
     reduction: float, > 1
-        Subsampling to use in streaming data. The larger, the faster the
+        Subsampling to use in streaming data. The larger, the _faster the
         algorithm will go over data.
         Too large reduction may lead to slower convergence
 
     learning_rate: float in [0.917, 1[
         Learning rate to use in streaming data. 1 means to not forget about past
-        iterations, when slower value leads to faster forgetting. Convergence
+        iterations, when slower value leads to _faster forgetting. Convergence
         is not guaranteed below 0.917.
 
     mask: Niimg-like object or MultiNiftiMasker instance, optional
@@ -469,20 +468,20 @@ def _compute_components(masker,
     if verbose:
         print("Learning...")
     dict_fact = DictFact(n_components=n_components,
-                         code_alpha=alpha,
-                         code_l1_ratio=0,
-                         comp_l1_ratio=1,
-                         comp_pos=positive,
-                         reduction=reduction,
-                         Dx_agg=Dx_agg,
-                         optimizer=optimizer,
-                         step_size=step_size,
-                         G_agg=G_agg,
-                         learning_rate=learning_rate,
-                         batch_size=batch_size,
-                         random_state=random_state,
-                         n_threads=n_jobs,
-                         verbose=0)
+                               code_alpha=alpha,
+                               code_l1_ratio=0,
+                               comp_l1_ratio=1,
+                               comp_pos=positive,
+                               reduction=reduction,
+                               Dx_agg=Dx_agg,
+                               optimizer=optimizer,
+                               step_size=step_size,
+                               G_agg=G_agg,
+                               learning_rate=learning_rate,
+                               batch_size=batch_size,
+                               random_state=random_state,
+                               n_threads=n_jobs,
+                               verbose=0)
     dict_fact.prepare(n_samples=n_samples, n_features=n_voxels,
                       X=dict_init, dtype=dtype)
     if n_records > 0:

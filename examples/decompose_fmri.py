@@ -22,10 +22,10 @@ from modl.utils.system import get_cache_dirs
 n_components = 20
 batch_size = 50
 learning_rate = .92
-method = 'masked'
+method = 'full'
 optimizer = 'sgd'
 step_size = 0.01
-reduction = 3
+reduction = 1
 alpha = 1e-3
 n_epochs = 5
 verbose = 15
@@ -46,8 +46,8 @@ memory = Memory(cachedir=get_cache_dirs()[0],
 cb = rfMRIDictionaryScorer(test_imgs, test_confounds=test_confounds)
 dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                          method=method,
-                         optimizer='sgd',
-                         step_size=0.01,
+                         optimizer=optimizer,
+                         step_size=step_size,
                          mask=mask,
                          memory=memory,
                          memory_level=2,
