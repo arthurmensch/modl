@@ -66,14 +66,14 @@ class ImageDictFact(BaseEstimator):
     def fit(self, image, y=None):
         self.random_state = check_random_state(self.random_state)
 
-        if self.method != 'benchmarks':
+        if self.method != 'sgd':
             method = ImageDictFact.methods[self.method]
             G_agg = method['G_agg']
             Dx_agg = method['Dx_agg']
             reduction = self.reduction
             optimizer = 'variational'
         else:
-            optimizer = 'benchmarks'
+            optimizer = 'sgd'
             reduction = 1
             G_agg = 'full'
             Dx_agg = 'full'

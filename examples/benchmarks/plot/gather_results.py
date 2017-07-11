@@ -22,7 +22,7 @@ from modl.utils.system import get_output_dir
 
 idx = pd.IndexSlice
 
-run_id = 13
+run_id = 18
 dir = join(get_output_dir(), 'decompose_rest_multi', str(run_id), 'run')
 analysis_dir = join(get_output_dir(), 'decompose_rest_multi', str(run_id), 'analysis')
 if not os.path.exists(analysis_dir):
@@ -51,8 +51,8 @@ data = pd.DataFrame(data)
 data.set_index(['optimizer', 'reduction', 'step_size'], inplace=True)
 data.sort_index(inplace=True)
 data.to_csv(join(analysis_dir, 'data.csv'))
-
-sgd_data = data.loc[['benchmarks']]
+print(data)
+sgd_data = data.loc['sgd']
 last_scores = []
 for _, this_data in sgd_data.iterrows():
     last_score = this_data['score'][-1]
@@ -61,8 +61,9 @@ last_scores = np.array(last_scores)
 idxmin = np.argmin(last_scores)
 sgd_data = sgd_data.iloc[[idxmin]]
 
-var_data = data.loc[['variational']]
-data = pd.concat([sgd_data, var_data],
+var_data = data.loc['variational']
+data = pd.concat([sgd_data, var_data], keys=['sgd', 'variational'],
+                 names=['optimizer'],
                  axis=0)
 data.reset_index(inplace=True)
 
@@ -87,7 +88,7 @@ color_dict[1] = ref_colormap[0]
 
 for optimizer, sub_data in data.groupby('optimizer'):
     for _, this_data in sub_data.iterrows():
-        if optimizer == 'benchmarks':
+        if optimizer == 'sgd':
             label = 'SGD (best step-size)'
             # label = 'SGD %.4f' % this_data['step_size']
             color = sgd_colormap[0]

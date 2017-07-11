@@ -25,7 +25,7 @@ exp.observers.append(FileStorageObserver.create(basedir=basedir))
 
 @exp.config
 def config():
-    n_jobs = 2
+    n_jobs = 15
     n_seeds = 1
     seed = 1
 
@@ -38,12 +38,12 @@ def config():
     method = 'gram'
     reduction = 12
     alpha = 1e-4
-    n_epochs = 8
+    n_epochs = 30
     verbose = 100
     n_jobs = 2
     optimizer = 'variational'
     step_size = 1e-5
-    source = 'adhd'
+    source = 'adhd_4'
     seed = 1
 
 
@@ -63,9 +63,9 @@ def run(n_seeds, n_jobs, _run, _seed):
     seed_list = check_random_state(_seed).randint(np.iinfo(np.uint32).max,
                                                   size=n_seeds)
     exps = []
-    exps += [{'optimizer': 'benchmarks',
+    exps += [{'optimizer': 'sgd',
               'step_size': step_size}
-             for step_size in np.logspace(-7, 0, 16)]
+             for step_size in np.logspace(-7, 0, 15)]
     exps += [{'optimizer': 'variational',
               'reduction': reduction}
              for reduction in [1, 4, 6, 8, 12, 24]]

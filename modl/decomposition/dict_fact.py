@@ -420,9 +420,9 @@ class DictFact(CodingMixin, BaseEstimator):
                 dtype = np.float64
             elif dtype not in [np.float32, np.float64]:
                 return ValueError('dtype should be float32 or float64')
-        if self.optimizer not in ['variational', 'benchmarks']:
-            return ValueError("optimizer should be 'variational' or 'benchmarks'")
-        if self.optimizer == 'benchmarks':
+        if self.optimizer not in ['variational', 'sgd']:
+            return ValueError("optimizer should be 'variational' or 'sgd'")
+        if self.optimizer == 'sgd':
             self.reduction = 1
             self.G_agg = 'full'
             self.Dx_agg = 'full'
