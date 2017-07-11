@@ -19,17 +19,17 @@ from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
 
 
-n_components = 20
+n_components = 70
 batch_size = 50
 learning_rate = .92
-method = 'full'
-optimizer = 'sgd'
+method = 'gram'
+optimizer = 'variational'
 step_size = 0.01
-reduction = 1
+reduction = 12
 alpha = 1e-3
 n_epochs = 5
 verbose = 15
-n_jobs = 1
+n_jobs = 2
 smoothing_fwhm = 6
 
 dict_init = fetch_atlas_smith_2009().rsn20

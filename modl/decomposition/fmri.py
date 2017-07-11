@@ -468,20 +468,20 @@ def _compute_components(masker,
     if verbose:
         print("Learning...")
     dict_fact = DictFact(n_components=n_components,
-                               code_alpha=alpha,
-                               code_l1_ratio=0,
-                               comp_l1_ratio=1,
-                               comp_pos=positive,
-                               reduction=reduction,
-                               Dx_agg=Dx_agg,
-                               optimizer=optimizer,
-                               step_size=step_size,
-                               G_agg=G_agg,
-                               learning_rate=learning_rate,
-                               batch_size=batch_size,
-                               random_state=random_state,
-                               n_threads=n_jobs,
-                               verbose=0)
+                         code_alpha=alpha,
+                         code_l1_ratio=0,
+                         comp_l1_ratio=0.9,
+                         comp_pos=positive,
+                         reduction=reduction,
+                         Dx_agg=Dx_agg,
+                         optimizer=optimizer,
+                         step_size=step_size,
+                         G_agg=G_agg,
+                         learning_rate=learning_rate,
+                         batch_size=batch_size,
+                         random_state=random_state,
+                         n_threads=n_jobs,
+                         verbose=0)
     dict_fact.prepare(n_samples=n_samples, n_features=n_voxels,
                       X=dict_init, dtype=dtype)
     if n_records > 0:
@@ -494,7 +494,7 @@ def _compute_components(masker,
         for i in range(n_epochs):
             if verbose:
                 print('Epoch %i' % (i + 1))
-            if method == 'gram' and i == 2:
+            if method == 'gram' and i == 4:
                 dict_fact.set_params(G_agg='full',
                                      Dx_agg='average')
             if method == 'reducing ratio':
@@ -569,7 +569,8 @@ def _score_img(coder, masker, img, confounds):
 class rfMRIDictionaryScorer:
     """Base callback to compute test score"""
 
-    def __init__(self, test_imgs, test_confounds=None):
+    def __init__(self, test_imgs, test_confounds=None,
+                 info=None):
         self.start_time = time.perf_counter()
         self.test_imgs = test_imgs
         if test_confounds is None:
@@ -579,6 +580,7 @@ class rfMRIDictionaryScorer:
         self.score = []
         self.iter = []
         self.time = []
+        self.info = info
 
     def __call__(self, masker, dict_fact):
         test_time = time.perf_counter()
@@ -593,3 +595,7 @@ class rfMRIDictionaryScorer:
         self.score.append(score)
         self.time.append(this_time)
         self.iter.append(dict_fact.n_iter_)
+        if self.info is not None:
+            self.info['time'] = self.time
+            self.info['score'] = self.score
+            self.info['iter'] = self.iter

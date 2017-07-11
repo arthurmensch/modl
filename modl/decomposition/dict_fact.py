@@ -43,7 +43,7 @@ class CodingMixin(TransformerMixin):
         self.n_threads = n_threads
 
         if self.n_threads > 1:
-            self._pool = ThreadPoolExecutor(n_threads)
+            self._pool = ThreadPoolExecutor(n_threads - 1)
 
     def transform(self, X):
         """
@@ -420,8 +420,12 @@ class DictFact(CodingMixin, BaseEstimator):
                 dtype = np.float64
             elif dtype not in [np.float32, np.float64]:
                 return ValueError('dtype should be float32 or float64')
-        if self.optimizer not in ['variational', 'sgd']:
-            return ValueError("optimizer should be 'variational' or 'sgd'")
+        if self.optimizer not in ['variational', 'benchmarks']:
+            return ValueError("optimizer should be 'variational' or 'benchmarks'")
+        if self.optimizer == 'benchmarks':
+            self.reduction = 1
+            self.G_agg = 'full'
+            self.Dx_agg = 'full'
 
         # Regression statistics
         if self.G_agg == 'average':

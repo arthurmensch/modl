@@ -34,6 +34,7 @@ class ImageDictFact(BaseEstimator):
                  patch_size=(8, 8),
                  batch_size=100,
                  buffer_size=None,
+                 step_size=1e-3,
                  n_components=50,
                  alpha=0.1,
                  learning_rate=0.92,
@@ -46,6 +47,7 @@ class ImageDictFact(BaseEstimator):
                  n_threads=1,
                  ):
         self.n_threads = n_threads
+        self.step_size = step_size
         self.verbose = verbose
         self.callback = callback
         self.random_state = random_state
@@ -64,9 +66,17 @@ class ImageDictFact(BaseEstimator):
     def fit(self, image, y=None):
         self.random_state = check_random_state(self.random_state)
 
-        method = ImageDictFact.methods[self.method]
-        G_agg = method['G_agg']
-        Dx_agg = method['Dx_agg']
+        if self.method != 'benchmarks':
+            method = ImageDictFact.methods[self.method]
+            G_agg = method['G_agg']
+            Dx_agg = method['Dx_agg']
+            reduction = self.reduction
+            optimizer = 'variational'
+        else:
+            optimizer = 'benchmarks'
+            reduction = 1
+            G_agg = 'full'
+            Dx_agg = 'full'
 
         setting = ImageDictFact.settings[self.setting]
         comp_l1_ratio = setting['comp_l1_ratio']
@@ -87,11 +97,13 @@ class ImageDictFact(BaseEstimator):
                                    comp_l1_ratio=comp_l1_ratio,
                                    learning_rate=self.learning_rate,
                                    comp_pos=comp_pos,
+                                   optimizer=optimizer,
+                                   step_size=self.step_size,
                                    code_pos=code_pos,
                                    batch_size=self.batch_size,
                                    G_agg=G_agg,
                                    Dx_agg=Dx_agg,
-                                   reduction=self.reduction,
+                                   reduction=reduction,
                                    code_alpha=self.alpha,
                                    code_l1_ratio=code_l1_ratio,
                                    callback=self._callback,
