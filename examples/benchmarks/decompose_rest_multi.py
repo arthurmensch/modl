@@ -33,12 +33,12 @@ def config():
 @single_exp.config
 def config():
     n_components = 70
-    batch_size = 200
+    batch_size = 100
     learning_rate = 0.92
-    method = 'gram'
+    method = 'average'
     reduction = 12
-    alpha = 1e-4
-    n_epochs = 30
+    alpha = 3e-4
+    n_epochs = 100
     verbose = 100
     n_jobs = 2
     optimizer = 'variational'
@@ -65,7 +65,7 @@ def run(n_seeds, n_jobs, _run, _seed):
     exps = []
     exps += [{'optimizer': 'sgd',
               'step_size': step_size}
-             for step_size in np.logspace(-7, 0, 15)]
+             for step_size in np.logspace(-7, -3, 9)]
     exps += [{'optimizer': 'variational',
               'reduction': reduction}
              for reduction in [1, 4, 6, 8, 12, 24]]

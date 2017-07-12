@@ -51,7 +51,7 @@ def get_raw_rest_data(raw_dir):
                          'Unmasking must be done beforehand.' % raw_dir)
     params = json.load(open(join(raw_dir, 'masker.json'), 'r'))
     masker = MultiRawMasker(**params)
-    unmasked_imgs_list = pd.read_csv(join(raw_dir, 'data.csv'))
+    unmasked_imgs_list = pd.read_csv(join(raw_dir, 'adhd_data.csv'))
     return masker, unmasked_imgs_list
 
 
@@ -107,7 +107,7 @@ def create_raw_rest_data(imgs_list,
     imgs_list = imgs_list.assign(filename=filenames)
     imgs_list = imgs_list.assign(confounds=None)
     if not mock:
-        imgs_list.to_csv(os.path.join(raw_dir, 'data.csv'), mode='w+')
+        imgs_list.to_csv(os.path.join(raw_dir, 'adhd_data.csv'), mode='w+')
         mask_img_file = os.path.join(raw_dir, 'mask_img.nii.gz')
         masker.mask_img_.to_filename(mask_img_file)
         params = masker.get_params()

@@ -11,7 +11,7 @@ from sklearn.externals.joblib import Memory
 from modl.input_data.fmri.rest import create_raw_rest_data
 from modl.utils.system import get_cache_dirs, get_output_dir
 
-smoothing_fwhm = 4
+smoothing_fwhm = 6
 n_jobs = 20
 
 dataset = fetch_adhd()
@@ -21,7 +21,7 @@ imgs_list = dataset.rest
 root = dataset.root
 mask_img = dataset.mask
 
-artifact_dir = join(get_output_dir(), 'unmasked', 'adhd_4')
+artifact_dir = join(get_output_dir(), 'unmasked', 'adhd_6')
 if not os.path.exists(artifact_dir):
     os.makedirs(artifact_dir)
 

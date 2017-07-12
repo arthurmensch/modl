@@ -484,6 +484,8 @@ def _compute_components(masker,
                          verbose=0)
     dict_fact.prepare(n_samples=n_samples, n_features=n_voxels,
                       X=dict_init, dtype=dtype)
+    cpu_time = 0
+    io_time = 0
     if n_records > 0:
         if verbose:
             log_lim = log(n_records * n_epochs, 10)
@@ -494,7 +496,7 @@ def _compute_components(masker,
         for i in range(n_epochs):
             if verbose:
                 print('Epoch %i' % (i + 1))
-            if method == 'gram' and i == 4:
+            if method == 'gram' and i == 5:
                 dict_fact.set_params(G_agg='full',
                                      Dx_agg='average')
             if method == 'reducing ratio':
@@ -506,14 +508,17 @@ def _compute_components(masker,
                             current_n_records >= verbose_iter_[0]):
                     print('Record %i' % current_n_records)
                     if callback is not None:
-                        callback(masker, dict_fact)
+                        callback(masker, dict_fact, cpu_time, io_time)
                     verbose_iter_ = verbose_iter_[1:]
 
                 # IO bounded
+                t0 = time.perf_counter()
                 img, these_confounds = data_list[record]
                 masked_data = masker.transform(img, confounds=these_confounds)
+                io_time += time.perf_counter() - t0
 
                 # CPU bounded
+                t0 = time.perf_counter()
                 permutation = random_state.permutation(
                     masked_data.shape[0])
                 masked_data = masked_data[permutation]
@@ -524,6 +529,7 @@ def _compute_components(masker,
                 dict_fact.partial_fit(masked_data,
                                       sample_indices=sample_indices)
                 current_n_records += 1
+                cpu_time += time.perf_counter() - t0
     components = _flip(dict_fact.components_)
     return components
 
@@ -580,9 +586,11 @@ class rfMRIDictionaryScorer:
         self.score = []
         self.iter = []
         self.time = []
+        self.cpu_time = []
+        self.io_time = []
         self.info = info
 
-    def __call__(self, masker, dict_fact):
+    def __call__(self, masker, dict_fact, cpu_time, io_time):
         test_time = time.perf_counter()
         if not hasattr(self, 'data'):
             self.data = masker.transform(self.test_imgs,
@@ -594,8 +602,10 @@ class rfMRIDictionaryScorer:
         this_time = time.perf_counter() - self.start_time - self.test_time
         self.score.append(score)
         self.time.append(this_time)
+        self.cpu_time.append(cpu_time)
+        self.io_time.append(io_time)
         self.iter.append(dict_fact.n_iter_)
         if self.info is not None:
-            self.info['time'] = self.time
+            self.info['time'] = self.cpu_time
             self.info['score'] = self.score
             self.info['iter'] = self.iter

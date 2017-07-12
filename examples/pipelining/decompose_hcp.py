@@ -36,6 +36,7 @@ def config():
     n_jobs = 5
     smoothing_fwhm = 4
     optimizer = 'variational'
+    positive = True
 
 
 @exp.automain
@@ -43,6 +44,7 @@ def compute_components(n_components,
                        batch_size,
                        learning_rate,
                        method,
+                       positive,
                        reduction,
                        alpha,
                        optimizer,
@@ -69,6 +71,7 @@ def compute_components(n_components,
                              n_jobs=n_jobs,
                              random_state=1,
                              n_components=n_components,
+                             positive=positive,
                              learning_rate=learning_rate,
                              batch_size=batch_size,
                              reduction=reduction,

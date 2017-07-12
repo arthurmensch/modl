@@ -26,23 +26,23 @@ from sacred import Experiment
 import pandas as pd
 
 exp = Experiment('decompose_rest')
-base_artifact_dir = join(get_output_dir(), 'components_sgd', 'adhd')
+base_artifact_dir = join(get_output_dir(), 'decompose_rest', 'adhd')
 exp.observers.append(FileStorageObserver.create(basedir=base_artifact_dir))
 
 @exp.config
 def config():
     n_components = 70
-    batch_size = 200
+    batch_size = 100
     learning_rate = 0.92
     method = 'gram'
-    reduction = 12
+    reduction = 24
     alpha = 1e-4
     n_epochs = 2
     verbose = 20
     n_jobs = 3
     optimizer = 'variational'
     step_size = 1e-5
-    source = 'adhd_4'
+    source = 'adhd_6'
     seed = 1
 
 
@@ -78,8 +78,8 @@ def compute_components(n_components,
         data = list(map(lambda x: join(data_dir, x), data))
         data = pd.DataFrame(data, columns=['filename'])
     else:
-        smoothing_fwhm = 4
-        train_size = None
+        smoothing_fwhm = 6
+        train_size = 36
         test_size = 4
         raw_res_dir = join(get_output_dir(), 'unmasked', source)
         try:
@@ -92,11 +92,13 @@ def compute_components(n_components,
     if not os.path.exists(artifact_dir):
         os.makedirs(artifact_dir)
 
-    train_imgs, test_imgs = train_test_split(data, test_size=test_size,
-                                             random_state=0,
-                                             train_size=train_size)
-    train_imgs = train_imgs['filename'].values
-    test_imgs = test_imgs['filename'].values
+    # train_imgs, test_imgs = train_test_split(data, test_size=test_size,
+    #                                          random_state=0,
+    #                                          train_size=train_size)
+    # train_imgs = train_imgs['filename'].values
+    # test_imgs = test_imgs['filename'].values
+    train_imgs = data['filename'].values
+    test_imgs = train_imgs[:4]
 
     cb = rfMRIDictionaryScorer(test_imgs, info=_run.info)
     dict_fact = fMRIDictFact(method=method,
@@ -122,8 +124,8 @@ def compute_components(n_components,
     plt.savefig(join(artifact_dir, 'components.png'))
 
     fig, ax = plt.subplots(1, 1)
-    ax.plot(cb.time, cb.score, marker='o')
-    _run.info['time'] = cb.time
+    ax.plot(cb.cpu_time, cb.score, marker='o')
+    _run.info['time'] = cb.cpu_time
     _run.info['score'] = cb.score
     _run.info['iter'] = cb.iter
     plt.savefig(join(artifact_dir, 'score.png'))
