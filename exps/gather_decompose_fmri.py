@@ -18,7 +18,7 @@ from modl.utils.system import get_output_dir
 
 idx = pd.IndexSlice
 
-run_id = 12
+run_id = 36
 dir = join(get_output_dir(), 'decompose_rest_multi', str(run_id), 'run')
 analysis_dir = join(get_output_dir(), 'decompose_rest_multi', str(run_id), 'analysis')
 if not os.path.exists(analysis_dir):

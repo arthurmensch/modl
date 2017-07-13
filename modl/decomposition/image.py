@@ -1,5 +1,7 @@
 from math import sqrt
 
+import time
+
 from modl.feature_extraction.image import LazyCleanPatchExtractor
 from modl.input_data.image import scale_patches
 from sklearn.base import BaseEstimator
@@ -136,7 +138,7 @@ class ImageDictFact(BaseEstimator):
                 permutation = self.dict_fact_.shuffle()
                 patch_extractor.shuffle(permutation)
             buffers = gen_batches(n_patches, buffer_size)
-            if self.method == 'gram' and i == 2:
+            if self.method == 'gram' and i == 4:
                 self.dict_fact_.set_params(G_agg='full', Dx_agg='average')
             if self.method == 'reducing ratio':
                 reduction = 1 + (self.reduction - 1) / sqrt(i + 1)
@@ -189,3 +191,27 @@ def _flatten_patches(patches, with_mean=True,
                             with_std=with_std, copy=copy)
     patches = patches.reshape((n_patches, -1))
     return patches
+
+
+class DictionaryScorer:
+    def __init__(self, test_data, info=None):
+        self.start_time = time.clock()
+        self.test_data = test_data
+        self.test_time = 0
+        self.time = []
+        self.score = []
+        self.iter = []
+        self.info = info
+
+    def __call__(self, dict_fact):
+        test_time = time.clock()
+        score = dict_fact.score(self.test_data)
+        self.test_time += time.clock() - test_time
+        this_time = time.clock() - self.start_time - self.test_time
+        self.time.append(this_time)
+        self.score.append(score)
+        self.iter.append(dict_fact.n_iter_)
+        if self.info is not None:
+            self.info['time'] = self.time
+            self.info['score'] = self.score
+            self.info['iter'] = self.iter

@@ -25,8 +25,8 @@ from sacred import Experiment
 
 import pandas as pd
 
-exp = Experiment('decompose_rest')
-base_artifact_dir = join(get_output_dir(), 'decompose_rest', 'adhd')
+exp = Experiment('decomppose_fmri')
+base_artifact_dir = join(get_output_dir(), 'decompose_fmri')
 exp.observers.append(FileStorageObserver.create(basedir=base_artifact_dir))
 
 @exp.config
@@ -34,15 +34,15 @@ def config():
     n_components = 70
     batch_size = 100
     learning_rate = 0.92
-    method = 'gram'
-    reduction = 24
+    method = 'dictionary only'
+    reduction = 1
     alpha = 1e-4
-    n_epochs = 2
-    verbose = 20
-    n_jobs = 3
+    n_epochs = 100
+    verbose = 30
+    n_jobs = 5
     optimizer = 'variational'
     step_size = 1e-5
-    source = 'adhd_6'
+    source = 'adhd_4'
     seed = 1
 
 
@@ -61,7 +61,9 @@ def compute_components(n_components,
                        source,
                        _run):
     basedir = join(_run.observers[0].basedir, str(_run._id))
-    print(basedir)
+    artifact_dir = join(basedir, 'artifacts')
+    if not os.path.exists(artifact_dir):
+        os.makedirs(artifact_dir)
 
     if source == 'hcp':
         # Hack to recover data from TSP
@@ -79,7 +81,7 @@ def compute_components(n_components,
         data = pd.DataFrame(data, columns=['filename'])
     else:
         smoothing_fwhm = 6
-        train_size = 36
+        train_size = 4
         test_size = 4
         raw_res_dir = join(get_output_dir(), 'unmasked', source)
         try:
@@ -88,17 +90,13 @@ def compute_components(n_components,
             raw_res_dir = join(get_output_dir(), 'unmask', source)
             masker, data = get_raw_rest_data(raw_res_dir)
 
-    artifact_dir = join(basedir, 'artifacts')
-    if not os.path.exists(artifact_dir):
-        os.makedirs(artifact_dir)
 
-    # train_imgs, test_imgs = train_test_split(data, test_size=test_size,
-    #                                          random_state=0,
-    #                                          train_size=train_size)
-    # train_imgs = train_imgs['filename'].values
-    # test_imgs = test_imgs['filename'].values
-    train_imgs = data['filename'].values
-    test_imgs = train_imgs[:4]
+
+    train_imgs, test_imgs = train_test_split(data, test_size=test_size,
+                                             random_state=0,
+                                             train_size=train_size)
+    train_imgs = train_imgs['filename'].values
+    test_imgs = test_imgs['filename'].values
 
     cb = rfMRIDictionaryScorer(test_imgs, info=_run.info)
     dict_fact = fMRIDictFact(method=method,

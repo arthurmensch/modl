@@ -5,6 +5,7 @@ from tempfile import TemporaryFile
 
 import numpy as np
 import scipy
+import time
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils import check_array, check_random_state, gen_batches
 from sklearn.utils.validation import check_is_fitted
@@ -43,7 +44,7 @@ class CodingMixin(TransformerMixin):
         self.n_threads = n_threads
 
         if self.n_threads > 1:
-            self._pool = ThreadPoolExecutor(n_threads - 1)
+            self._pool = ThreadPoolExecutor(n_threads)
 
     def transform(self, X):
         """
@@ -326,6 +327,7 @@ class DictFact(CodingMixin, BaseEstimator):
         -------
         self
         """
+        t0 = time.perf_counter()
         X = check_array(X, dtype=[np.float32, np.float64], order='C')
 
         n_samples, n_features = X.shape
@@ -335,6 +337,7 @@ class DictFact(CodingMixin, BaseEstimator):
             this_X = X[batch]
             these_sample_indices = get_sub_slice(sample_indices, batch)
             self._single_batch_fit(this_X, these_sample_indices)
+        self.time_ += time.perf_counter() - t0
         return self
 
     def set_params(self, **params):
@@ -485,6 +488,7 @@ class DictFact(CodingMixin, BaseEstimator):
             self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
                                               base=10) - 1) * self.batch_size
             self.verbose_iter_ = self.verbose_iter_.tolist()
+        self.time_ = 0
         return self
 
     def _callback(self):

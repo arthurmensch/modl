@@ -4,20 +4,21 @@ from os import path
 from os.path import join
 
 import numpy as np
-from modl.utils.system import get_output_dir
 from sacred import Experiment
 from sacred.observers import FileStorageObserver
 from sklearn.externals.joblib import Parallel
 from sklearn.externals.joblib import delayed
 from sklearn.utils import check_random_state
 
+from modl.utils.system import get_output_dir
+
 # Add examples to known modules
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
-from examples.benchmarks.decompose_rest import exp as single_exp
+from exps.exp_decompose_fmri import exp as single_exp
 
-exp = Experiment('decompose_rest_multi')
-basedir = join(get_output_dir(), 'decompose_rest_multi')
+exp = Experiment('multi_decompose_fmri')
+basedir = join(get_output_dir(), 'multi_decompose_fmri')
 if not os.path.exists(basedir):
     os.makedirs(basedir)
 exp.observers.append(FileStorageObserver.create(basedir=basedir))

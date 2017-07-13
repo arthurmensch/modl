@@ -7,28 +7,10 @@ matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
 from modl.datasets.image import load_image
-from modl.decomposition.image import ImageDictFact
+from modl.decomposition.image import ImageDictFact, DictionaryScorer
 from modl.feature_extraction.image import LazyCleanPatchExtractor
 from modl.plotting.image import plot_patches
 
-
-class DictionaryScorer:
-    def __init__(self, test_data):
-        self.start_time = time.clock()
-        self.test_data = test_data
-        self.test_time = 0
-        self.time = []
-        self.score = []
-        self.iter = []
-
-    def __call__(self, dict_fact):
-        test_time = time.clock()
-        score = dict_fact.score(self.test_data)
-        self.test_time += time.clock() - test_time
-        this_time = time.clock() - self.start_time - self.test_time
-        self.time.append(this_time)
-        self.score.append(score)
-        self.iter.append(dict_fact.n_iter_)
 
 batch_size = 400
 learning_rate = 0.92
@@ -44,7 +26,7 @@ verbose = 0
 method = 'gram'
 step_size = 0.1
 setting = 'dictionary learning'
-source = 'aviris'
+source = 'lisboa'
 gray = False
 scale = 1
 
