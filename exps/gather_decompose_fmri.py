@@ -18,35 +18,35 @@ from modl.utils.system import get_output_dir
 
 idx = pd.IndexSlice
 
-run_id = 36
-dir = join(get_output_dir(), 'decompose_rest_multi', str(run_id), 'run')
-analysis_dir = join(get_output_dir(), 'decompose_rest_multi', str(run_id), 'analysis')
+run_id = 1
+run_dir = join(get_output_dir(), 'multi_decompose_fmri', str(run_id), 'run')
+analysis_dir = join(get_output_dir(), 'multi_decompose_fmri', str(run_id), 'analysis')
 if not os.path.exists(analysis_dir):
     os.makedirs(analysis_dir)
 
 data = []
-for i in range(22):
-    this_dir = join(dir, str(i))
+for this_dir in os.listdir(run_dir):
+    this_dir = join(run_dir, this_dir)
     try:
         config = json.load(open(join(this_dir, 'config.json'), 'r'))
         info = json.load(open(join(this_dir, 'info.json'), 'r'))
     except FileNotFoundError:
-        print('Skipping %i' % i)
+        print('Skipping %s' % this_dir)
         continue
-    optimizer = config['optimizer']
+    method = config['method']
     step_size = config['step_size']
     reduction = config['reduction']
     score = info['score']
     time = info['time']
     data.append({'step_size': step_size,
-                 'optimizer': optimizer,
+                 'method': method,
                  'reduction': reduction,
                  'score': score,
                  'time': time})
 data = pd.DataFrame(data)
-data.set_index(['optimizer', 'reduction', 'step_size'], inplace=True)
+data.set_index(['method', 'reduction', 'step_size'], inplace=True)
 data.sort_index(inplace=True)
-sgd_data = data.loc['sgd']
+sgd_data = data.loc[['sgd']]
 last_scores = []
 for _, this_data in sgd_data.iterrows():
     last_score = this_data['score'][-1]
@@ -55,10 +55,8 @@ last_scores = np.array(last_scores)
 idxmin = np.argmin(last_scores)
 sgd_data = sgd_data.iloc[[idxmin]]
 
-var_data = data.loc['variational']
-data = pd.concat([sgd_data, var_data], keys=['sgd', 'variational'],
-                 names=['optimizer'],
-                 axis=0)
+var_data = data.query("method != 'sgd'")
+data = pd.concat([sgd_data, var_data], axis=0)
 data.reset_index(inplace=True)
 
 data.to_csv(join(analysis_dir, 'data.csv'))
@@ -81,11 +79,10 @@ color_dict = {reduction: color for reduction, color in
               zip(reductions, colormap)}
 color_dict[1] = ref_colormap[0]
 
-for optimizer, sub_data in data.groupby('optimizer'):
+for method, sub_data in data.groupby('method'):
     for _, this_data in sub_data.iterrows():
-        if optimizer == 'sgd':
+        if method == 'sgd':
             label = 'SGD (best step-size)'
-            # label = 'SGD %.4f' % this_data['step_size']
             color = sgd_colormap[0]
         else:
             reduction = this_data['reduction']

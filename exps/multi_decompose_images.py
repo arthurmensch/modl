@@ -15,10 +15,10 @@ from modl.utils.system import get_output_dir
 # Add examples to known modules
 sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
-from exps.exp_decompose_fmri import exp as single_exp
+from exps.exp_decompose_images import exp as single_exp
 
-exp = Experiment('multi_decompose_fmri')
-basedir = join(get_output_dir(), 'multi_decompose_fmri')
+exp = Experiment('multi_decompose_fmri.py')
+basedir = join(get_output_dir(), 'multi_decompose_images')
 if not os.path.exists(basedir):
     os.makedirs(basedir)
 exp.observers.append(FileStorageObserver.create(basedir=basedir))
@@ -26,25 +26,30 @@ exp.observers.append(FileStorageObserver.create(basedir=basedir))
 
 @exp.config
 def config():
-    n_jobs = 2
+    n_jobs = 15
     n_seeds = 1
     seed = 1
 
 
-@single_exp.config
+@exp.config
 def config():
-    n_components = 70
-    batch_size = 100
+    batch_size = 400
     learning_rate = 0.92
-    method = 'average'
-    reduction = 12
-    alpha = 3e-4
-    n_epochs = 100
+    reduction = 10
+    alpha = 0.08
+    n_epochs = 12
+    n_components = 256
+    test_size = 4000
+    max_patches = 10000
+    patch_size = (16, 16)
+    n_threads = 2
     verbose = 100
-    n_jobs = 1
-    step_size = 1e-5
-    source = 'adhd_4'
-    seed = 1
+    method = 'gram'
+    step_size = 0.1
+    setting = 'dictionary learning'
+    source = 'aviris'
+    gray = False
+    scale = 1
 
 
 def single_run(config_updates, rundir, _id):
@@ -65,10 +70,10 @@ def run(n_seeds, n_jobs, _run, _seed):
     exps = []
     exps += [{'method': 'sgd',
               'step_size': step_size}
-             for step_size in np.logspace(-7, -7, 1)]
-    exps += [{'method': 'gram',
-              'reduction': reduction}
-             for reduction in [12]]
+             for step_size in np.logspace(-7, -3, 9)]
+    exps = [{'method': 'gram',
+             'reduction': reduction}
+            for reduction in [1, 12]]
 
     rundir = join(basedir, str(_run._id), 'run')
     if not os.path.exists(rundir):

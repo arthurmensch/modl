@@ -40,7 +40,6 @@ def config():
     n_epochs = 100
     verbose = 30
     n_jobs = 5
-    optimizer = 'variational'
     step_size = 1e-5
     source = 'adhd_4'
     seed = 1
@@ -55,7 +54,6 @@ def compute_components(n_components,
                        alpha,
                        step_size,
                        n_jobs,
-                       optimizer,
                        n_epochs,
                        verbose,
                        source,
@@ -102,7 +100,6 @@ def compute_components(n_components,
     dict_fact = fMRIDictFact(method=method,
                              mask=masker,
                              verbose=verbose,
-                             optimizer=optimizer,
                              n_epochs=n_epochs,
                              n_jobs=n_jobs,
                              random_state=1,

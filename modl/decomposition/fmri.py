@@ -261,7 +261,6 @@ class fMRIDictFact(fMRICoderMixin):
 
     def __init__(self,
                  method='masked',
-                 optimizer='variational',
                  step_size=1,
                  n_components=20,
                  n_epochs=1,
@@ -307,7 +306,6 @@ class fMRIDictFact(fMRICoderMixin):
         self.step_size = step_size
         self.positive = positive
         self.learning_rate = learning_rate
-        self.optimizer = optimizer
         self.random_state = random_state
         self.callback = callback
 
@@ -348,7 +346,6 @@ class fMRIDictFact(fMRICoderMixin):
             reduction=self.reduction,
             learning_rate=self.learning_rate,
             n_components=self.n_components,
-            optimizer=self.optimizer,
             batch_size=self.batch_size,
             positive=self.positive,
             n_epochs=self.n_epochs,
@@ -422,7 +419,6 @@ def _compute_components(masker,
                         step_size=1,
                         confounds=None,
                         dict_init=None,
-                        optimizer='variational',
                         alpha=1,
                         positive=False,
                         reduction=1,
@@ -445,13 +441,20 @@ def _compute_components(masker,
     masker._check_fitted()
     dict_init = _check_dict_init(dict_init, mask_img=masker.mask_img_,
                                  n_components=n_components)
-    # dict_init might have fewer pipelining than asked for
+    # dict_init might have fewer components than asked for
     if dict_init is not None:
         n_components = dict_init.shape[0]
     random_state = check_random_state(random_state)
-    method = methods[method]
-    G_agg = method['G_agg']
-    Dx_agg = method['Dx_agg']
+    if method == 'sgd':
+        optimizer = 'sgd'
+        G_agg = 'full'
+        Dx_agg = 'full'
+        reduction = 1
+    else:
+        method = methods[method]
+        G_agg = method['G_agg']
+        Dx_agg = method['Dx_agg']
+        optimizer = 'variational'
 
     if verbose:
         print("Scanning data")
