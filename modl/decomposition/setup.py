@@ -22,7 +22,6 @@ def configuration(parent_package='', top_path=None):
     config.ext_modules += extensions
 
     config.add_subpackage('tests')
-    config.add_subpackage('_faster')
 
     return config
 

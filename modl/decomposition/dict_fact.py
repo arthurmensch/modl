@@ -17,8 +17,6 @@ from .dict_fact_fast import _enet_regression_multi_gram, \
     _enet_regression_single_gram, _update_G_average, _batch_weight
 from ..utils.math.enet import enet_norm, enet_projection, enet_scale
 
-from ._faster.dict_fact import DictFact as _FasterDictFactLegacy
-
 MAX_INT = np.iinfo(np.int64).max
 
 
@@ -744,71 +742,3 @@ class Coder(CodingMixin, BaseEstimator):
 
     def fit(self, X=None):
         return self
-
-
-class FasterDictFact(_FasterDictFactLegacy):
-    '''Simple wrapper for legacy _faster alg'''
-
-    def __init__(self,
-                 reduction=1,
-                 learning_rate=1,
-                 sample_learning_rate=0.76,
-                 Dx_agg='masked',
-                 G_agg='masked',
-                 optimizer='variational',
-                 dict_init=None,
-                 code_alpha=1,
-                 code_l1_ratio=1,
-                 comp_l1_ratio=0,
-                 step_size=1,
-                 tol=1e-2,
-                 max_iter=100,
-                 code_pos=False,
-                 comp_pos=False,
-                 random_state=None,
-                 n_epochs=1,
-                 n_components=10,
-                 batch_size=10,
-                 verbose=0,
-                 callback=None,
-                 n_threads=1,
-                 rand_size=True,
-                 replacement=True,
-                 ):
-        _FasterDictFactLegacy.__init__(self,
-                                       n_components=n_components,
-                                       alpha=code_alpha,
-                                       l1_ratio=comp_l1_ratio,
-                                       pen_l1_ratio=code_l1_ratio,
-                                       lasso_tol=tol,
-                                       purge_tol=0,
-                                       # Hyper-parameters
-                                       learning_rate=learning_rate,
-                                       batch_size=batch_size,
-                                       offset=0,
-                                       sample_learning_rate=sample_learning_rate,
-                                       # Reduction parameter
-                                       reduction=reduction,
-                                       G_agg=G_agg,
-                                       Dx_agg=Dx_agg,
-                                       AB_agg='async',
-                                       subset_sampling='random' if replacement
-                                       else 'cyclic',
-                                       dict_reduction='follow',
-                                       # ['independent', 'coupled']
-                                       # Dict parameter
-                                       dict_init=dict_init,
-                                       # For variance reduction
-                                       n_samples=None,
-                                       # Generic parameters
-                                       max_n_iter=max_iter,
-                                       n_epochs=n_epochs,
-                                       random_state=random_state,
-                                       verbose=verbose,
-                                       verbose_offset=1,
-                                       n_threads=n_threads,
-                                       temp_dir=None,
-                                       callback=callback,
-                                       buffer_size=None,
-                                       non_negative_D=comp_pos,
-                                       non_negative_A=code_pos, )
