@@ -31,10 +31,9 @@ def config():
     patch_size = (32, 32)
     n_threads = 2
     verbose = 10
-    method = 'gram'
-    step_size = 0.1
+    method = 'sgd'
+    step_size = 10
     setting = 'dictionary learning'
-    optimizer = 'variational'
     source = 'lisboa'
     gray = False
     scale = 1
@@ -52,7 +51,6 @@ def decompose_images(batch_size,
                      patch_size,
                      n_threads,
                      verbose,
-                     optimizer,
                      method,
                      step_size,
                      setting,
@@ -83,7 +81,6 @@ def decompose_images(batch_size,
                               n_components=n_components,
                               learning_rate=learning_rate,
                               max_patches=max_patches,
-                              optimizer=optimizer,
                               batch_size=batch_size,
                               patch_size=patch_size,
                               reduction=reduction,

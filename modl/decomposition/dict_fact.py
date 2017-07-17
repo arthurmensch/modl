@@ -327,7 +327,6 @@ class DictFact(CodingMixin, BaseEstimator):
         -------
         self
         """
-        t0 = time.perf_counter()
         X = check_array(X, dtype=[np.float32, np.float64], order='C')
 
         n_samples, n_features = X.shape
@@ -337,7 +336,6 @@ class DictFact(CodingMixin, BaseEstimator):
             this_X = X[batch]
             these_sample_indices = get_sub_slice(sample_indices, batch)
             self._single_batch_fit(this_X, these_sample_indices)
-        self.time_ += time.perf_counter() - t0
         return self
 
     def set_params(self, **params):
@@ -505,6 +503,7 @@ class DictFact(CodingMixin, BaseEstimator):
             self._callback()
         if X.flags['WRITEABLE'] is False:
             X = X.copy()
+        t0 = time.perf_counter()
 
         subset = self.feature_sampler_.yield_subset(self.reduction)
         batch_size = X.shape[0]
@@ -525,6 +524,7 @@ class DictFact(CodingMixin, BaseEstimator):
         else:
             self._update_stat_and_dict_parallel(subset, X,
                                                 this_code, w)
+        self.time_ += time.perf_counter() - t0
 
     def _update_stat_and_dict(self, subset, X, code, w):
         """For multi-threading"""

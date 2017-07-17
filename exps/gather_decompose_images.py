@@ -18,9 +18,9 @@ from modl.utils.system import get_output_dir
 
 idx = pd.IndexSlice
 
-run_id = 14
-run_dir = join(get_output_dir(), 'multi_decompose_fmri', str(run_id), 'run')
-analysis_dir = join(get_output_dir(), 'multi_decompose_fmri', str(run_id), 'analysis')
+run_id = 19
+run_dir = join(get_output_dir(), 'multi_decompose_images', str(run_id), 'run')
+analysis_dir = join(get_output_dir(), 'multi_decompose_images', str(run_id), 'analysis')
 if not os.path.exists(analysis_dir):
     os.makedirs(analysis_dir)
 

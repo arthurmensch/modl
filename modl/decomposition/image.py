@@ -108,6 +108,7 @@ class ImageDictFact(BaseEstimator):
                                    reduction=reduction,
                                    code_alpha=self.alpha,
                                    code_l1_ratio=code_l1_ratio,
+                                   tol=1e-2,
                                    callback=self._callback,
                                    verbose=self.verbose,
                                    n_threads=self.n_threads)
@@ -173,6 +174,11 @@ class ImageDictFact(BaseEstimator):
         return self.dict_fact_.n_iter_
 
     @property
+    def time_(self):
+        # Property for callback purpose
+        return self.dict_fact_.time_
+
+    @property
     def components_(self):
         # Property for callback purpose
         components_shape = (self.n_components,) + self.patch_shape_
@@ -199,6 +205,7 @@ class DictionaryScorer:
         self.test_data = test_data
         self.test_time = 0
         self.time = []
+        self.cpu_time = []
         self.score = []
         self.iter = []
         self.info = info
@@ -211,7 +218,8 @@ class DictionaryScorer:
         self.time.append(this_time)
         self.score.append(score)
         self.iter.append(dict_fact.n_iter_)
+        self.cpu_time.append(dict_fact.time_)
         if self.info is not None:
-            self.info['time'] = self.time
+            self.info['time'] = self.cpu_time
             self.info['score'] = self.score
             self.info['iter'] = self.iter

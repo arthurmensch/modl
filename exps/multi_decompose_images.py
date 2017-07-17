@@ -17,7 +17,7 @@ sys.path.append(path.dirname(path.dirname
                              (path.dirname(path.abspath(__file__)))))
 from exps.exp_decompose_images import exp as single_exp
 
-exp = Experiment('multi_decompose_fmri.py')
+exp = Experiment('multi_decompose_images')
 basedir = join(get_output_dir(), 'multi_decompose_images')
 if not os.path.exists(basedir):
     os.makedirs(basedir)
@@ -31,36 +31,42 @@ def config():
     seed = 1
 
 
-@exp.config
+@single_exp.config
 def config():
-    batch_size = 400
+    batch_size = 200
     learning_rate = 0.92
     reduction = 10
-    alpha = 0.08
+    alpha = 0.1
     n_epochs = 12
     n_components = 256
     test_size = 4000
-    max_patches = 10000
+    max_patches = 100000
     patch_size = (16, 16)
     n_threads = 2
     verbose = 100
     method = 'gram'
     step_size = 0.1
-    setting = 'dictionary learning'
+    setting = 'NMF'
     source = 'aviris'
     gray = False
     scale = 1
 
 
 def single_run(config_updates, rundir, _id):
-    run = single_exp._create_run(config_updates=config_updates)
-    observer = FileStorageObserver.create(basedir=rundir)
-    run._id = _id
-    run.observers = [observer]
-    try:
-        run()
-    except:
-        print('Run %i failed' % _id)
+    for i in range(3):
+        try:
+            run = single_exp._create_run(config_updates=config_updates)
+            observer = FileStorageObserver.create(basedir=rundir)
+            run._id = _id
+            run.observers = [observer]
+            run()
+            break
+        except TypeError:
+            if i < 2:
+                print("Run %i failed at start, retrying..." % _id)
+            else:
+                print("Giving up %i" % _id)
+            continue
 
 
 @exp.automain
@@ -70,10 +76,10 @@ def run(n_seeds, n_jobs, _run, _seed):
     exps = []
     exps += [{'method': 'sgd',
               'step_size': step_size}
-             for step_size in np.logspace(-7, -3, 9)]
-    exps = [{'method': 'gram',
+             for step_size in np.logspace(-3, 3, 7)]
+    exps += [{'method': 'gram',
              'reduction': reduction}
-            for reduction in [1, 12]]
+            for reduction in [1, 4, 6, 8, 12, 24]]
 
     rundir = join(basedir, str(_run._id), 'run')
     if not os.path.exists(rundir):
