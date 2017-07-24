@@ -37,7 +37,7 @@ def config():
     learning_rate = 0.92
     reduction = 10
     alpha = 0.1
-    n_epochs = 12
+    n_epochs = 40
     n_components = 256
     test_size = 4000
     max_patches = 100000

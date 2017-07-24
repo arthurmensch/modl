@@ -18,7 +18,7 @@ from modl.utils.system import get_output_dir
 
 idx = pd.IndexSlice
 
-run_id = 19
+run_id = 23
 run_dir = join(get_output_dir(), 'multi_decompose_images', str(run_id), 'run')
 analysis_dir = join(get_output_dir(), 'multi_decompose_images', str(run_id), 'analysis')
 if not os.path.exists(analysis_dir):
@@ -54,7 +54,7 @@ for _, this_data in sgd_data.iterrows():
 last_scores = np.array(last_scores)
 idxmin = np.argmin(last_scores)
 sgd_data = sgd_data.iloc[[idxmin]]
-
+print(idxmin)
 var_data = data.query("method != 'sgd'")
 data = pd.concat([sgd_data, var_data], axis=0)
 data.reset_index(inplace=True)
