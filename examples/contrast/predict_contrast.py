@@ -130,8 +130,7 @@ class MyCallback(Callback):
 @predict_contrast_exp.config
 def config():
     reduced_dir = join(get_data_dirs()[0], 'pipeline', 'contrast', 'reduced')
-    unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask',
-                      'contrast')
+    unmask_dir = join(get_data_dirs()[0], 'pipeline', 'unmask', 'contrast')
     artifact_dir = join(get_data_dirs()[0], 'pipeline', 'contrast',
                         'test')
     datasets = ['archi', 'hcp']
@@ -150,15 +149,14 @@ def config():
     validation = True
     geometric_reduction = True
     alpha = 0
-    latent_dim = 75
+    latent_dim = 200
     activation = 'linear'
-    source = 'hcp_rs_concat'
+    source = 'hcp_rs_positive'
     optimizer = 'adam'
     lr = 1e-3
     dropout_input = 0.25
-    dropout_latent = 0.5
-    batch_size = 256
-    per_dataset_std = False
+    dropout_latent = 0.9
+    batch_size = 128
     joint_training = True
     epochs = 50
     depth_weight = [0., 1., 0.]
@@ -206,7 +204,6 @@ def no_geometric():
     dropout_input = 0.
     dropout_latent = 0.
     batch_size = 300
-    per_dataset_std = False
     joint_training = True
     optimizer = 'sgd'
     epochs = 15
@@ -220,7 +217,7 @@ def no_geometric():
     _seed = 0
 
 
-def test_model(prediction):
+def score_model(prediction):
     match = prediction['true_label'] == prediction['predicted_label']
     prediction = prediction.assign(match=match)
 
@@ -252,7 +249,6 @@ def train_model(alpha,
                 optimizer,
                 activation,
                 datasets,
-                per_dataset_std,
                 dataset_weight,
                 steps_per_epoch,
                 depth_weight,
@@ -306,6 +302,8 @@ def train_model(alpha,
     X = X.reset_index(level=['direction'], drop=True)
     X.sort_index(inplace=True)
 
+    X = X.iloc[:, -512:]
+
     # Cross validation folds
     cv = StratifiedGroupShuffleSplit(stratify_levels='dataset',
                                      group_name='subject',
@@ -315,7 +313,7 @@ def train_model(alpha,
                                      random_state=0)
     train, test = next(cv.split(X))
 
-    # X, standard_scaler = scale(X, train, True)
+    X, standard_scaler = scale(X, train, True)
     # dump(standard_scaler, join(artifact_dir, 'standard_scaler.pkl'))
 
     y = np.concatenate([X.index.get_level_values(level)[:, np.newaxis]
@@ -497,7 +495,7 @@ def train_model(alpha,
                                names=['fold'], keys=['train', 'test'])
         prediction.to_csv(join(artifact_dir,
                                'prediction_depth_%i.csv' % depth))
-        res = test_model(prediction)
+        res = score_model(prediction)
         _run.info['score'][depth_name[depth]] = res
         print('Prediction at depth %s' % depth_name[depth], res)
         _run.add_artifact(join(artifact_dir,
