@@ -5,6 +5,7 @@
 import os
 import sys
 
+from Cython.Build import cythonize
 from setuptools import find_packages
 
 DISTNAME = 'modl'
@@ -31,6 +32,8 @@ def configuration(parent_package='', top_path=None):
                        quiet=True)
 
     config.add_subpackage('modl')
+
+    config.ext_modules = cythonize(config.ext_modules, nthreads=4)
 
     return config
 

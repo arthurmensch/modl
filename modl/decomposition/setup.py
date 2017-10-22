@@ -1,7 +1,6 @@
 from distutils.extension import Extension
 
 import numpy
-from Cython.Build import cythonize
 
 
 def configuration(parent_package='', top_path=None):

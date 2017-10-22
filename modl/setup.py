@@ -1,9 +1,3 @@
-from distutils.extension import Extension
-
-import numpy
-from Cython.Build import cythonize
-
-
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
@@ -15,8 +9,6 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('feature_extraction')
     config.add_subpackage('decomposition')
     config.add_subpackage('input_data')
-
-    config.ext_modules = cythonize(config.ext_modules, nthreads=4)
 
     return config
 
