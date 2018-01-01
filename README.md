@@ -53,7 +53,7 @@ The package essentially provides three estimators:
 A fast running example that decomposes a small dataset of resting-fmri data into a 70 components map is provided
 
 ```
-python examples/recsys_compare.py
+python examples/decompose_fmri.py
 ```
 
 It can be adapted for running on the 2TB HCP dataset, by changing the source parameter into 'hcp' (you will need to download the data first)
