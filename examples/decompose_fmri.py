@@ -19,14 +19,14 @@ from modl.plotting.fmri import display_maps
 from modl.utils.system import get_cache_dirs
 
 
-n_components = 70
+n_components = 20
 batch_size = 50
 learning_rate = .92
 method = 'masked'
 step_size = 0.01
 reduction = 12
 alpha = 1e-3
-n_epochs = 5
+n_epochs = 2
 verbose = 15
 n_jobs = 2
 smoothing_fwhm = 6
@@ -55,6 +55,7 @@ dict_fact = fMRIDictFact(smoothing_fwhm=smoothing_fwhm,
                          random_state=1,
                          n_components=n_components,
                          dict_init=dict_init,
+                         positive=True,
                          learning_rate=learning_rate,
                          batch_size=batch_size,
                          reduction=reduction,

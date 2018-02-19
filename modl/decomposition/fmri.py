@@ -524,7 +524,6 @@ def _compute_components(masker,
                 t0 = time.perf_counter()
                 permutation = random_state.permutation(
                     masked_data.shape[0])
-                masked_data = masked_data[permutation]
                 sample_indices = np.arange(
                     indices_list[record], indices_list[record + 1])
                 sample_indices = sample_indices[permutation]
