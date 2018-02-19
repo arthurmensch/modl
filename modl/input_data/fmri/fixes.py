@@ -1,5 +1,6 @@
 import copy
 import os
+from distutils.version import LooseVersion
 
 import nibabel
 import nilearn
@@ -9,7 +10,7 @@ from nibabel import Nifti1Image as NibabelNifti1Image
 from nilearn._utils import check_niimg
 from nilearn._utils.class_inspect import get_params
 
-from nilearn._utils.compat import _basestring, get_affine
+from nilearn._utils.compat import _basestring
 from nilearn._utils.niimg import short_repr, _get_target_dtype
 from nilearn.input_data import MultiNiftiMasker
 from nilearn.input_data.nifti_masker import filter_and_mask, NiftiMasker
@@ -17,6 +18,18 @@ from nilearn.input_data.nifti_masker import filter_and_mask, NiftiMasker
 from sklearn.externals import joblib as joblib
 from sklearn.externals.joblib.func_inspect import filter_args
 from sklearn.externals.joblib.hashing import NumpyHasher
+
+
+# We rely on this patch to use nibabel image affine depending
+# upon the older or newer versions of nibabel.
+# XXX: Should be removed when dropped supporting older nibabel
+# versions < 2.0.0.
+if LooseVersion(nibabel.__version__) >= LooseVersion('2.0.0'):
+    def get_affine(img):
+        return img.affine
+else:
+    def get_affine(img):
+        return img.get_affine()
 
 
 def load(filename, **kwargs):
