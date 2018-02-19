@@ -403,7 +403,7 @@ def _check_dict_init(dict_init, mask_img, n_components=None):
             assert (dict_init.shape[1] == mask_img.get_data().sum())
             components = dict_init
         else:
-            masker = NiftiMasker(smoothing_fwhm=0,
+            masker = NiftiMasker(smoothing_fwhm=None,
                                  mask_img=mask_img).fit()
             components = masker.transform(dict_init)
         if n_components is not None:

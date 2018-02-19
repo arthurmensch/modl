@@ -27,7 +27,7 @@ def fetch_adhd(n_subjects=40, data_dir=None,
     modl_data_dir = get_data_dirs(modl_data_dir)[0]
     mask_data_dir = join(modl_data_dir, 'adhd')
     if mask_url is None:
-        mask_url = 'http://amensch.fr/data/adhd/mask_img.nii.gz'
+        mask_url = 'http://amensch.fr/data/cogspaces/mask/mask_img.nii.gz'
     _fetch_file(mask_url, mask_data_dir, resume=resume)
     mask_img = join(mask_data_dir, 'mask_img.nii.gz')
     behavioral = pd.DataFrame(dataset.phenotypic)
