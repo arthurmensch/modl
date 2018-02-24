@@ -11,6 +11,7 @@ import itertools
 import time
 import warnings
 from math import log, sqrt
+from os.path import join
 
 import numpy as np
 from nibabel.filebasedimages import ImageFileError
@@ -491,9 +492,7 @@ def _compute_components(masker,
     io_time = 0
     if n_records > 0:
         if verbose:
-            log_lim = log(n_records * n_epochs, 10)
-            verbose_iter_ = np.logspace(0, log_lim, verbose,
-                                        base=10) - 1
+            verbose_iter_ = np.linspace(0, n_records * n_epochs, verbose)
             verbose_iter_ = verbose_iter_.tolist()
         current_n_records = 0
         for i in range(n_epochs):
@@ -578,7 +577,7 @@ class rfMRIDictionaryScorer:
     """Base callback to compute test score"""
 
     def __init__(self, test_imgs, test_confounds=None,
-                 info=None):
+                 info=None, artifact_dir=None):
         self.start_time = time.perf_counter()
         self.test_imgs = test_imgs
         if test_confounds is None:
@@ -591,6 +590,7 @@ class rfMRIDictionaryScorer:
         self.cpu_time = []
         self.io_time = []
         self.info = info
+        self.artifact_dir = artifact_dir
 
     def __call__(self, masker, dict_fact, cpu_time, io_time):
         test_time = time.perf_counter()
@@ -599,6 +599,7 @@ class rfMRIDictionaryScorer:
                                          confounds=self.test_confounds)
         scores = np.array([dict_fact.score(data) for data in self.data])
         len_imgs = np.array([data.shape[0] for data in self.data])
+
         score = np.sum(scores * len_imgs) / np.sum(len_imgs)
         self.test_time += time.perf_counter() - test_time
         this_time = time.perf_counter() - self.start_time - self.test_time
@@ -611,3 +612,9 @@ class rfMRIDictionaryScorer:
             self.info['time'] = self.cpu_time
             self.info['score'] = self.score
             self.info['iter'] = self.iter
+
+        if self.artifact_dir is not None:
+            components = _flip(dict_fact.components_)
+            components_img = masker.inverse_transform(components)
+            components_img.to_filename(join(self.artifact_dir, 'components_%i.nii.gz')
+                                       % dict_fact.n_iter_)

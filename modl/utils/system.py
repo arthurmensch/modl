@@ -74,12 +74,12 @@ def get_output_dir(data_dir=None):
 
     # Check data_dir which force storage in a specific location
     if data_dir is not None:
-        return data_dir.split(os.pathsep)
+        return str(data_dir)
     else:
         # If data_dir has not been specified, then we crawl default locations
-        output_dir = os.getenv('OUTPUT_MODL_DIR')
+        output_dir = os.getenv('MODL_OUTPUT')
         if output_dir is not None:
-            return output_dir.split(os.pathsep)
+            return str(output_dir)
     return os.path.expanduser('~/output/modl')
 
 
