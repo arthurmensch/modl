@@ -517,6 +517,7 @@ def _compute_components(masker,
                 t0 = time.perf_counter()
                 img, these_confounds = data_list[record]
                 masked_data = masker.transform(img, confounds=these_confounds)
+                masked_data = masked_data.astype(dtype)
                 io_time += time.perf_counter() - t0
 
                 # CPU bounded

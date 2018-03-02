@@ -1,28 +1,22 @@
 import os
 from os.path import join
 
-from modl.input_data.fmri.fixes import monkey_patch_nifti_image
-
-monkey_patch_nifti_image()
-
-from sklearn.externals.joblib import Memory
-
+from cogspaces.datasets.utils import fetch_mask
+from hcp_builder.dataset import fetch_hcp, fetch_hcp_timeseries
 from modl.input_data.fmri.rest import create_raw_rest_data
-from modl.utils.system import get_cache_dirs, get_output_dir
-
-from hcp_builder.dataset import fetch_hcp
+from modl.utils.system import get_output_dir
 
 smoothing_fwhm = 4
-n_jobs = 3
+n_jobs = 20
 
-dataset = fetch_hcp()
+imgs_list = fetch_hcp_timeseries(None, data_type='rest',
+                                 n_subjects=None, subjects=None,
+                                 on_disk=True)
 
-memory = Memory(cachedir=get_cache_dirs()[0])
-imgs_list = dataset.rest
-root = dataset.root
-mask_img = dataset.mask
+root = '/storage/store/data/HCP900'
+mask_img = fetch_mask()['icbm_gm']
 
-artifact_dir = join(get_output_dir(), 'unmasked', 'hcp')
+artifact_dir = join(get_output_dir(), 'unmasked', 'hcp_icbm_gm')
 if not os.path.exists(artifact_dir):
     os.makedirs(artifact_dir)
 
@@ -35,5 +29,5 @@ create_raw_rest_data(imgs_list,
                                         detrend=True,
                                         standardize=True,
                                         mask_img=mask_img),
-                     memory=memory,
+                     memory=None,
                      n_jobs=n_jobs)
