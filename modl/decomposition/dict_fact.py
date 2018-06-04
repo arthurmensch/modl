@@ -452,9 +452,9 @@ class DictFact(CodingMixin, BaseEstimator):
             self.components_[:, :] = self.random_state.randn(self.n_components,
                                                              n_features)
         else:
-            random_idx = self.random_state.permutation(this_n_samples)[
-                         :self.n_components]
-            self.components_ = check_array(X[random_idx], dtype=dtype.type,
+            # random_idx = self.random_state.permutation(this_n_samples)[
+            #              :self.n_components]
+            self.components_ = check_array(X[:self.n_components], dtype=dtype.type,
                                            copy=True)
         if self.comp_pos:
             self.components_[self.components_ <= 0] = \
@@ -479,7 +479,7 @@ class DictFact(CodingMixin, BaseEstimator):
         random_seed = self.random_state.randint(MAX_INT)
         self.feature_sampler_ = Sampler(n_features, self.rand_size,
                                         self.replacement, random_seed)
-        if self.verbose:
+        if self.verbose and self.n_epochs >= 1:
             log_lim = log(n_samples * self.n_epochs / self.batch_size, 10)
             self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
                                               base=10) - 1) * self.batch_size
