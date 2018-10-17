@@ -69,7 +69,7 @@ create_new_conda_env() {
     echo "conda requirements string: $REQUIREMENTS"
     if [[ "$INSTALL_MKL" == "true" ]]; then
         # Make sure that MKL is used
-        conda create -n testenv --yes $REQUIREMENTS libgfortran mkl
+        conda create -n testenv --yes $REQUIREMENTS libgfortran=1.0 mkl
     else
         # Make sure that MKL is not used
         conda create -n testenv --yes $REQUIREMENTS libgfortran=1.0 nomkl
