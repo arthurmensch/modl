@@ -3,7 +3,7 @@
 [![Travis](https://travis-ci.org/arthurmensch/modl.svg?branch=master)](https://travis-ci.org/arthurmensch/modl)
 [![Coveralls](https://coveralls.io/repos/github/arthurmensch/modl/badge.svg?branch=master)](https://coveralls.io/github/arthurmensch/modl?branch=master)
 
-This python package ([webpage](https://github.com/arthurmensch/modl)) implements our two papers from 2016:
+This python package ([webpage](https://github.com/arthurmensch/modl)) implements the two following papers:
 
 >Arthur Mensch, Julien Mairal, Bertrand Thirion, Gaël Varoquaux.
 [Stochastic Subsampling for Factorizing Huge Matrices](https://hal.archives-ouvertes.fr/hal-01431618v1). <hal-01431618> 2017.
@@ -12,7 +12,7 @@ This python package ([webpage](https://github.com/arthurmensch/modl)) implements
 [Dictionary Learning for Massive Matrix Factorization](https://hal.archives-ouvertes.fr/hal-01308934v2). International Conference
  on Machine Learning, Jun 2016, New York, United States. 2016
 
-It allows to perform sparse / dense matrix factorization on fully-observed/missing data very efficiently, by leveraging random sampling with online learning.
+It allows to perform sparse / dense matrix factorization on fully-observed/missing data very efficiently, by leveraging random subsampling with online learning.
 It is able to factorize matrices of terabyte scale with hundreds of components in the latent space in a few hours.
 
 This package allows to reproduce the
@@ -34,7 +34,7 @@ cd $HOME
 py.test --pyargs modl
 ```
 
-*This package is only tested with Python 3.5 !*
+*This package is only tested with Python 3.5+ !*
 
 ## Core code
 
