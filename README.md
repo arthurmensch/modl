@@ -3,10 +3,11 @@
 [![Travis](https://travis-ci.org/arthurmensch/modl.svg?branch=master)](https://travis-ci.org/arthurmensch/modl)
 [![Coveralls](https://coveralls.io/repos/github/arthurmensch/modl/badge.svg?branch=master)](https://coveralls.io/github/arthurmensch/modl?branch=master)
 
-This python package ([webpage](https://github.com/arthurmensch/modl)) allows to perform sparse / dense matrix factorization on fully-observed/missing data very efficiently, by leveraging random subsampling with online learning.
+This python package ([webpage](https://github.com/arthurmensch/modl)) allows to perform sparse / dense matrix factorization
+ on fully-observed/missing data very efficiently, by leveraging random subsampling with online learning.
 It is able to factorize matrices of terabyte scale with hundreds of components in the latent space in a few hours. 
 
-It is an order or magnitude faster than online matrix factorization on large datasets.
+The stochastic-subsampled online matrix factorization (SOMF) algorithm is an order or magnitude faster than online matrix factorization  (OMF) on large datasets.
 
 ![benchmark](assets/compare.jpg)
 
