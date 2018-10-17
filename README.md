@@ -11,7 +11,7 @@ The stochastic-subsampled online matrix factorization (SOMF) algorithm is an ord
 
 <img title="Benchmark" src="assets/compare.jpg?raw=true" width=400 />
 
-It provides [https://github.com/scikit-learn/scikit-learn](scikit-learn) compatible estimators that fully implements the stochastic-subsampled
+It provides [scikit-learn](https://github.com/scikit-learn/scikit-learn) compatible estimators that fully implements the stochastic-subsampled
 online matrix factorization (SOMF) algorithms. This package allows to reproduce the experiments and figures from the papers cited in reference.
 
 ## Installing from source with pip
