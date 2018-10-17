@@ -1,5 +1,7 @@
 [run]
 plugins = Cython.Coverage
+source = modl
+include = */modl/*
 omit =
     *.pxd
     */setup.py
