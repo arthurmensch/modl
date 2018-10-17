@@ -8,3 +8,4 @@ nilearn>=0.4
 scikit_learn>=0.17
 scikit-image>=0.12.3
 pandas>=0.18
+joblib>=0.12
