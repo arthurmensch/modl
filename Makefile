@@ -51,21 +51,21 @@ download-images: datadir
 download-movielens: datadir download-movielens100k download-movielens1m download-movielens10m
 
 download-movielens100k: datadir
-	./misc/download.sh http://www.mblondel.org/data/movielens100k.tar.bz2
-	tar xvfj movielens100k.tar.bz2
+	./misc/download.sh https://www.amensch.fr/data/movielens100k.zip
+	unzip movielens100k.zip
 	mv -f movielens100k $(DATADIR)
-	rm movielens100k.tar.bz2
+	rm movielens100k.zip
 
 
 download-movielens1m: datadir
-	./misc/download.sh http://www.mblondel.org/data/movielens1m.tar.bz2
-	tar xvfj movielens1m.tar.bz2
+	./misc/download.sh https://www.amensch.fr/data/movielens1m.zip
+	unzip movielens1m.zip
 	mv -f movielens1m $(DATADIR)
-	rm movielens1m.tar.bz2
+	rm movielens1m.zip
 
 
 download-movielens10m: datadir
-	./misc/download.sh http://www.mblondel.org/data/movielens10m.tar.bz2
-	tar xvfj movielens10m.tar.bz2
+	./misc/download.sh https://www.amensch.fr/data/movielens10m.zip
+	unzip movielens10m.zip
 	mv -f movielens10m $(DATADIR)
-	rm movielens10m.tar.bz2
+	rm movielens10m.zip
