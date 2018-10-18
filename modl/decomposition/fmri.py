@@ -14,6 +14,7 @@ from math import log, sqrt
 from os.path import join
 
 import numpy as np
+from joblib import dump
 from nibabel.filebasedimages import ImageFileError
 from nilearn._utils import CacheMixin
 from nilearn._utils import check_niimg
@@ -168,6 +169,10 @@ class fMRIDictFact(fMRICoderMixin):
 
     Parameters
     ----------
+
+    method, str in {'masked', 'dictionary only', 'reducing ratio', 'average', 'gram'},
+        Strategy to use for subsampling
+
     n_components: int
         Number of pipelining to extract
 
@@ -463,6 +468,8 @@ def _compute_components(masker,
     if confounds is None:
         confounds = itertools.repeat(None)
     data_list = list(zip(imgs, confounds))
+    # With modl implementation, we need to know the number of samples beforehand,
+    # even if it is actually not useful.
     n_samples_list, dtype = _lazy_scan(imgs)
     indices_list = np.zeros(len(imgs) + 1, dtype='int')
     indices_list[1:] = np.cumsum(n_samples_list)
@@ -524,9 +531,12 @@ def _compute_components(masker,
                 t0 = time.perf_counter()
                 permutation = random_state.permutation(
                     masked_data.shape[0])
-                sample_indices = np.arange(
-                    indices_list[record], indices_list[record + 1])
-                sample_indices = sample_indices[permutation]
+                if method in ['average', 'gram']:
+                    sample_indices = np.arange(
+                        indices_list[record], indices_list[record + 1])
+                    sample_indices = sample_indices[permutation]
+                else:
+                    sample_indices = None
                 masked_data = masked_data[permutation]
                 dict_fact.partial_fit(masked_data,
                                       sample_indices=sample_indices)
@@ -551,6 +561,7 @@ def _lazy_scan(imgs):
     from a 4D list of Niilike-image, without loading data"""
     n_samples_list = []
     for img in imgs:
+        print(img)
         try:
             img = check_niimg(img)
             this_n_samples = img.shape[3]
@@ -613,6 +624,7 @@ class rfMRIDictionaryScorer:
             self.info['time'] = self.cpu_time
             self.info['score'] = self.score
             self.info['iter'] = self.iter
+            dump(self.info, join(self.artifact_dir, 'info.pkl'))
 
         if self.artifact_dir is not None:
             components = _flip(dict_fact.components_)

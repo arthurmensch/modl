@@ -372,7 +372,8 @@ class DictFact(CodingMixin, BaseEstimator):
         list = [self.code_]
         if self.G_agg == 'average':
             list.append(self.G_average_)
-        list.append(self.Dx_average_)
+        if self.Dx_agg == 'average':
+            list.append(self.Dx_average_)
         perm = random_state.shuffle_with_trace(list)
         self.labels_ = self.labels_[perm]
         return perm
@@ -436,8 +437,9 @@ class DictFact(CodingMixin, BaseEstimator):
                                                    self.n_components),
                                             dtype=dtype)
             atexit.register(self._exit)
-        self.Dx_average_ = np.zeros((n_samples, self.n_components),
-                                    dtype=dtype)
+        if self.Dx_agg == 'average':
+            self.Dx_average_ = np.zeros((n_samples, self.n_components),
+                                        dtype=dtype)
         # Dictionary statistics
         self.C_ = np.zeros((self.n_components, self.n_components), dtype=dtype)
         self.B_ = np.zeros((self.n_components, n_features), dtype=dtype)
@@ -454,7 +456,8 @@ class DictFact(CodingMixin, BaseEstimator):
         else:
             # random_idx = self.random_state.permutation(this_n_samples)[
             #              :self.n_components]
-            self.components_ = check_array(X[:self.n_components], dtype=dtype.type,
+            self.components_ = check_array(X[:self.n_components],
+                                           dtype=dtype.type,
                                            copy=True)
         if self.comp_pos:
             self.components_[self.components_ <= 0] = \
@@ -479,11 +482,9 @@ class DictFact(CodingMixin, BaseEstimator):
         random_seed = self.random_state.randint(MAX_INT)
         self.feature_sampler_ = Sampler(n_features, self.rand_size,
                                         self.replacement, random_seed)
-        if self.verbose and self.n_epochs >= 1:
-            log_lim = log(n_samples * self.n_epochs / self.batch_size, 10)
-            self.verbose_iter_ = (np.logspace(0, log_lim, self.verbose,
-                                              base=10) - 1) * self.batch_size
-            self.verbose_iter_ = self.verbose_iter_.tolist()
+        if self.verbose:
+            self.verbose_iter_ = np.linspace(0, n_samples * self.n_epochs,
+                                             self.verbose).tolist()
         self.time_ = 0
         return self
 
@@ -495,7 +496,7 @@ class DictFact(CodingMixin, BaseEstimator):
         """Fit a single batch X: compute code, update statistics, update the
         dictionary"""
         if (self.verbose and self.verbose_iter_
-            and self.n_iter_ >= self.verbose_iter_[0]):
+                and self.n_iter_ >= self.verbose_iter_[0]):
             print('Iteration %i' % self.n_iter_)
             self.verbose_iter_ = self.verbose_iter_[1:]
             self._callback()
@@ -592,11 +593,11 @@ class DictFact(CodingMixin, BaseEstimator):
         else:
             X_subset = X[:, subset]
             Dx = X_subset.dot(components_subset.T) * reduction
-            self.Dx_average_[sample_indices] \
-                *= 1 - w_sample[:, np.newaxis]
-            self.Dx_average_[sample_indices] \
-                += Dx * w_sample[:, np.newaxis]
             if self.Dx_agg == 'average':
+                self.Dx_average_[sample_indices] \
+                    *= 1 - w_sample[:, np.newaxis]
+                self.Dx_average_[sample_indices] \
+                    += Dx * w_sample[:, np.newaxis]
                 Dx = self.Dx_average_[sample_indices]
 
         if self.G_agg != 'full':
