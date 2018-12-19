@@ -5,7 +5,6 @@ from os.path import join
 from scipy.misc import face
 from skimage.io import imread
 from skimage.transform import rescale
-from spectral import open_image
 
 import numpy as np
 
@@ -32,6 +31,8 @@ def load_image(source,
             image = memory.cache(rescale)(image, scale=scale)
         return image
     elif source == 'aviris':
+        from spectral import open_image
+
         image = open_image(
             join(data_dir,
                  'aviris',

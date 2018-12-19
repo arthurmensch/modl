@@ -58,14 +58,14 @@ class LazyCleanPatchExtractor(BaseEstimator):
             return self.transform()
         elif isinstance(batch, int):
             batch = slice(0, batch)
-        these_indices = list(self.indices_3d[batch].T)
+        these_indices = tuple(self.indices_3d[batch].T)
         patches = self.patches_[these_indices]
         return patches
 
     def transform(self, X=None):
         if X is not None:
             self.fit(X)
-        patches = self.patches_[list(self.indices_3d.T)]
+        patches = self.patches_[tuple(self.indices_3d.T)]
         return patches
 
     def shuffle(self, permutation=None):

@@ -14,16 +14,16 @@ from modl.plotting.image import plot_patches
 
 batch_size = 400
 learning_rate = 0.92
-reduction = 10
+reduction = 2
 alpha = 0.08
-n_epochs = 1
-n_components = 400
+n_epochs = 10
+n_components = 100
 test_size = 4000
-max_patches = 10000
+max_patches = 1000
 patch_size = (32, 32)
 n_threads = 2
-verbose = 0
-method = 'gram'
+verbose = 100
+method = 'masked'
 step_size = 0.1
 setting = 'dictionary learning'
 source = 'lisboa'
