@@ -1,5 +1,11 @@
 # Author: Arthur Mensch
 # License: BSD
+import warnings
+
+from nilearn.input_data import NiftiMasker
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 import os
 from os.path import expanduser, join
 
@@ -20,20 +26,17 @@ from nilearn.datasets import fetch_atlas_smith_2009
 
 from modl.utils.system import get_cache_dirs
 
-import warnings
-# warnings.filterwarnings('error')
-
 batch_size = 200
 learning_rate = .92
 method = 'masked'
 step_size = 0.01
 reduction_ = 8
 alpha = 1e-3
-n_epochs = 2
+n_epochs = 4
 verbose = 15
-n_jobs = 60
+n_jobs = 70
 smoothing_fwhm = 6
-components_list = [20, 40, 80, 120, 200, 300]
+components_list = [20, 40, 80, 120, 200, 300, 500]
 n_runs = 20
 
 dict_init = fetch_atlas_smith_2009().rsn20
@@ -45,6 +48,7 @@ train_imgs, train_confounds = zip(*train_data)
 test_imgs, test_confounds = zip(*test_data)
 mask = dataset.mask
 mem = Memory(location=get_cache_dirs()[0])
+masker = NiftiMasker(mask_img=mask).fit()
 
 
 def fit_single(train_imgs, test_imgs, n_components, random_state):
@@ -68,7 +72,7 @@ def fit_single(train_imgs, test_imgs, n_components, random_state):
                              )
     dict_fact.fit(train_imgs, confounds=train_confounds)
     score = dict_fact.score(test_imgs)
-    return dict_fact, score
+    return dict_fact.components_, score
 
 
 def fit_many_runs(train_imgs, test_imgs, components_list, n_runs=10, n_jobs=1):
@@ -80,50 +84,51 @@ def fit_many_runs(train_imgs, test_imgs, components_list, n_runs=10, n_jobs=1):
                                   for n_components in components_list
                                   for random_state in random_states
                                   )
-    estimators, scores = zip(*res)
+    components, scores = zip(*res)
     shape = (len(components_list), len(random_states))
-    estimators = np.array(estimators).reshape(shape).tolist()
+    components = np.array(components).reshape(shape).tolist()
     scores = np.array(scores).reshape(shape).tolist()
 
     discrepencies = []
     var_discrepencies = []
-    best_estimators = []
-    for n_components, these_estimators, these_scores in zip(components_list,
-                                                            estimators,
+    best_components = []
+    for n_components, these_components, these_scores in zip(components_list,
+                                                            components,
                                                             scores):
         discrepency, var_discrepency = mean_amari_discrepency(
-            [estimator.components_ for estimator in these_estimators])
-        best_estimator = these_estimators[np.argmin(these_scores)]
+            these_components)
+        best_estimator = these_components[np.argmin(these_scores)]
         discrepencies.append(var_discrepency)
         var_discrepencies.append(var_discrepency)
-        best_estimators.append(best_estimator)
+        best_components.append(best_estimator)
 
     discrepencies = np.array(discrepencies)
     var_discrepencies = np.array(var_discrepencies)
-    best_estimators = np.array(best_estimators)
-    best_estimator = best_estimators[np.argmin(discrepencies)]
+    best_components = np.array(best_components)
+    components = best_components[np.argmin(discrepencies)]
 
-    return discrepencies, var_discrepencies, best_estimator
+    return discrepencies, var_discrepencies, components
 
 
-output_dir = expanduser('~/output/modl/fmri_stability')
+output_dir = expanduser('~/output_drago4/modl/fmri_stability2')
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-discrepencies, var_discrepencies, best_estimator = fit_many_runs(
+discrepencies, var_discrepencies, components = fit_many_runs(
     train_imgs, test_imgs,
     components_list,
     n_jobs=n_jobs,
     n_runs=n_runs)
 
-best_estimator.components_img_.to_filename(
+components_img = masker.inverse_transform(components)
+components_img.to_filename(
     join(output_dir, 'components.nii.gz'))
 dump((components_list, discrepencies, var_discrepencies),
      join(output_dir, 'discrepencies.pkl'))
 
 fig = plt.figure()
-display_maps(fig, best_estimator.components_img_)
+display_maps(fig, components_img)
 plt.savefig(join(output_dir, 'components.pdf'))
 fig, ax = plt.subplots(1, 1)
 ax.fill_between(components_list, discrepencies - var_discrepencies,
