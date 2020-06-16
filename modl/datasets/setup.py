@@ -3,8 +3,6 @@ def configuration(parent_package='', top_path=None):
 
     config = Configuration('datasets', parent_package, top_path)
 
-    config.add_subpackage('tests')
-
     return config
 
 if __name__ == '__main__':
